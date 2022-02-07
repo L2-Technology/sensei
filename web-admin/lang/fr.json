@@ -1,0 +1,15 @@
+{
+    "D0TAj9": {
+      "description": "Button to go to the next page of results",
+      "message": "Le Next"
+    },
+    "i+kBzF": {
+      "description": "Shows pagination information for tables",
+      "message": "Le Showing <span>{startResult}</span> to <span>{endResult}</span> of <span>{totalResults}</span> results"
+    },
+    "s08Wxj": {
+      "description": "Button to go to the previous page of results",
+      "message": "Le Previous"
+    }
+  }
+  

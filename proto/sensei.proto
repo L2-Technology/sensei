@@ -1,0 +1,292 @@
+syntax = "proto3";
+package sensei;
+
+service Admin {
+    rpc CreateAdmin (CreateAdminRequest) returns (CreateAdminResponse);
+    rpc StartAdmin (StartAdminRequest) returns (StartAdminResponse);
+    rpc ListNodes (ListNodesRequest) returns (ListNodesResponse);
+    rpc CreateNode (CreateNodeRequest) returns (CreateNodeResponse);
+    rpc DeleteNode (DeleteNodeRequest) returns (DeleteNodeResponse);
+    rpc GetStatus (GetStatusRequest) returns (GetStatusResponse);
+    rpc StartNode (AdminStartNodeRequest) returns (AdminStartNodeResponse);
+    rpc StopNode (AdminStopNodeRequest) returns (AdminStopNodeResponse);
+    rpc GetConfig (GetConfigRequest) returns (GetConfigResponse);
+    rpc UpdateConfig (UpdateConfigRequest) returns (UpdateConfigResponse);
+}
+
+service Node {
+    rpc StartNode (StartNodeRequest) returns (StartNodeResponse);
+    rpc StopNode (StopNodeRequest) returns (StopNodeResponse);
+    rpc GetUnusedAddress (GetUnusedAddressRequest) returns (GetUnusedAddressResponse);
+    rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+    rpc OpenChannel (OpenChannelRequest) returns (OpenChannelResponse);
+    rpc PayInvoice (PayInvoiceRequest) returns (PayInvoiceResponse);
+    rpc Keysend (KeysendRequest) returns (KeysendResponse);
+    rpc CreateInvoice (CreateInvoiceRequest) returns (CreateInvoiceResponse);
+    rpc LabelPayment (LabelPaymentRequest) returns (LabelPaymentResponse);
+    rpc DeletePayment (DeletePaymentRequest) returns (DeletePaymentResponse);
+    rpc ConnectPeer (ConnectPeerRequest) returns (ConnectPeerResponse);
+    rpc ListChannels (ListChannelsRequest) returns (ListChannelsResponse);
+    rpc ListPayments (ListPaymentsRequest) returns (ListPaymentsResponse);
+    rpc CloseChannel (CloseChannelRequest) returns (CloseChannelResponse);
+    rpc Info (InfoRequest) returns (InfoResponse);
+    rpc ListPeers (ListPeersRequest) returns (ListPeersResponse);
+    rpc SignMessage (SignMessageRequest) returns (SignMessageResponse);
+}
+
+message ListNode {
+    int64 id = 1;
+    string external_id = 2;
+    string created_at = 3;
+    string updated_at = 4;
+    uint32 role = 5;
+    string username = 6;
+    string alias = 7;
+    string network = 8;
+    string listen_addr = 9;
+    uint32 listen_port = 10;
+    string pubkey = 11;
+    uint32 status = 12;
+}
+
+message PaginationRequest {
+    uint32 page = 1;
+    uint32 take = 3;
+    optional string query = 4;
+}
+
+message PaginationResponse {
+    bool has_more = 1;
+    uint64 total = 2;
+}
+
+message ListNodesRequest {
+    optional PaginationRequest pagination = 1;
+}
+
+message ListNodesResponse {
+    repeated ListNode nodes = 1;
+    PaginationResponse pagination = 2;
+}
+
+message CreateAdminRequest {
+    string username = 1;
+    string alias = 2;
+    string passphrase = 3;
+    string electrum_url = 4;
+    bool start = 5;
+}
+
+message CreateAdminResponse {
+    string pubkey = 1;
+    string macaroon = 2;
+    string external_id = 3;
+    uint32 role = 4;
+}
+
+message CreateNodeRequest {
+    string username = 1;
+    string alias = 2;
+    string passphrase = 3;
+    bool start = 4;
+}
+message CreateNodeResponse {
+    string pubkey = 1;
+    string macaroon = 2;
+}
+
+message DeleteNodeRequest {
+    string pubkey = 1;
+}
+message DeleteNodeResponse {}
+
+message StartAdminRequest {
+    string passphrase = 1;
+}
+message StartAdminResponse {
+    string pubkey = 1;
+    string macaroon = 2;
+}
+
+message GetStatusRequest {}
+message GetStatusResponse {
+    optional string alias = 1;
+    optional string pubkey = 2;
+    optional string username = 3;
+    optional uint32 role = 4;
+    bool created = 5;
+    bool running = 6;
+    bool authenticated = 7;
+}
+
+message StartNodeRequest {
+    string passphrase = 1;
+}
+message StartNodeResponse {}
+
+message StopNodeRequest {}
+message StopNodeResponse {}
+
+message AdminStartNodeRequest {
+    string passphrase = 1;
+    string pubkey = 2;
+}
+message AdminStartNodeResponse {
+    string macaroon = 1;
+}
+
+message AdminStopNodeRequest {
+    string pubkey = 1;
+}
+message AdminStopNodeResponse {}
+
+message GetConfigRequest {}
+message GetConfigResponse {
+    string electrum_url = 1;
+}
+
+message UpdateConfigRequest {
+    string electrum_url = 1;
+}
+message UpdateConfigResponse {}
+
+message GetUnusedAddressRequest {}
+message GetUnusedAddressResponse {
+    string address = 1;
+}
+
+message GetBalanceRequest {}
+message GetBalanceResponse {
+    uint64 balance_satoshis = 1;
+}
+
+message OpenChannelRequest {
+    string node_connection_string = 1;
+    uint64 amt_satoshis = 2;
+    bool public = 3;
+}
+message OpenChannelResponse {}
+
+message PayInvoiceRequest {
+    string invoice = 1;
+}
+message PayInvoiceResponse {}
+
+message LabelPaymentRequest {
+    string label = 1;
+    string payment_hash = 2;
+}
+message LabelPaymentResponse {}
+
+message DeletePaymentRequest {
+    string payment_hash = 1;
+}
+message DeletePaymentResponse {}
+
+message KeysendRequest {
+    string dest_pubkey = 1;
+    uint64 amt_msat = 2;
+}
+message KeysendResponse {}
+
+message CreateInvoiceRequest {
+    uint64 amt_msat = 1;
+    string description = 2;
+}
+message CreateInvoiceResponse {
+    string invoice = 1;
+}
+
+message ConnectPeerRequest {
+    string node_connection_string = 1;
+}
+message ConnectPeerResponse {}
+
+message Channel {
+    string channel_id = 1;
+    optional string funding_txid = 2;
+    optional uint32 funding_tx_index = 3;
+    optional uint64 short_channel_id = 4;
+    uint64 channel_value_satoshis = 5;
+    uint64 balance_msat = 6;
+    optional uint64 unspendable_punishment_reserve = 7;
+    uint64 user_channel_id = 8;
+    uint64 outbound_capacity_msat = 9;
+    uint64 inbound_capacity_msat = 10;
+    optional uint32 confirmations_required = 11;
+    optional uint32 force_close_spend_delay = 12;
+    bool is_outbound = 13;
+    bool is_funding_locked = 14;
+    bool is_usable = 15;
+    bool is_public = 16;
+    string counterparty_pubkey = 17;
+    optional string alias = 18;
+}
+
+message ListChannelsRequest {
+    optional PaginationRequest pagination = 1;
+}
+message ListChannelsResponse {
+    repeated Channel channels = 1;
+    PaginationResponse pagination = 2;
+}
+
+message Payment {
+    string hash = 1;
+    optional string preimage = 2;
+    optional string secret = 3;
+    string status = 4;
+    optional uint64 amt_msat = 5;
+    string origin = 6;
+    optional string label = 7;
+    optional string invoice = 8;
+}
+
+message PaymentsFilter {
+    optional string origin = 1;
+    optional string status = 2;
+}
+
+message ListPaymentsRequest {
+    optional PaginationRequest pagination = 1;
+    optional PaymentsFilter filter = 2;
+}
+message ListPaymentsResponse {
+    repeated Payment payments = 1;
+    PaginationResponse pagination = 2;
+}
+
+message CloseChannelRequest {
+    string channel_id = 1;
+    bool force = 2;
+}
+message CloseChannelResponse {}
+
+message Info {
+    string node_pubkey = 1;
+    uint32 num_channels = 2;
+    uint32 num_usable_channels = 3;
+    uint32 num_peers = 4;
+}
+
+message InfoRequest {}
+message InfoResponse {
+    Info node_info = 1;
+}
+
+message Peer {
+    string node_pubkey = 1;
+}
+
+message ListPeersRequest {
+}
+message ListPeersResponse {
+    repeated Peer peers = 1;
+}
+
+message SignMessageRequest {
+    string message = 1;
+}
+message SignMessageResponse {
+    string signature = 1;
+}
