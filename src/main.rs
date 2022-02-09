@@ -10,6 +10,7 @@ mod hybrid;
 mod node;
 mod services;
 mod utils;
+mod lib;
 
 use crate::config::SenseiConfig;
 use crate::database::admin::AdminDatabase;
