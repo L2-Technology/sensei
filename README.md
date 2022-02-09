@@ -16,6 +16,14 @@ To run from source you will need to take the following steps:
 3. Run senseid on regtest: `cargo run --bin senseid -- --network=regtest`
 4. Open the admin at `http://localhost:5401/admin/nodes`
 
+
+## Developing the web-admin
+
+In order to see your changes live you will need to:
+
+1. Run the web-admin dev server: `cd sensei/web-admin && npm run start`
+2. Visit the admin using port 3000: `http://localhost:3000/admin/nodes`
+
 ## Documentation
 
 Please visit the [documentation website](https://docs.l2.technology) for installation and getting started instructions.  
