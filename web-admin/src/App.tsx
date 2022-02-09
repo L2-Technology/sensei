@@ -37,9 +37,9 @@ function App() {
   return (
     <AuthProvider initialStatus={data}>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/logout" element={<LogoutPage />} />
-        <Route path="/setup" element={<SetupPage />} />
+        <Route path="/admin/login" element={<LoginPage />} />
+        <Route path="/admin/logout" element={<LogoutPage />} />
+        <Route path="/admin/setup" element={<SetupPage />} />
 
         <Route
           path="/admin"

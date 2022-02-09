@@ -135,7 +135,7 @@ async fn main() {
                 )
             },
         ),
-    );
+    ).fallback(get(live));
 
     let router = add_admin_routes(router);
     let router = add_node_routes(router);

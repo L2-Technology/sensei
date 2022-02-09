@@ -6,11 +6,11 @@ const RequireAuth = ({ children }: { children: JSX.Element }) => {
   let location = useLocation();
 
   if (!auth.status.created) {
-    return <Navigate to="/setup" state={{ from: location }} />;
+    return <Navigate to="/admin/setup" state={{ from: location }} />;
   }
 
   if (!auth.status.running || !auth.status.authenticated) {
-    return <Navigate to="/login" state={{ from: location }} />;
+    return <Navigate to="/admin/login" state={{ from: location }} />;
   }
 
   return children;

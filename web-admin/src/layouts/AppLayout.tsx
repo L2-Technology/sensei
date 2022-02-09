@@ -72,7 +72,7 @@ const AppLayout = () => {
       icon: CogIcon,
     });
   }
-  navigation.push({ name: "Logout", href: "/logout", icon: LogoutIcon });
+  navigation.push({ name: "Logout", href: "/admin/logout", icon: LogoutIcon });
 
   return (
     <>
