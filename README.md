@@ -21,8 +21,26 @@ To run from source you will need to take the following steps:
 
 In order to see your changes live you will need to:
 
-1. Run the web-admin dev server: `cd sensei/web-admin && npm run start`
+1. Run the web-admin dev server: `cd sensei/web-admin && npm install && npm run start`
 2. Visit the admin using port 3000: `http://localhost:3000/admin/nodes`
+
+## Using with Nigiri
+
+[Nigiri](https://nigiri.vulpem.com/) is a great tool for running local docker images of bitcoind, electrum, esplora, and much more.  Once it's running you can use `localhost:50000` as your `Electrum URL` when setting up your Sensei node.
+
+Once your node is setup you can:
+
+1. Visit the 'Fund Node' page in the Sensei admin to get an unused receive address.
+2. Send 100M sats to your Sensei node via: `nigiri faucet <sensei_fund_address>`
+3. After you open a channel you can mine blocks using nigiri by:
+    - Getting an address to mine to `nigiri rpc getnewaddress "" "bech32"`
+    - Mine some blocks to that address `nigiri rpc generatetoaddress 10 "<address_from_previous_command>"`
+
+## Other Development Notes
+
+Currently the on-chain wallet is only sycned once every 30 seconds in the background.  This means after you fund your wallet or open channels it can take up to 30 seconds for the changes to be reflected in Sensei admin.  You'll also need to navigate or refresh the page.
+
+I'm hoping to fix this asap.
 
 ## Documentation
 
