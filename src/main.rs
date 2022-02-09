@@ -1,3 +1,12 @@
+// This file is Copyright its original authors, visible in version control
+// history.
+//
+// This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
+// or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
+// You may not use this file except in accordance with one or both of these
+// licenses.
+
 mod config;
 mod database;
 mod disk;
@@ -7,10 +16,10 @@ mod grpc;
 mod hex_utils;
 mod http;
 mod hybrid;
+mod lib;
 mod node;
 mod services;
 mod utils;
-mod lib;
 
 use crate::config::SenseiConfig;
 use crate::database::admin::AdminDatabase;
@@ -126,17 +135,20 @@ async fn main() {
         admin_service,
     };
 
-    let router = Router::new().route("/admin", get(live)).nest(
-        "/admin/static",
-        get_service(ServeDir::new("./web-admin/build/static")).handle_error(
-            |error: std::io::Error| async move {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Unhandled internal error: {}", error),
-                )
-            },
-        ),
-    ).fallback(get(live));
+    let router = Router::new()
+        .route("/admin", get(live))
+        .nest(
+            "/admin/static",
+            get_service(ServeDir::new("./web-admin/build/static")).handle_error(
+                |error: std::io::Error| async move {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Unhandled internal error: {}", error),
+                    )
+                },
+            ),
+        )
+        .fallback(get(live));
 
     let router = add_admin_routes(router);
     let router = add_node_routes(router);

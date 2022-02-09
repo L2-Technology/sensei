@@ -1,16 +1,25 @@
+// This file is Copyright its original authors, visible in version control
+// history.
+//
+// This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
+// or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
+// You may not use this file except in accordance with one or both of these
+// licenses.
+
 use crate::config::{LightningNodeBackendConfig, LightningNodeConfig};
 use crate::database::node::NodeDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
+use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
 use crate::{database, disk, hex_utils};
-use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
-use bdk::TransactionDetails;
 use bdk::blockchain::ConfigurableBlockchain;
 use bdk::keys::ExtendedKey;
+use bdk::TransactionDetails;
 use bdk::{blockchain::ElectrumBlockchain, database::MemoryDatabase};
 use bitcoin::hashes::Hash;
 use lightning::chain::channelmonitor::ChannelMonitor;
@@ -32,9 +41,8 @@ use lightning::chain::{BestBlock, Watch};
 use lightning::ln::channelmanager::{self, ChannelDetails, SimpleArcChannelManager};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
-    IgnoringMessageHandler, MessageHandler,
+    IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
     SimpleArcPeerManager as LdkSimpleArcPeerManager,
-    PeerManager as LdkPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId};
@@ -140,8 +148,13 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
 
 trait MustSized: Sized {}
 
-
-pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<SD, Arc<SimpleArcChannelManager<M, T, F, L>>, Arc<OptionalNetworkGraphMsgHandler>, Arc<L>, Arc<IgnoringMessageHandler>>;
+pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
+    SD,
+    Arc<SimpleArcChannelManager<M, T, F, L>>,
+    Arc<OptionalNetworkGraphMsgHandler>,
+    Arc<L>,
+    Arc<IgnoringMessageHandler>,
+>;
 
 pub type PeerManager = SimpleArcPeerManager<
     SocketDescriptor,
@@ -516,10 +529,14 @@ impl LightningNode {
                     logger.clone(),
                 )),
             };
-        
+
         let route_handler = match config.external_router {
-            true => Arc::new(OptionalNetworkGraphMsgHandler { network_graph_msg_handler: None }),
-            false => Arc::new(OptionalNetworkGraphMsgHandler { network_graph_msg_handler: Some(network_graph_msg_handler.clone()) })
+            true => Arc::new(OptionalNetworkGraphMsgHandler {
+                network_graph_msg_handler: None,
+            }),
+            false => Arc::new(OptionalNetworkGraphMsgHandler {
+                network_graph_msg_handler: Some(network_graph_msg_handler.clone()),
+            }),
         };
 
         let lightning_msg_handler = MessageHandler {
@@ -1060,9 +1077,9 @@ impl LightningNode {
             .list_transactions(false)?
             .into_iter()
             .filter_map(|tx_details| {
-               
                 let match_transaction_details = tx_details.clone();
-                let matches_transaction_id = match_transaction_details.txid.to_string().contains(&query);
+                let matches_transaction_id =
+                    match_transaction_details.txid.to_string().contains(&query);
                 if matches_transaction_id {
                     Some(tx_details)
                 } else {

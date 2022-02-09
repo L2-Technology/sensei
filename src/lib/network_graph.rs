@@ -1,15 +1,27 @@
+// This file is Copyright its original authors, visible in version control
+// history.
+//
+// This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
+// or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
+// You may not use this file except in accordance with one or both of these
+// licenses.
+
 use bitcoin::secp256k1::PublicKey;
-use lightning::{util::events::{MessageSendEventsProvider, MessageSendEvent}, ln::msgs::{RoutingMessageHandler, self, LightningError}};
+use lightning::{
+    ln::msgs::{self, LightningError, RoutingMessageHandler},
+    util::events::{MessageSendEvent, MessageSendEventsProvider},
+};
 use std::{ops::Deref, sync::Arc};
 
 use crate::node::NetworkGraphMessageHandler;
 
 pub struct OptionalNetworkGraphMsgHandler {
-    pub network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>    
+    pub network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
 }
 
 impl MessageSendEventsProvider for OptionalNetworkGraphMsgHandler {
-	fn get_and_clear_pending_msg_events(&self) -> Vec<MessageSendEvent> {
+    fn get_and_clear_pending_msg_events(&self) -> Vec<MessageSendEvent> {
         match &self.network_graph_msg_handler {
             None => Vec::new(),
             Some(network_graph_msg_handler) => {
@@ -20,7 +32,10 @@ impl MessageSendEventsProvider for OptionalNetworkGraphMsgHandler {
 }
 
 impl RoutingMessageHandler for OptionalNetworkGraphMsgHandler {
-	fn handle_node_announcement(&self, _msg: &msgs::NodeAnnouncement) -> Result<bool, LightningError> {
+    fn handle_node_announcement(
+        &self,
+        _msg: &msgs::NodeAnnouncement,
+    ) -> Result<bool, LightningError> {
         match &self.network_graph_msg_handler {
             None => Ok(false),
             Some(network_graph_msg_handler) => {
@@ -29,7 +44,10 @@ impl RoutingMessageHandler for OptionalNetworkGraphMsgHandler {
         }
     }
 
-	fn handle_channel_announcement(&self, _msg: &msgs::ChannelAnnouncement) -> Result<bool, LightningError> { 
+    fn handle_channel_announcement(
+        &self,
+        _msg: &msgs::ChannelAnnouncement,
+    ) -> Result<bool, LightningError> {
         match &self.network_graph_msg_handler {
             None => Ok(false),
             Some(network_graph_msg_handler) => {
@@ -38,7 +56,7 @@ impl RoutingMessageHandler for OptionalNetworkGraphMsgHandler {
         }
     }
 
-	fn handle_channel_update(&self, _msg: &msgs::ChannelUpdate) -> Result<bool, LightningError> { 
+    fn handle_channel_update(&self, _msg: &msgs::ChannelUpdate) -> Result<bool, LightningError> {
         match &self.network_graph_msg_handler {
             None => Ok(false),
             Some(network_graph_msg_handler) => {
@@ -47,26 +65,35 @@ impl RoutingMessageHandler for OptionalNetworkGraphMsgHandler {
         }
     }
 
-	fn get_next_channel_announcements(&self, _starting_point: u64, _batch_amount: u8) ->
-		Vec<(msgs::ChannelAnnouncement, Option<msgs::ChannelUpdate>, Option<msgs::ChannelUpdate>)> { 
-            match &self.network_graph_msg_handler {
-                None => Vec::new(),
-                Some(network_graph_msg_handler) => {
-                    network_graph_msg_handler.get_next_channel_announcements(_starting_point, _batch_amount)
-                }
-            }
-    }
-
-	fn get_next_node_announcements(&self, _starting_point: Option<&PublicKey>, _batch_amount: u8) -> Vec<msgs::NodeAnnouncement> { 
+    fn get_next_channel_announcements(
+        &self,
+        _starting_point: u64,
+        _batch_amount: u8,
+    ) -> Vec<(
+        msgs::ChannelAnnouncement,
+        Option<msgs::ChannelUpdate>,
+        Option<msgs::ChannelUpdate>,
+    )> {
         match &self.network_graph_msg_handler {
             None => Vec::new(),
-            Some(network_graph_msg_handler) => {
-                network_graph_msg_handler.get_next_node_announcements(_starting_point, _batch_amount)
-            }
+            Some(network_graph_msg_handler) => network_graph_msg_handler
+                .get_next_channel_announcements(_starting_point, _batch_amount),
         }
     }
 
-	fn sync_routing_table(&self, _their_node_id: &PublicKey, _init: &msgs::Init) {
+    fn get_next_node_announcements(
+        &self,
+        _starting_point: Option<&PublicKey>,
+        _batch_amount: u8,
+    ) -> Vec<msgs::NodeAnnouncement> {
+        match &self.network_graph_msg_handler {
+            None => Vec::new(),
+            Some(network_graph_msg_handler) => network_graph_msg_handler
+                .get_next_node_announcements(_starting_point, _batch_amount),
+        }
+    }
+
+    fn sync_routing_table(&self, _their_node_id: &PublicKey, _init: &msgs::Init) {
         match &self.network_graph_msg_handler {
             None => (),
             Some(network_graph_msg_handler) => {
@@ -75,7 +102,11 @@ impl RoutingMessageHandler for OptionalNetworkGraphMsgHandler {
         }
     }
 
-	fn handle_reply_channel_range(&self, _their_node_id: &PublicKey, _msg: msgs::ReplyChannelRange) -> Result<(), LightningError> { 
+    fn handle_reply_channel_range(
+        &self,
+        _their_node_id: &PublicKey,
+        _msg: msgs::ReplyChannelRange,
+    ) -> Result<(), LightningError> {
         match &self.network_graph_msg_handler {
             None => Ok(()),
             Some(network_graph_msg_handler) => {
@@ -84,35 +115,49 @@ impl RoutingMessageHandler for OptionalNetworkGraphMsgHandler {
         }
     }
 
-	fn handle_reply_short_channel_ids_end(&self, _their_node_id: &PublicKey, _msg: msgs::ReplyShortChannelIdsEnd) -> Result<(), LightningError> { 
+    fn handle_reply_short_channel_ids_end(
+        &self,
+        _their_node_id: &PublicKey,
+        _msg: msgs::ReplyShortChannelIdsEnd,
+    ) -> Result<(), LightningError> {
         match &self.network_graph_msg_handler {
             None => Ok(()),
             Some(network_graph_msg_handler) => {
                 network_graph_msg_handler.handle_reply_short_channel_ids_end(_their_node_id, _msg)
             }
-        } 
+        }
     }
-	
-    fn handle_query_channel_range(&self, _their_node_id: &PublicKey, _msg: msgs::QueryChannelRange) -> Result<(), LightningError> { 
+
+    fn handle_query_channel_range(
+        &self,
+        _their_node_id: &PublicKey,
+        _msg: msgs::QueryChannelRange,
+    ) -> Result<(), LightningError> {
         match &self.network_graph_msg_handler {
             None => Ok(()),
             Some(network_graph_msg_handler) => {
                 network_graph_msg_handler.handle_query_channel_range(_their_node_id, _msg)
             }
-        } 
+        }
     }
-	
-    fn handle_query_short_channel_ids(&self, _their_node_id: &PublicKey, _msg: msgs::QueryShortChannelIds) -> Result<(), LightningError> { 
+
+    fn handle_query_short_channel_ids(
+        &self,
+        _their_node_id: &PublicKey,
+        _msg: msgs::QueryShortChannelIds,
+    ) -> Result<(), LightningError> {
         match &self.network_graph_msg_handler {
             None => Ok(()),
             Some(network_graph_msg_handler) => {
                 network_graph_msg_handler.handle_query_short_channel_ids(_their_node_id, _msg)
             }
-        } 
+        }
     }
 }
 
 impl Deref for OptionalNetworkGraphMsgHandler {
-	type Target = OptionalNetworkGraphMsgHandler;
-	fn deref(&self) -> &Self { self }
+    type Target = OptionalNetworkGraphMsgHandler;
+    fn deref(&self) -> &Self {
+        self
+    }
 }
