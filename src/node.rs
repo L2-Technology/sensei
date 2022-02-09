@@ -7,6 +7,7 @@ use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, No
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
 use crate::{database, disk, hex_utils};
+use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
 use bdk::TransactionDetails;
 use bdk::blockchain::ConfigurableBlockchain;
 use bdk::keys::ExtendedKey;
@@ -33,7 +34,7 @@ use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
     IgnoringMessageHandler, MessageHandler,
     SimpleArcPeerManager as LdkSimpleArcPeerManager,
-    /*PeerManager as LdkPeerManager,*/
+    PeerManager as LdkPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId};
@@ -139,14 +140,14 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
 
 trait MustSized: Sized {}
 
-// pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<SD, Arc<SimpleArcChannelManager<M, T, F, L>>, Arc<dyn RoutingMessageHandler + Send + Sync>, Arc<L>, Arc<IgnoringMessageHandler>>;
 
-pub type PeerManager = LdkSimpleArcPeerManager<
+pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<SD, Arc<SimpleArcChannelManager<M, T, F, L>>, Arc<OptionalNetworkGraphMsgHandler>, Arc<L>, Arc<IgnoringMessageHandler>>;
+
+pub type PeerManager = SimpleArcPeerManager<
     SocketDescriptor,
     ChainMonitor,
     LightningWallet,
     LightningWallet,
-    dyn chain::Access + Send + Sync,
     FilesystemLogger,
 >;
 
@@ -515,15 +516,15 @@ impl LightningNode {
                     logger.clone(),
                 )),
             };
-
-        // let route_handler: Arc<dyn RoutingMessageHandler + Sync + Send> = match config.external_router {
-        //     true => Arc::new(IgnoringMessageHandler {}),
-        //     false => network_graph_msg_handler.clone()
-        // };
+        
+        let route_handler = match config.external_router {
+            true => Arc::new(OptionalNetworkGraphMsgHandler { network_graph_msg_handler: None }),
+            false => Arc::new(OptionalNetworkGraphMsgHandler { network_graph_msg_handler: Some(network_graph_msg_handler.clone()) })
+        };
 
         let lightning_msg_handler = MessageHandler {
             chan_handler: channel_manager.clone(),
-            route_handler: network_graph_msg_handler.clone(),
+            route_handler,
         };
 
         // Step 13: Initialize the PeerManager
