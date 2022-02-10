@@ -10,8 +10,6 @@ service Admin {
     rpc GetStatus (GetStatusRequest) returns (GetStatusResponse);
     rpc StartNode (AdminStartNodeRequest) returns (AdminStartNodeResponse);
     rpc StopNode (AdminStopNodeRequest) returns (AdminStopNodeResponse);
-    rpc GetConfig (GetConfigRequest) returns (GetConfigResponse);
-    rpc UpdateConfig (UpdateConfigRequest) returns (UpdateConfigResponse);
 }
 
 service Node {
@@ -73,8 +71,7 @@ message CreateAdminRequest {
     string username = 1;
     string alias = 2;
     string passphrase = 3;
-    string electrum_url = 4;
-    bool start = 5;
+    bool start = 4;
 }
 
 message CreateAdminResponse {
@@ -139,16 +136,6 @@ message AdminStopNodeRequest {
     string pubkey = 1;
 }
 message AdminStopNodeResponse {}
-
-message GetConfigRequest {}
-message GetConfigResponse {
-    string electrum_url = 1;
-}
-
-message UpdateConfigRequest {
-    string electrum_url = 1;
-}
-message UpdateConfigResponse {}
 
 message GetUnusedAddressRequest {}
 message GetUnusedAddressResponse {

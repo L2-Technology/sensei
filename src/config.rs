@@ -37,19 +37,16 @@ impl Default for LightningNodeBackendConfig {
         })
     }
 }
+
 impl LightningNodeBackendConfig {
-    pub fn clone_with_new_url(&self, new_url: String) -> Self {
-        match self {
-            LightningNodeBackendConfig::Electrum(electrum_config) => {
-                LightningNodeBackendConfig::Electrum(ElectrumBlockchainConfig {
-                    url: new_url,
-                    socks5: electrum_config.socks5.clone(),
-                    retry: electrum_config.retry,
-                    timeout: electrum_config.timeout,
-                    stop_gap: electrum_config.stop_gap,
-                })
-            }
-        }
+    pub fn electrum_from_url(url: String) -> Self {
+        LightningNodeBackendConfig::Electrum( ElectrumBlockchainConfig {
+            url,
+            socks5: DEFAULT_SOCKS5_PROXY,
+            retry: DEFAULT_RETRY_ATTEMPTS,
+            timeout: DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            stop_gap: DEFAULT_STOP_GAP,
+        })
     }
 }
 

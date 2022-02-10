@@ -42,19 +42,6 @@ impl From<DeleteNodeParams> for AdminRequest {
 }
 
 #[derive(Deserialize)]
-pub struct UpdateConfigParams {
-    pub electrum_url: String,
-}
-
-impl From<UpdateConfigParams> for AdminRequest {
-    fn from(params: UpdateConfigParams) -> Self {
-        Self::UpdateConfig {
-            electrum_url: params.electrum_url,
-        }
-    }
-}
-
-#[derive(Deserialize)]
 pub struct StartNodeParams {
     pub pubkey: String,
     pub passphrase: String,
@@ -112,7 +99,6 @@ pub struct CreateAdminParams {
     pub username: String,
     pub passphrase: String,
     pub alias: String,
-    pub electrum_url: String,
     pub start: bool,
 }
 
@@ -122,7 +108,6 @@ impl From<CreateAdminParams> for AdminRequest {
             username: params.username,
             passphrase: params.passphrase,
             alias: params.alias,
-            electrum_url: params.electrum_url,
             start: params.start,
         }
     }
@@ -220,53 +205,6 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/start", post(start_sensei))
         .route("/v1/login", post(login))
         .route("/v1/logout", post(logout))
-        .route("/v1/config", get(get_config))
-        .route("/v1/config", post(update_config))
-}
-
-pub async fn get_config(
-    Extension(request_context): Extension<RequestContext>,
-    cookies: Cookies,
-    MacaroonHeader(macaroon): MacaroonHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated = authenticate_request(&request_context, &cookies, macaroon).await?;
-    if authenticated {
-        match request_context
-            .admin_service
-            .call(AdminRequest::GetConfig {})
-            .await
-        {
-            Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
-        }
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
-}
-
-pub async fn update_config(
-    Extension(request_context): Extension<RequestContext>,
-    Json(payload): Json<Value>,
-    cookies: Cookies,
-    MacaroonHeader(macaroon): MacaroonHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated = authenticate_request(&request_context, &cookies, macaroon).await?;
-    let request = {
-        let params: Result<UpdateConfigParams, _> = serde_json::from_value(payload);
-        match params {
-            Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
-        }
-    }?;
-
-    if authenticated {
-        match request_context.admin_service.call(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
-        }
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
 }
 
 pub async fn list_nodes(

@@ -27,10 +27,6 @@ use serde::Serialize;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::Mutex;
 pub enum AdminRequest {
-    GetConfig {},
-    UpdateConfig {
-        electrum_url: String,
-    },
     GetStatus {
         pubkey: String,
     },
@@ -38,7 +34,6 @@ pub enum AdminRequest {
         username: String,
         alias: String,
         passphrase: String,
-        electrum_url: String,
         start: bool,
     },
     StartAdmin {
@@ -68,10 +63,6 @@ pub enum AdminRequest {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum AdminResponse {
-    GetConfig {
-        electrum_url: String,
-    },
-    UpdateConfig {},
     GetStatus {
         alias: Option<String>,
         created: bool,
@@ -165,27 +156,6 @@ impl From<macaroon::MacaroonError> for Error {
 impl AdminService {
     pub async fn call(&self, request: AdminRequest) -> Result<AdminResponse, Error> {
         match request {
-            AdminRequest::GetConfig {} => {
-                let config = self.config.lock().await;
-                let electrum_url = match &config.backend {
-                    LightningNodeBackendConfig::Electrum(electrum_config) => {
-                        electrum_config.url.clone()
-                    }
-                };
-                Ok(AdminResponse::GetConfig { electrum_url })
-            }
-            AdminRequest::UpdateConfig { electrum_url } => {
-                let new_backend_config = {
-                    let config = self.config.lock().await;
-                    config.backend.clone_with_new_url(electrum_url)
-                };
-                {
-                    let mut config = self.config.lock().await;
-                    config.set_backend(new_backend_config);
-                    config.save();
-                }
-                Ok(AdminResponse::UpdateConfig {})
-            }
             AdminRequest::GetStatus { pubkey } => {
                 let mut database = self.database.lock().await;
                 let admin_node = database.get_admin_node()?;
@@ -220,19 +190,8 @@ impl AdminService {
                 username,
                 alias,
                 passphrase,
-                electrum_url,
                 start,
             } => {
-                let new_backend_config = {
-                    let config = self.config.lock().await;
-                    config.backend.clone_with_new_url(electrum_url)
-                };
-                {
-                    let mut config = self.config.lock().await;
-                    config.set_backend(new_backend_config);
-                    config.save();
-                }
-
                 let (lightning_node, node) = self
                     .create_node(username, alias, passphrase.clone(), Role::Admin)
                     .await?;

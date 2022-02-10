@@ -11,9 +11,9 @@ pub use super::sensei::admin_server::{Admin, AdminServer};
 use super::sensei::{
     AdminStartNodeRequest, AdminStartNodeResponse, AdminStopNodeRequest, AdminStopNodeResponse,
     CreateAdminRequest, CreateAdminResponse, CreateNodeRequest, CreateNodeResponse,
-    DeleteNodeRequest, DeleteNodeResponse, GetConfigRequest, GetConfigResponse, GetStatusRequest,
+    DeleteNodeRequest, DeleteNodeResponse, GetStatusRequest,
     GetStatusResponse, ListNode, ListNodesRequest, ListNodesResponse, StartAdminRequest,
-    StartAdminResponse, UpdateConfigRequest, UpdateConfigResponse,
+    StartAdminResponse
 };
 use crate::{
     services::admin::{AdminRequest, AdminResponse},
@@ -87,7 +87,6 @@ impl From<CreateAdminRequest> for AdminRequest {
             username: req.username,
             alias: req.alias,
             passphrase: req.passphrase,
-            electrum_url: req.electrum_url,
             start: req.start,
         }
     }
@@ -213,43 +212,6 @@ impl TryFrom<AdminResponse> for DeleteNodeResponse {
         }
     }
 }
-
-impl From<GetConfigRequest> for AdminRequest {
-    fn from(_req: GetConfigRequest) -> Self {
-        AdminRequest::GetConfig {}
-    }
-}
-
-impl TryFrom<AdminResponse> for GetConfigResponse {
-    type Error = String;
-
-    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
-        match res {
-            AdminResponse::GetConfig { electrum_url } => Ok(Self { electrum_url }),
-            _ => Err("impossible".to_string()),
-        }
-    }
-}
-
-impl From<UpdateConfigRequest> for AdminRequest {
-    fn from(req: UpdateConfigRequest) -> Self {
-        AdminRequest::UpdateConfig {
-            electrum_url: req.electrum_url,
-        }
-    }
-}
-
-impl TryFrom<AdminResponse> for UpdateConfigResponse {
-    type Error = String;
-
-    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
-        match res {
-            AdminResponse::UpdateConfig {} => Ok(Self {}),
-            _ => Err("impossible".to_string()),
-        }
-    }
-}
-
 pub struct AdminService {
     pub request_context: crate::RequestContext,
 }
@@ -324,28 +286,6 @@ impl AdminService {
 
 #[tonic::async_trait]
 impl Admin for AdminService {
-    async fn get_config(
-        &self,
-        request: tonic::Request<GetConfigRequest>,
-    ) -> Result<tonic::Response<GetConfigResponse>, tonic::Status> {
-        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
-            .await?
-            .try_into()
-            .map(Response::new)
-            .map_err(|_e| Status::unknown("unknown error"))
-    }
-
-    async fn update_config(
-        &self,
-        request: tonic::Request<UpdateConfigRequest>,
-    ) -> Result<tonic::Response<UpdateConfigResponse>, tonic::Status> {
-        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
-            .await?
-            .try_into()
-            .map(Response::new)
-            .map_err(|_e| Status::unknown("unknown error"))
-    }
-
     async fn get_status(
         &self,
         request: tonic::Request<GetStatusRequest>,

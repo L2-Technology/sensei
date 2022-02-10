@@ -21,7 +21,7 @@ mod node;
 mod services;
 mod utils;
 
-use crate::config::SenseiConfig;
+use crate::config::{SenseiConfig, LightningNodeBackendConfig};
 use crate::database::admin::AdminDatabase;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
@@ -35,7 +35,7 @@ use axum::{
     routing::{get, get_service},
     AddExtensionLayer, Router,
 };
-use clap::Parser;
+use clap::{Parser, ArgEnum};
 
 use std::net::SocketAddr;
 use tower_cookies::CookieManagerLayer;
@@ -75,6 +75,7 @@ pub struct RequestContext {
     pub admin_service: AdminService,
 }
 
+
 /// Sensei daemon
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -84,6 +85,8 @@ struct SenseiArgs {
     data_dir: Option<String>,
     #[clap(short, long)]
     network: Option<String>,
+    #[clap(short, long)]
+    electrum_url: Option<String>,
 }
 
 #[tokio::main]
@@ -112,7 +115,11 @@ async fn main() {
         .expect("failed to create network directory");
 
     let network_config_path = format!("{}/{}/config.json", sensei_dir, root_config.network);
-    let config = SenseiConfig::from_file(network_config_path, Some(root_config));
+    let mut config = SenseiConfig::from_file(network_config_path, Some(root_config));
+
+    if let Some(electrum_url) = args.electrum_url {
+        config.set_backend(LightningNodeBackendConfig::electrum_from_url(electrum_url));
+    }
 
     let sqlite_path = format!("{}/{}/admin.db", sensei_dir, config.network);
     let mut database = AdminDatabase::new(sqlite_path);

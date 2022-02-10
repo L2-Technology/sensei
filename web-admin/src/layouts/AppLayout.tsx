@@ -65,13 +65,6 @@ const AppLayout = () => {
     icon: CashIcon,
   });
 
-  if (auth.isAdmin()) {
-    navigation.push({
-      name: "Config",
-      href: "/admin/config",
-      icon: CogIcon,
-    });
-  }
   navigation.push({ name: "Logout", href: "/admin/logout", icon: LogoutIcon });
 
   return (

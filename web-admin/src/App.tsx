@@ -23,7 +23,6 @@ import ErrorModal from "./components/layout/app/ErrorModal";
 import NotificationContainer from "./components/layout/app/NotificationContainer";
 import OpenChannelPage from "./channels/pages/OpenChannelPage";
 import LogoutPage from "./auth/pages/LogoutPage";
-import ConfigPage from "./config/pages/ConfigPage";
 
 function App() {
   const { isLoading, data } = useQuery("status", getStatus, {
@@ -59,7 +58,6 @@ function App() {
           <Route path="/admin/peers" element={<PeersPage />} />
           <Route path="/admin/nodes" element={<NodesPage />} />
           <Route path="/admin/nodes/new" element={<NewNodePage />} />
-          <Route path="/admin/config" element={<ConfigPage />} />
         </Route>
       </Routes>
       <Modal />

@@ -66,12 +66,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .index(2)
                         .help("alias used for the root lightning node"),
                 )
-                .arg(
-                    Arg::new("electrum_url")
-                        .required(true)
-                        .index(3)
-                        .help("electrum_url used for chain data"),
-                ),
         )
         .subcommand(App::new("start").about("unlock and start your sensei node"))
         .subcommand(App::new("listnodes").about("list all the lightning nodes"))
@@ -208,8 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let username = command_args.value_of("username").unwrap();
         let alias = command_args.value_of("alias").unwrap();
-        let electrum_url = command_args.value_of("electrum_url").unwrap();
-
+       
         let mut passphrase = String::new();
         print!("set a passphrase: ");
         io::stdin().read_line(&mut passphrase)?;
@@ -218,7 +211,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             username: username.to_string(),
             alias: alias.to_string(),
             passphrase,
-            electrum_url: electrum_url.to_string(),
             start: false,
         });
         let response = admin_client.create_admin(request).await?;

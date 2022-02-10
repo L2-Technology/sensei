@@ -17,7 +17,6 @@ interface AuthContextType {
     username: string,
     alias: string,
     passphrase: string,
-    electrumUrl: string,
     start: boolean
   ) => Promise<void>;
   login: (username: string, passphrase: string) => Promise<void>;
@@ -44,14 +43,12 @@ const AuthProvider = ({
     username: string,
     alias: string,
     passphrase: string,
-    electrumUrl: string,
     start: boolean
   ) => {
     let response = await sensei.init({
       username,
       alias,
       passphrase,
-      electrumUrl,
       start
     });
     setStatus((status) => {
