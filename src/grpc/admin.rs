@@ -7,13 +7,14 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 pub use super::sensei::admin_server::{Admin, AdminServer};
 use super::sensei::{
     AdminStartNodeRequest, AdminStartNodeResponse, AdminStopNodeRequest, AdminStopNodeResponse,
     CreateAdminRequest, CreateAdminResponse, CreateNodeRequest, CreateNodeResponse,
-    DeleteNodeRequest, DeleteNodeResponse, GetStatusRequest,
-    GetStatusResponse, ListNode, ListNodesRequest, ListNodesResponse, StartAdminRequest,
-    StartAdminResponse
+    DeleteNodeRequest, DeleteNodeResponse, GetStatusRequest, GetStatusResponse, ListNode,
+    ListNodesRequest, ListNodesResponse, StartAdminRequest, StartAdminResponse,
 };
 use crate::{
     services::admin::{AdminRequest, AdminResponse},
@@ -213,7 +214,7 @@ impl TryFrom<AdminResponse> for DeleteNodeResponse {
     }
 }
 pub struct AdminService {
-    pub request_context: crate::RequestContext,
+    pub request_context: Arc<crate::RequestContext>,
 }
 
 impl AdminService {

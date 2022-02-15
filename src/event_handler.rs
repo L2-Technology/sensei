@@ -7,13 +7,15 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use crate::chain::manager::SenseiChainManager;
 use crate::database::node::{ForwardedPayment, NodeDatabase};
-use crate::node::{
-    ChannelManager, HTLCStatus, LightningWallet, MillisatAmount, PaymentInfo, PaymentOrigin,
-};
+use crate::node::{ChannelManager, HTLCStatus, MillisatAmount, PaymentInfo, PaymentOrigin};
 use crate::utils;
 use crate::{config::LightningNodeConfig, hex_utils};
 
+use bdk::database::SqliteDatabase;
+use bdk::wallet::AddressIndex;
+use bdk::{FeeRate, SignOptions};
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use lightning::{
@@ -30,10 +32,11 @@ use tokio::runtime::Handle;
 
 pub struct LightningNodeEventHandler {
     pub config: LightningNodeConfig,
-    pub wallet: Arc<LightningWallet>,
+    pub wallet: Arc<Mutex<bdk::Wallet<(), SqliteDatabase>>>,
     pub channel_manager: Arc<ChannelManager>,
     pub keys_manager: Arc<KeysManager>,
     pub database: Arc<Mutex<NodeDatabase>>,
+    pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,
 }
 
@@ -60,18 +63,29 @@ impl EventHandler for LightningNodeEventHandler {
                 .expect("Lightning funding tx should always be to a SegWit output")
                 .to_address();
 
-                let target_blocks = 100;
-
                 // Have wallet put the inputs into the transaction such that the output
                 // is satisfied and then sign the funding transaction
-                let funding_tx = self
-                    .wallet
-                    .construct_funding_transaction(
-                        output_script,
-                        *channel_value_satoshis,
-                        target_blocks,
-                    )
-                    .unwrap();
+                let wallet = self.wallet.lock().unwrap();
+
+                let mut tx_builder = wallet.build_tx();
+                let fee_sats_per_1000_wu = self
+                    .chain_manager
+                    .bitcoind_client
+                    .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
+
+                // TODO: is this the correct conversion??
+                let fee_rate = FeeRate::from_sat_per_vb(2.0);
+
+                tx_builder
+                    .add_recipient(output_script.clone(), *channel_value_satoshis)
+                    .fee_rate(fee_rate)
+                    .enable_rbf();
+
+                let (mut psbt, _tx_details) = tx_builder.finish().unwrap();
+
+                let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
+
+                let funding_tx = psbt.extract_tx();
 
                 // Give the funding transaction back to LDK for opening the channel.
                 if self
@@ -249,11 +263,16 @@ impl EventHandler for LightningNodeEventHandler {
                 });
             }
             Event::SpendableOutputs { outputs } => {
-                let destination_address = self.wallet.get_unused_address().unwrap();
+                let wallet = self.wallet.lock().unwrap();
+                let address_info = wallet.get_address(AddressIndex::LastUnused).unwrap();
+                let destination_address = address_info.address;
                 let output_descriptors = &outputs.iter().collect::<Vec<_>>();
+
                 let tx_feerate = self
-                    .wallet
+                    .chain_manager
+                    .bitcoind_client
                     .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
+
                 let spending_tx = self
                     .keys_manager
                     .spend_spendable_outputs(
@@ -264,7 +283,10 @@ impl EventHandler for LightningNodeEventHandler {
                         &Secp256k1::new(),
                     )
                     .unwrap();
-                self.wallet.broadcast_transaction(&spending_tx);
+
+                self.chain_manager
+                    .bitcoind_client
+                    .broadcast_transaction(&spending_tx);
             }
             Event::ChannelClosed {
                 channel_id,

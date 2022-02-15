@@ -217,17 +217,8 @@ pub enum NodeResponse {
 #[derive(Serialize, Debug)]
 pub enum NodeRequestError {
     Sensei(String),
-    BdkLdk(String),
     Bdk(String),
     Io(String),
-}
-
-impl From<bdk_ldk::Error> for NodeRequestError {
-    fn from(e: bdk_ldk::Error) -> Self {
-        match e {
-            bdk_ldk::Error::Bdk(e) => Self::BdkLdk(e.to_string()),
-        }
-    }
 }
 
 impl From<bdk::Error> for NodeRequestError {

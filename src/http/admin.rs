@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use axum::{
     extract::{Extension, Query},
     routing::{get, post},
@@ -208,7 +210,7 @@ pub fn add_routes(router: Router) -> Router {
 }
 
 pub async fn list_nodes(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
     MacaroonHeader(macaroon): MacaroonHeader,
@@ -229,7 +231,7 @@ pub async fn list_nodes(
 }
 
 pub async fn login(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, StatusCode> {
@@ -280,7 +282,7 @@ pub async fn logout(cookies: Cookies) -> Result<Json<Value>, StatusCode> {
 }
 
 pub async fn init_sensei(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
 ) -> Result<Json<AdminResponse>, StatusCode> {
@@ -317,7 +319,7 @@ pub async fn init_sensei(
 }
 
 pub async fn get_status(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     MacaroonHeader(macaroon): MacaroonHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
@@ -344,7 +346,7 @@ pub async fn get_status(
 }
 
 pub async fn start_sensei(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
 ) -> Result<Json<AdminResponse>, StatusCode> {
@@ -381,7 +383,7 @@ pub async fn start_sensei(
 }
 
 pub async fn create_node(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     MacaroonHeader(macaroon): MacaroonHeader,
@@ -406,7 +408,7 @@ pub async fn create_node(
 }
 
 pub async fn start_node(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     MacaroonHeader(macaroon): MacaroonHeader,
@@ -431,7 +433,7 @@ pub async fn start_node(
 }
 
 pub async fn stop_node(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     MacaroonHeader(macaroon): MacaroonHeader,
@@ -456,7 +458,7 @@ pub async fn stop_node(
 }
 
 pub async fn delete_node(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     MacaroonHeader(macaroon): MacaroonHeader,

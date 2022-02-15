@@ -19,7 +19,7 @@ pub enum Error {
     Io(std::io::Error),
     Secp256k1(bitcoin::secp256k1::Error),
     Bdk(bdk::Error),
-    BdkLdk(bdk_ldk::Error),
+    BitcoinRpc(bitcoincore_rpc::Error),
     LdkApi(lightning::util::errors::APIError),
     LdkMsg(lightning::ln::msgs::LightningError),
     LdkInvoice(lightning_invoice::payment::PaymentError),
@@ -38,15 +38,14 @@ impl Display for Error {
         let str = match self {
             Error::Db(e) => match e {
                 database::Error::Generic(str) => str.clone(),
+                database::Error::Encode(e) => e.to_string(),
             },
             Error::Macaroon(_e) => "macaroon error".to_string(),
             Error::TinderCrypt(e) => e.to_string(),
             Error::Io(e) => e.to_string(),
             Error::Secp256k1(e) => e.to_string(),
             Error::Bdk(e) => e.to_string(),
-            Error::BdkLdk(e) => match e {
-                bdk_ldk::Error::Bdk(e) => e.to_string(),
-            },
+            Error::BitcoinRpc(e) => e.to_string(),
             Error::LdkApi(e) => format!("{:?}", e),
             Error::LdkMsg(e) => format!("{:?}", e),
             Error::LdkInvoice(e) => format!("{:?}", e),
@@ -78,6 +77,12 @@ impl From<std::io::Error> for Error {
 impl From<bdk::Error> for Error {
     fn from(e: bdk::Error) -> Error {
         Error::Bdk(e)
+    }
+}
+
+impl From<bitcoincore_rpc::Error> for Error {
+    fn from(e: bitcoincore_rpc::Error) -> Error {
+        Error::BitcoinRpc(e)
     }
 }
 
@@ -126,13 +131,5 @@ impl From<tindercrypt::errors::Error> for Error {
 impl From<macaroon::MacaroonError> for Error {
     fn from(e: macaroon::MacaroonError) -> Self {
         Error::Macaroon(e)
-    }
-}
-
-// TODO: since this is our library maybe we just want to map
-// these to the underlying errors instead of being wrapped again
-impl From<bdk_ldk::Error> for Error {
-    fn from(e: bdk_ldk::Error) -> Error {
-        Error::BdkLdk(e)
     }
 }

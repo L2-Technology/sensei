@@ -8,11 +8,13 @@
 // licenses.
 
 use super::{PaginationRequest, PaginationResponse};
+use crate::chain::manager::SenseiChainManager;
 use crate::database::{
     self,
     admin::{AdminDatabase, Node, Role, Status},
 };
 use crate::error::Error as SenseiError;
+use crate::AdminRequestResponse;
 use crate::{
     config::{LightningNodeConfig, SenseiConfig},
     hex_utils,
@@ -20,7 +22,9 @@ use crate::{
     NodeDirectory, NodeHandle,
 };
 
+use lightning_block_sync::BlockSource;
 use serde::Serialize;
+use std::sync::mpsc::Receiver;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::Mutex;
 pub enum AdminRequest {
@@ -101,10 +105,11 @@ pub struct AdminService {
     pub config: Arc<Mutex<SenseiConfig>>,
     pub node_directory: NodeDirectory,
     pub database: Arc<Mutex<AdminDatabase>>,
+    pub chain_manager: Arc<SenseiChainManager>,
 }
 
 impl AdminService {
-    pub fn new(
+    pub async fn new(
         data_dir: &str,
         config: SenseiConfig,
         node_directory: NodeDirectory,
@@ -112,9 +117,10 @@ impl AdminService {
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
-            config: Arc::new(Mutex::new(config)),
+            config: Arc::new(Mutex::new(config.clone())),
             node_directory,
             database: Arc::new(Mutex::new(database)),
+            chain_manager: Arc::new(SenseiChainManager::new(config).await.unwrap()),
         }
     }
 }
@@ -140,6 +146,7 @@ impl From<database::Error> for Error {
     fn from(e: database::Error) -> Self {
         match e {
             database::Error::Generic(str) => Self::Generic(str),
+            database::Error::Encode(e) => Self::Generic(e.to_string()),
         }
     }
 }
@@ -398,7 +405,9 @@ impl AdminService {
                                 node_config,
                                 Some(network_graph),
                                 Some(network_graph_message_handler),
+                                self.chain_manager.clone(),
                             )
+                            .await
                         }
                         Entry::Vacant(_entry) => Err(crate::error::Error::AdminNodeNotStarted),
                     }
@@ -406,7 +415,7 @@ impl AdminService {
                 None => Err(crate::error::Error::AdminNodeNotCreated),
             }
         } else {
-            LightningNode::new(node_config, None, None)
+            LightningNode::new(node_config, None, None, self.chain_manager.clone()).await
         }
     }
 
@@ -414,7 +423,10 @@ impl AdminService {
         let external_router = node.is_user();
         let config = self.config.lock().await;
         LightningNodeConfig {
-            backend: config.backend.clone(),
+            bitcoind_rpc_host: config.bitcoind_rpc_host.clone(),
+            bitcoind_rpc_port: config.bitcoind_rpc_port,
+            bitcoind_rpc_username: config.bitcoind_rpc_username.clone(),
+            bitcoind_rpc_password: config.bitcoind_rpc_password.clone(),
             data_dir: format!("{}/{}/{}", self.data_dir, config.network, node.external_id),
             ldk_peer_listening_port: node.listen_port,
             ldk_announced_listen_addr: vec![],
@@ -447,7 +459,7 @@ impl AdminService {
                 node.pubkey.clone(),
                 node.listen_port
             );
-            let (handles, background_processor) = start_lightning_node.start();
+            let (handles, background_processor) = start_lightning_node.start().await;
             entry.insert(NodeHandle {
                 node: Arc::new(lightning_node.clone()),
                 background_processor,
