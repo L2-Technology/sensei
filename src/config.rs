@@ -9,52 +9,17 @@
 
 use std::{fs, io};
 
-use bdk::blockchain::ElectrumBlockchainConfig;
 use bitcoin::Network;
 use serde::{Deserialize, Serialize};
-
-pub const ELECTRUM_MAINNET_URL: &str = "ssl://blockstream.info:700";
-
-pub const DEFAULT_SOCKS5_PROXY: Option<String> = None;
-pub const DEFAULT_RETRY_ATTEMPTS: u8 = 3;
-pub const DEFAULT_REQUEST_TIMEOUT_SECONDS: Option<u8> = Some(10);
-pub const DEFAULT_STOP_GAP: usize = 20;
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub enum LightningNodeBackendConfig {
-    #[serde(rename = "electrum")]
-    Electrum(ElectrumBlockchainConfig),
-}
-
-impl Default for LightningNodeBackendConfig {
-    fn default() -> Self {
-        LightningNodeBackendConfig::Electrum(ElectrumBlockchainConfig {
-            url: ELECTRUM_MAINNET_URL.into(),
-            socks5: DEFAULT_SOCKS5_PROXY,
-            retry: DEFAULT_RETRY_ATTEMPTS,
-            timeout: DEFAULT_REQUEST_TIMEOUT_SECONDS,
-            stop_gap: DEFAULT_STOP_GAP,
-        })
-    }
-}
-
-impl LightningNodeBackendConfig {
-    pub fn electrum_from_url(url: String) -> Self {
-        LightningNodeBackendConfig::Electrum( ElectrumBlockchainConfig {
-            url,
-            socks5: DEFAULT_SOCKS5_PROXY,
-            retry: DEFAULT_RETRY_ATTEMPTS,
-            timeout: DEFAULT_REQUEST_TIMEOUT_SECONDS,
-            stop_gap: DEFAULT_STOP_GAP,
-        })
-    }
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SenseiConfig {
     #[serde(skip)]
     pub path: String,
-    pub backend: LightningNodeBackendConfig,
+    pub bitcoind_rpc_host: String,
+    pub bitcoind_rpc_port: u16,
+    pub bitcoind_rpc_username: String,
+    pub bitcoind_rpc_password: String,
     pub network: Network,
     pub api_port: u16,
 }
@@ -65,7 +30,10 @@ impl Default for SenseiConfig {
         let path = format!("{}/.sensei/config.json", home_dir.to_str().unwrap());
         Self {
             path,
-            backend: LightningNodeBackendConfig::default(),
+            bitcoind_rpc_host: String::from("127.0.0.1"),
+            bitcoind_rpc_port: 8133,
+            bitcoind_rpc_username: String::from("bitcoin"),
+            bitcoind_rpc_password: String::from("bitcoin"),
             network: Network::Bitcoin,
             api_port: 5401,
         }
@@ -83,7 +51,10 @@ impl SenseiConfig {
                     serde_json::from_str(&config_str).expect("failed to parse configuration file");
                 // merge all of `config` properties into `merge_config`
                 // return `merge_config`
-                merge_config.set_backend(config.backend);
+                merge_config.bitcoind_rpc_host = config.bitcoind_rpc_host;
+                merge_config.bitcoind_rpc_port = config.bitcoind_rpc_port;
+                merge_config.bitcoind_rpc_username = config.bitcoind_rpc_username;
+                merge_config.bitcoind_rpc_password = config.bitcoind_rpc_password;
                 merge_config
             }
             Err(e) => match e.kind() {
@@ -108,10 +79,6 @@ impl SenseiConfig {
         self.network = network;
     }
 
-    pub fn set_backend(&mut self, backend: LightningNodeBackendConfig) {
-        self.backend = backend;
-    }
-
     pub fn save(&mut self) {
         fs::write(
             self.path.clone(),
@@ -123,7 +90,10 @@ impl SenseiConfig {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct LightningNodeConfig {
-    pub backend: LightningNodeBackendConfig,
+    pub bitcoind_rpc_host: String,
+    pub bitcoind_rpc_port: u16,
+    pub bitcoind_rpc_username: String,
+    pub bitcoind_rpc_password: String,
     pub data_dir: String,
     pub ldk_peer_listening_port: u16,
     pub ldk_announced_listen_addr: Vec<String>,
@@ -136,7 +106,10 @@ pub struct LightningNodeConfig {
 impl Default for LightningNodeConfig {
     fn default() -> Self {
         LightningNodeConfig {
-            backend: LightningNodeBackendConfig::default(),
+            bitcoind_rpc_host: String::from("127.0.0.1"),
+            bitcoind_rpc_port: 8133,
+            bitcoind_rpc_username: String::from("bitcoin"),
+            bitcoind_rpc_password: String::from("bitcoin"),
             data_dir: ".".into(),
             ldk_peer_listening_port: 9735,
             ldk_announced_listen_addr: vec![],
@@ -155,6 +128,11 @@ impl LightningNodeConfig {
     pub fn node_database_path(&self) -> String {
         format!("{}/node.db", self.data_dir())
     }
+
+    pub fn bdk_database_path(&self) -> String {
+        format!("{}/bdk.db", self.data_dir())
+    }
+
     pub fn admin_macaroon_path(&self) -> String {
         format!("{}/admin.macaroon", self.data_dir())
     }

@@ -13,4 +13,11 @@ pub mod node;
 #[derive(Debug)]
 pub enum Error {
     Generic(String),
+    Encode(bitcoin::consensus::encode::Error),
+}
+
+impl From<bitcoin::consensus::encode::Error> for Error {
+    fn from(e: bitcoin::consensus::encode::Error) -> Error {
+        Error::Encode(e)
+    }
 }

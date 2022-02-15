@@ -7,7 +7,11 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use crate::config::{LightningNodeBackendConfig, LightningNodeConfig};
+use crate::chain::bitcoind_client::BitcoindClient;
+use crate::chain::broadcaster::SenseiBroadcaster;
+use crate::chain::listener_database::ListenerDatabase;
+use crate::chain::manager::SenseiChainManager;
+use crate::config::LightningNodeConfig;
 use crate::database::node::NodeDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error;
@@ -18,13 +22,19 @@ use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
 use crate::{database, disk, hex_utils};
 use bdk::blockchain::ConfigurableBlockchain;
+use bdk::database::SqliteDatabase;
 use bdk::keys::ExtendedKey;
+use bdk::wallet::AddressIndex;
 use bdk::TransactionDetails;
-use bdk::{blockchain::ElectrumBlockchain, database::MemoryDatabase};
 use bitcoin::hashes::Hash;
 use lightning::chain::channelmonitor::ChannelMonitor;
+use lightning::chain::{Confirm, Listen};
+use lightning_block_sync::BlockSource;
+use lightning_block_sync::UnboundedCache;
+
 use lightning::ln::msgs::NetAddress;
 use lightning::routing::router::{self, Payee, RouteParameters};
+use lightning_block_sync::init;
 use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
 
@@ -134,13 +144,11 @@ pub struct PaymentInfo {
     pub invoice: Option<String>,
 }
 
-pub type LightningWallet = bdk_ldk::LightningWallet<ElectrumBlockchain, MemoryDatabase>;
-
 pub type ChainMonitor = chainmonitor::ChainMonitor<
     InMemorySigner,
     Arc<dyn Filter + Send + Sync>,
-    Arc<LightningWallet>,
-    Arc<LightningWallet>,
+    Arc<SenseiBroadcaster>,
+    Arc<BitcoindClient>,
     Arc<FilesystemLogger>,
     Arc<FilesystemPersister>,
 >;
@@ -158,13 +166,13 @@ pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
 pub type PeerManager = SimpleArcPeerManager<
     SocketDescriptor,
     ChainMonitor,
-    LightningWallet,
-    LightningWallet,
+    SenseiBroadcaster,
+    BitcoindClient,
     FilesystemLogger,
 >;
 
 pub type ChannelManager =
-    SimpleArcChannelManager<ChainMonitor, LightningWallet, LightningWallet, FilesystemLogger>;
+    SimpleArcChannelManager<ChainMonitor, SenseiBroadcaster, BitcoindClient, FilesystemLogger>;
 
 pub type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 
@@ -176,10 +184,10 @@ pub type InvoicePayer = payment::InvoicePayer<
     Arc<LightningNodeEventHandler>,
 >;
 
-pub type ConfirmableMonitor = (
+pub type SyncableMonitor = (
     ChannelMonitor<InMemorySigner>,
-    Arc<LightningWallet>,
-    Arc<LightningWallet>,
+    Arc<SenseiBroadcaster>,
+    Arc<BitcoindClient>,
     Arc<FilesystemLogger>,
 );
 
@@ -241,9 +249,10 @@ pub struct LightningNode {
     pub macaroon: Macaroon,
     pub seed: [u8; 32],
     pub database: Arc<Mutex<NodeDatabase>>,
-    pub wallet: Arc<LightningWallet>,
+    pub wallet: Arc<Mutex<bdk::Wallet<(), SqliteDatabase>>>,
     pub channel_manager: Arc<ChannelManager>,
     pub chain_monitor: Arc<ChainMonitor>,
+    pub chain_manager: Arc<SenseiChainManager>,
     pub peer_manager: Arc<PeerManager>,
     pub network_graph: Arc<NetworkGraph>,
     pub network_graph_msg_handler: Arc<NetworkGraphMessageHandler>,
@@ -352,16 +361,17 @@ impl LightningNode {
             .map_err(|_e| Error::InvalidMacaroon)
     }
 
-    pub fn new(
+    pub async fn new(
         config: LightningNodeConfig,
         network_graph: Option<Arc<NetworkGraph>>,
         network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
+        chain_manager: Arc<SenseiChainManager>,
     ) -> Result<Self, Error> {
         let data_dir = config.data_dir();
         fs::create_dir_all(data_dir.clone())?;
         let mut node_database = NodeDatabase::new(config.node_database_path());
+
         let network = config.network;
-        let backend = config.backend.clone();
         let channel_manager_path = config.channel_manager_path();
         let admin_macaroon_path = config.admin_macaroon_path();
 
@@ -384,45 +394,38 @@ impl LightningNode {
                 account_number,
             );
 
-        // TODO: this needs to be replaced with SqliteDatabase
-        //       it's waiting on my changes being merged upstream to bdk though
-        let database = MemoryDatabase::default();
+        let database = SqliteDatabase::new(config.bdk_database_path());
 
-        let blockchain = match backend {
-            LightningNodeBackendConfig::Electrum(config) => {
-                ElectrumBlockchain::from_config(&config)?
-            }
-        };
-
-        let bdk_wallet = bdk::Wallet::new(
+        let bdk_wallet = Arc::new(Mutex::new(bdk::Wallet::new_offline(
             receive_descriptor_template,
             Some(change_descriptor_template),
             network,
             database,
-            blockchain,
-        )?;
+        )?));
 
-        let lightning_wallet = Arc::new(LightningWallet::new(bdk_wallet));
-        let fee_estimator = lightning_wallet.clone();
+        let listener_database =
+            ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
+
+        let fee_estimator = chain_manager.bitcoind_client.clone();
         let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
-        let broadcaster = lightning_wallet.clone();
+        let broadcaster = Arc::new(SenseiBroadcaster {
+            bitcoind_client: chain_manager.bitcoind_client.clone(),
+            listener_database: listener_database.clone(),
+        });
+
         let persister = Arc::new(FilesystemPersister::new(data_dir));
-        let filter = lightning_wallet.clone();
+
+        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
+
         let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
-            Some(filter.clone()),
+            None,
             broadcaster.clone(),
             logger.clone(),
             fee_estimator.clone(),
             persister.clone(),
         ));
 
-        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
-
         let mut channelmonitors = persister.read_channelmonitors(keys_manager.clone())?;
-
-        for (_, monitor) in channelmonitors.iter() {
-            monitor.load_outputs_to_watch(&filter.clone());
-        }
 
         // TODO: likely expose a lot of this config to our LightningNodeConfig
         let mut user_config = UserConfig::default();
@@ -430,7 +433,9 @@ impl LightningNode {
             .peer_channel_config_limits
             .force_announced_channel_preference = false;
 
-        let (_channel_manager_blockhash, channel_manager) = {
+        let best_block = chain_manager.get_best_block().await?;
+
+        let (channel_manager_blockhash, mut channel_manager) = {
             if let Ok(mut f) = fs::File::open(channel_manager_path) {
                 let mut channel_monitor_mut_references = Vec::new();
                 for (_, channel_monitor) in channelmonitors.iter_mut() {
@@ -451,12 +456,11 @@ impl LightningNode {
                 // an existing chanenl manager.  need to handle this the same way we do for seed file
                 // really should extract to generic error handle for io where we really want to know if
                 // the file exists or not.
-                let (tip_height, tip_header) = lightning_wallet.get_tip()?;
-                let tip_hash = tip_header.block_hash();
 
+                let tip_hash = best_block.block_hash();
                 let chain_params = ChainParameters {
                     network: config.network,
-                    best_block: BestBlock::new(tip_hash, tip_height),
+                    best_block,
                 };
                 let fresh_channel_manager = channelmanager::ChannelManager::new(
                     fee_estimator.clone(),
@@ -471,41 +475,57 @@ impl LightningNode {
             }
         };
 
-        let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
-
-        // `Confirm` trait is not implemented on an individual ChannelMonitor
-        // but on a tuple consisting of (channel_monitor, broadcaster, fee_estimator, logger)
-        // this maps our channel monitors into a tuple that implements Confirm
-        let mut confirmable_monitors = channelmonitors
-            .into_iter()
-            .map(|(_monitor_hash, channel_monitor)| {
+        let mut bundled_channel_monitors = Vec::new();
+        for (blockhash, channel_monitor) in channelmonitors.drain(..) {
+            let outpoint = channel_monitor.get_funding_txo().0;
+            bundled_channel_monitors.push((
+                blockhash,
                 (
                     channel_monitor,
                     broadcaster.clone(),
                     fee_estimator.clone(),
                     logger.clone(),
-                )
-            })
-            .collect::<Vec<ConfirmableMonitor>>();
-
-        let confirmables = confirmable_monitors
-            .iter()
-            .map(|cm| cm as &dyn chain::Confirm)
-            .chain(iter::once(&*channel_manager as &dyn chain::Confirm))
-            .collect::<Vec<&dyn chain::Confirm>>();
-
-        // save a sync if there are no monitors
-        if confirmables.len() > 1 {
-            lightning_wallet.sync(confirmables)?;
+                ),
+                outpoint,
+            ));
         }
 
-        for confirmable_monitor in confirmable_monitors.drain(..) {
-            let channel_monitor = confirmable_monitor.0;
-            let funding_txo = channel_monitor.get_funding_txo().0;
+        let channel_manager_info = (channel_manager_blockhash, &mut channel_manager);
+
+        let monitor_info = bundled_channel_monitors
+            .iter_mut()
+            .map(|monitor_bundle| (monitor_bundle.0, &mut monitor_bundle.1))
+            .collect::<Vec<(BlockHash, &mut SyncableMonitor)>>();
+
+        let mut chain_listeners = vec![(
+            channel_manager_info.0,
+            channel_manager_info.1 as &(dyn chain::Listen + Send + Sync),
+        )];
+
+        for (block_hash, monitor) in monitor_info.into_iter() {
+            chain_listeners.push((block_hash, monitor as &(dyn chain::Listen + Send + Sync)));
+        }
+
+        let bdk_database_last_sync =
+            node_database.find_or_create_last_sync(best_block.block_hash())?;
+
+        chain_listeners.push((
+            bdk_database_last_sync,
+            &listener_database as &(dyn chain::Listen + Send + Sync),
+        ));
+
+        chain_manager
+            .synchronize_to_tip(chain_listeners)
+            .await
+            .unwrap();
+
+        for confirmable_monitor in bundled_channel_monitors.drain(..) {
             chain_monitor
-                .watch_channel(funding_txo, channel_monitor)
+                .watch_channel(confirmable_monitor.2, confirmable_monitor.1 .0)
                 .unwrap();
         }
+
+        let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 
         let network_graph = match network_graph {
             Some(network_graph) => network_graph,
@@ -573,11 +593,12 @@ impl LightningNode {
 
         let event_handler = Arc::new(LightningNodeEventHandler {
             config: config.clone(),
-            wallet: lightning_wallet.clone(),
+            wallet: bdk_wallet.clone(),
             channel_manager: channel_manager.clone(),
             keys_manager: keys_manager.clone(),
             database: database.clone(),
             tokio_handle: Handle::current(),
+            chain_manager: chain_manager.clone(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -594,9 +615,10 @@ impl LightningNode {
             database,
             seed,
             macaroon,
-            wallet: lightning_wallet,
+            wallet: bdk_wallet,
             channel_manager,
             chain_monitor,
+            chain_manager,
             peer_manager,
             network_graph,
             network_graph_msg_handler,
@@ -607,9 +629,21 @@ impl LightningNode {
         })
     }
 
-    pub fn start(self) -> (Vec<JoinHandle<()>>, BackgroundProcessor) {
+    pub async fn start(self) -> (Vec<JoinHandle<()>>, BackgroundProcessor) {
         let mut handles = vec![];
         let config = self.config.clone();
+
+        // is it safe to start this now instead of in `start`
+        // need to better understand separation; will depend on actual creation and startup flows
+        let listener_database =
+            ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
+        let channel_manager_sync = self.channel_manager.clone();
+        let chain_monitor_sync = self.chain_monitor.clone();
+
+        self.chain_manager
+            .keep_in_sync(channel_manager_sync, chain_monitor_sync, listener_database)
+            .await
+            .unwrap();
 
         if !config.external_router {
             let network_graph = self.network_graph.clone();
@@ -651,25 +685,6 @@ impl LightningNode {
                     )
                     .await;
                 });
-            }
-        }));
-
-        let wallet_sync = self.wallet.clone();
-        let channel_manager_sync = self.channel_manager.clone();
-        let chain_monitor_sync = self.chain_monitor.clone();
-
-        handles.push(tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(30));
-            loop {
-                interval.tick().await;
-                let confirmables = vec![
-                    &*channel_manager_sync as &dyn chain::Confirm,
-                    &*chain_monitor_sync as &dyn chain::Confirm,
-                ];
-
-                if let Err(e) = wallet_sync.sync(confirmables) {
-                    println!("sync failed: {:?}", e);
-                }
             }
         }));
 
@@ -1070,7 +1085,7 @@ impl LightningNode {
         let page: usize = pagination.page.try_into().unwrap();
         let index = page * per_page;
 
-        let bdk_wallet = self.wallet.get_wallet();
+        let bdk_wallet = self.wallet.lock().unwrap();
 
         let transaction_details = bdk_wallet
             .list_transactions(false)?
@@ -1203,13 +1218,15 @@ impl LightningNode {
             NodeRequest::StartNode { passphrase: _ } => Ok(NodeResponse::StartNode {}),
             NodeRequest::StopNode {} => Ok(NodeResponse::StopNode {}),
             NodeRequest::GetUnusedAddress {} => {
-                let address = self.wallet.get_unused_address()?;
+                let wallet = self.wallet.lock().unwrap();
+                let address_info = wallet.get_address(AddressIndex::LastUnused)?;
                 Ok(NodeResponse::GetUnusedAddress {
-                    address: address.to_string(),
+                    address: address_info.address.to_string(),
                 })
             }
             NodeRequest::GetBalance {} => {
-                let balance = self.wallet.get_balance()?;
+                let wallet = self.wallet.lock().unwrap();
+                let balance = wallet.get_balance().map_err(Error::Bdk)?;
                 Ok(NodeResponse::GetBalance {
                     balance_satoshis: balance,
                 })

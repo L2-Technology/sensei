@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 use crate::http::macaroon_header::MacaroonHeader;
 use crate::services::admin::AdminRequest;
 use crate::services::node::{NodeRequest, NodeRequestError, NodeResponse};
@@ -185,7 +187,7 @@ pub fn add_routes(router: Router) -> Router {
 }
 
 pub async fn get_unused_address(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
@@ -199,7 +201,7 @@ pub async fn get_unused_address(
 }
 
 pub async fn get_wallet_balance(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
@@ -213,7 +215,7 @@ pub async fn get_wallet_balance(
 }
 
 pub async fn handle_get_payments(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Query(params): Query<ListPaymentsParams>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -227,7 +229,7 @@ pub async fn handle_get_payments(
 }
 
 pub async fn get_channels(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Query(params): Query<ListChannelsParams>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -240,7 +242,7 @@ pub async fn get_channels(
 }
 
 pub async fn get_transactions(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Query(params): Query<ListTransactionsParams>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -253,7 +255,7 @@ pub async fn get_transactions(
 }
 
 pub async fn get_info(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
@@ -261,7 +263,7 @@ pub async fn get_info(
 }
 
 pub async fn get_peers(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
@@ -275,7 +277,7 @@ pub async fn get_peers(
 }
 
 pub async fn stop_node(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
@@ -283,7 +285,7 @@ pub async fn stop_node(
 }
 
 pub async fn handle_authenticated_request(
-    request_context: RequestContext,
+    request_context: Arc<RequestContext>,
     request: NodeRequest,
     macaroon: Option<HeaderValue>,
     cookies: Cookies,
@@ -362,7 +364,7 @@ pub async fn handle_authenticated_request(
 }
 
 pub async fn start_node(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -378,7 +380,7 @@ pub async fn start_node(
 }
 
 pub async fn create_invoice(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -394,7 +396,7 @@ pub async fn create_invoice(
 }
 
 pub async fn label_payment(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -410,7 +412,7 @@ pub async fn label_payment(
 }
 
 pub async fn delete_payment(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -426,7 +428,7 @@ pub async fn delete_payment(
 }
 
 pub async fn pay_invoice(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -442,7 +444,7 @@ pub async fn pay_invoice(
 }
 
 pub async fn open_channel(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -458,7 +460,7 @@ pub async fn open_channel(
 }
 
 pub async fn close_channel(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -474,7 +476,7 @@ pub async fn close_channel(
 }
 
 pub async fn keysend(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -490,7 +492,7 @@ pub async fn keysend(
 }
 
 pub async fn connect_peer(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,
@@ -506,7 +508,7 @@ pub async fn connect_peer(
 }
 
 pub async fn sign_message(
-    Extension(request_context): Extension<RequestContext>,
+    Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     MacaroonHeader(macaroon): MacaroonHeader,
     cookies: Cookies,

@@ -7,6 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use std::sync::Arc;
+
 pub use super::sensei::node_server::{Node, NodeServer};
 
 use super::sensei::{
@@ -30,7 +32,7 @@ use crate::{
 use tonic::{metadata::MetadataMap, Response, Status};
 
 pub struct NodeService {
-    pub request_context: crate::RequestContext,
+    pub request_context: Arc<crate::RequestContext>,
 }
 impl NodeService {
     async fn authenticated_request(

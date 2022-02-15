@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+mod chain;
 mod config;
 mod database;
 mod disk;
@@ -21,21 +22,24 @@ mod node;
 mod services;
 mod utils;
 
-use crate::config::{LightningNodeBackendConfig, SenseiConfig};
+use crate::config::SenseiConfig;
 use crate::database::admin::AdminDatabase;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
 use ::http::{
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
-    Method,
+    header::{self, ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
+    Method, Uri,
 };
 use axum::{
+    body::{boxed, Full},
+    handler::Handler,
     http::StatusCode,
-    response::Html,
+    response::{Html, IntoResponse, Response},
     routing::{get, get_service},
     AddExtensionLayer, Router,
 };
 use clap::Parser;
+use rust_embed::RustEmbed;
 
 use std::net::SocketAddr;
 use tower_cookies::CookieManagerLayer;
@@ -45,7 +49,7 @@ use grpc::admin::{AdminServer, AdminService as GrpcAdminService};
 use grpc::node::{NodeServer, NodeService as GrpcNodeService};
 use lightning_background_processor::BackgroundProcessor;
 use node::LightningNode;
-use services::admin::AdminService;
+use services::admin::{AdminRequest, AdminResponse, AdminService};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;
@@ -54,12 +58,7 @@ use tokio::task::JoinHandle;
 use tonic::transport::Server;
 use tower_http::cors::{CorsLayer, Origin};
 
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static! {
-    static ref INDEX_HTML: String = fs::read_to_string("./web-admin/build/index.html").unwrap();
-}
+use tokio::sync::mpsc::Sender;
 
 pub struct NodeHandle {
     pub node: Arc<LightningNode>,
@@ -69,7 +68,6 @@ pub struct NodeHandle {
 
 pub type NodeDirectory = Arc<Mutex<HashMap<String, NodeHandle>>>;
 
-#[derive(Clone)]
 pub struct RequestContext {
     pub node_directory: NodeDirectory,
     pub admin_service: AdminService,
@@ -80,13 +78,21 @@ pub struct RequestContext {
 #[clap(version)]
 struct SenseiArgs {
     /// Sensei data directory, defaults to home directory
-    #[clap(short, long)]
+    #[clap(long)]
     data_dir: Option<String>,
-    #[clap(short, long)]
+    #[clap(long)]
     network: Option<String>,
-    #[clap(short, long)]
-    electrum_url: Option<String>,
+    #[clap(long)]
+    bitcoind_rpc_host: Option<String>,
+    #[clap(long)]
+    bitcoind_rpc_port: Option<u16>,
+    #[clap(long)]
+    bitcoind_rpc_username: Option<String>,
+    #[clap(long)]
+    bitcoind_rpc_password: Option<String>,
 }
+
+pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
 
 #[tokio::main]
 async fn main() {
@@ -116,8 +122,18 @@ async fn main() {
     let network_config_path = format!("{}/{}/config.json", sensei_dir, root_config.network);
     let mut config = SenseiConfig::from_file(network_config_path, Some(root_config));
 
-    if let Some(electrum_url) = args.electrum_url {
-        config.set_backend(LightningNodeBackendConfig::electrum_from_url(electrum_url));
+    // override config with command line arguments or ENV vars
+    if let Some(bitcoind_rpc_host) = args.bitcoind_rpc_host {
+        config.bitcoind_rpc_host = bitcoind_rpc_host
+    }
+    if let Some(bitcoind_rpc_port) = args.bitcoind_rpc_port {
+        config.bitcoind_rpc_port = bitcoind_rpc_port
+    }
+    if let Some(bitcoind_rpc_username) = args.bitcoind_rpc_username {
+        config.bitcoind_rpc_username = bitcoind_rpc_username
+    }
+    if let Some(bitcoind_rpc_password) = args.bitcoind_rpc_password {
+        config.bitcoind_rpc_password = bitcoind_rpc_password
     }
 
     let sqlite_path = format!("{}/{}/admin.db", sensei_dir, config.network);
@@ -132,29 +148,19 @@ async fn main() {
         config.clone(),
         node_directory.clone(),
         database,
-    );
+    )
+    .await;
 
     // TODO: this seems odd too, maybe just pass around the 'admin service'
     //       and the servers will use it to get the node from the directory
-    let request_context = RequestContext {
+    let request_context = Arc::new(RequestContext {
         node_directory: node_directory.clone(),
         admin_service,
-    };
+    });
 
     let router = Router::new()
-        .route("/admin", get(live))
-        .nest(
-            "/admin/static",
-            get_service(ServeDir::new("./web-admin/build/static")).handle_error(
-                |error: std::io::Error| async move {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Unhandled internal error: {}", error),
-                    )
-                },
-            ),
-        )
-        .fallback(get(live));
+        .route("/admin/*path", static_handler.into_service())
+        .fallback(get(not_found));
 
     let router = add_admin_routes(router);
     let router = add_node_routes(router);
@@ -188,7 +194,9 @@ async fn main() {
         .add_service(NodeServer::new(GrpcNodeService {
             request_context: request_context.clone(),
         }))
-        .add_service(AdminServer::new(GrpcAdminService { request_context }))
+        .add_service(AdminServer::new(GrpcAdminService {
+            request_context: request_context.clone(),
+        }))
         .into_service();
 
     let hybrid_service = hybrid::hybrid(http_service, grpc_service);
@@ -205,11 +213,61 @@ async fn main() {
     }
 }
 
-async fn live() -> Html<String> {
-    let index = fs::read_to_string("./web-admin/build/index.html").unwrap();
-    Html(index)
+// We use static route matchers ("/" and "/index.html") to serve our home
+// page.
+async fn index_handler() -> impl IntoResponse {
+    static_handler("/index.html".parse::<Uri>().unwrap()).await
 }
 
-async fn _handler() -> Html<&'static str> {
-    Html(&INDEX_HTML)
+// We use a wildcard matcher ("/static/*file") to match against everything
+// within our defined assets directory. This is the directory on our Asset
+// struct below, where folder = "examples/public/".
+async fn static_handler(uri: Uri) -> impl IntoResponse {
+    let mut path = uri.path().trim_start_matches('/').to_string();
+    println!("in static handler with path: {}", path);
+
+    if path.starts_with("admin/static/") {
+        path = path.replace("admin/static/", "static/");
+    } else {
+        path = String::from("index.html");
+    }
+
+    println!("out static handler with path: {}", path);
+
+    StaticFile(path)
+}
+
+// Finally, we use a fallback route for anything that didn't match.
+async fn not_found() -> Html<&'static str> {
+    Html("<h1>404</h1><p>Not Found</p>")
+}
+
+#[derive(RustEmbed)]
+#[folder = "web-admin/build/"]
+struct Asset;
+
+pub struct StaticFile<T>(pub T);
+
+impl<T> IntoResponse for StaticFile<T>
+where
+    T: Into<String>,
+{
+    fn into_response(self) -> Response {
+        let path = self.0.into();
+
+        match Asset::get(path.as_str()) {
+            Some(content) => {
+                let body = boxed(Full::from(content.data));
+                let mime = mime_guess::from_path(path).first_or_octet_stream();
+                Response::builder()
+                    .header(header::CONTENT_TYPE, mime.as_ref())
+                    .body(body)
+                    .unwrap()
+            }
+            None => Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(boxed(Full::from("404")))
+                .unwrap(),
+        }
+    }
 }

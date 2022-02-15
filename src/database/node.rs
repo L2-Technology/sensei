@@ -13,8 +13,11 @@ use crate::{
     node::PaymentInfo,
     services::{PaginationRequest, PaginationResponse, PaymentsFilter},
 };
+use bitcoin::consensus::encode::{deserialize, serialize};
+use std::str::FromStr;
 
 use super::Error;
+use bitcoin::BlockHash;
 use rusqlite::{named_params, Connection};
 use serde::Serialize;
 
@@ -74,8 +77,9 @@ static MIGRATIONS: &[&str] = &[
     "CREATE TRIGGER tg_forwarded_payments_updated AFTER UPDATE ON forwarded_payments FOR EACH ROW BEGIN UPDATE forwarded_payments SET updated_at = current_timestamp, total_payments = old.total_payments + 1 WHERE id=old.id; END;",
     "CREATE INDEX idx_from_channel_id ON forwarded_payments(from_channel_id)",
     "CREATE INDEX idx_to_channel_id ON forwarded_payments(to_channel_id)",
-    "CREATE UNIQUE INDEX idx_hours_since_epoch ON forwarded_payments(hours_since_epoch, from_channel_id, to_channel_id)"
-    ];
+    "CREATE UNIQUE INDEX idx_hours_since_epoch ON forwarded_payments(hours_since_epoch, from_channel_id, to_channel_id)",
+    "CREATE TABLE last_sync (blockhash BLOB)",
+];
 
 pub struct NodeDatabase {
     pub path: String,
@@ -118,6 +122,59 @@ impl NodeDatabase {
             Some(row) => {
                 let seed: Vec<u8> = row.get(0)?;
                 Ok(Some(seed))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn find_or_create_last_sync(
+        &mut self,
+        current_blockhash: BlockHash,
+    ) -> Result<BlockHash, Error> {
+        match self.get_last_sync()? {
+            Some(last_sync) => Ok(last_sync),
+            None => {
+                self.create_last_sync(current_blockhash)?;
+                Ok(current_blockhash)
+            }
+        }
+    }
+
+    pub fn create_last_sync(&mut self, blockhash: BlockHash) -> Result<(), Error> {
+        let mut statement = self
+            .connection
+            .prepare_cached("INSERT INTO last_sync (blockhash) VALUES (:blockhash)")?;
+        statement.execute(named_params! {
+            ":blockhash": serialize(&blockhash),
+        })?;
+
+        Ok(())
+    }
+
+    pub fn update_last_sync(&mut self, blockhash: BlockHash) -> Result<(), Error> {
+        let mut statement = self
+            .connection
+            .prepare_cached("UPDATE last_sync SET blockhash=:blockhash")?;
+
+        statement.execute(named_params! {
+            ":blockhash": serialize(&blockhash),
+        })?;
+
+        Ok(())
+    }
+
+    pub fn get_last_sync(&mut self) -> Result<Option<BlockHash>, Error> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT blockhash FROM last_sync")?;
+
+        let mut rows = statement.query(named_params! {})?;
+        let row = rows.next()?;
+
+        match row {
+            Some(row) => {
+                let blockhash: Vec<u8> = row.get(0)?;
+                Ok(Some(deserialize(&blockhash)?))
             }
             None => Ok(None),
         }

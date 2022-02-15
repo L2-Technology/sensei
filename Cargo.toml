@@ -12,18 +12,17 @@ name = "senseid"
 path = "src/main.rs"
 
 [dependencies]
-lightning = { version = "0.0.104", features = ["max_level_trace"] }
-lightning-block-sync = { version = "0.0.104", features = [ "rpc-client" ] }
-lightning-invoice = { version = "0.12.0" }
-lightning-net-tokio = { version = "0.0.104" }
-lightning-persister = { version = "0.0.104" }
-lightning-background-processor = { version = "0.0.104" }
+lightning = { version = "0.0.104", features = ["max_level_trace"], path = "/Users/developer/Development/rust-lightning/lightning" }
+lightning-block-sync = { version = "0.0.104", features = [ "rpc-client" ], path = "/Users/developer/Development/rust-lightning/lightning-block-sync" }
+lightning-invoice = { version = "0.12.0", path = "/Users/developer/Development/rust-lightning/lightning-invoice" }
+lightning-net-tokio = { version = "0.0.104", path = "/Users/developer/Development/rust-lightning/lightning-net-tokio" }
+lightning-persister = { version = "0.0.104", path = "/Users/developer/Development/rust-lightning/lightning-persister" }
+lightning-background-processor = { version = "0.0.104", path = "/Users/developer/Development/rust-lightning/lightning-background-processor" }
 
 base64 = "0.13.0"
 bitcoin = "0.27"
 bitcoin-bech32 = "0.12"
 bech32 = "0.8"
-hex = "0.3"
 futures = "0.3"
 chrono = "0.4"
 rand = "0.4"
@@ -32,27 +31,27 @@ http = "0.2"
 tower = { version = "0.4", features = ["full"] }
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
-ureq = { version = "~2.2.0", features = ["json"] }
 tokio = { version = "1", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
 log = "^0.4"
-bdk = { git = "https://github.com/johncantrell97/bdk" }
-bdk-ldk = { git = "https://github.com/johncantrell97/bdk-ldk", rev = "44a055721735779a6e225e8d4418660741d79dec" }
+bitcoincore-rpc = "0.14"
+bdk = { version = "0.16.0", default-features=false, features = ["sqlite"] }
 tonic = "0.6"
 prost = "0.9"
 pin-project = "1.0"
 hyper = "0.14"
 clap = { version = "3.0", features = [ "derive" ] }
 headers = "0.3"
-portpicker = "0.1"
-rusqlite = { version = "0.26", features = ["uuid", "bundled"] }
-uuid = { version = "0.8", features = ["serde", "v4"] }
 tindercrypt = { version = "0.3.2", default-features = false }
+portpicker = "0.1"
+rusqlite = { version = "0.25.3", features = ["uuid", "bundled"] }
+uuid = { version = "0.8", features = ["serde", "v4"] }
 macaroon = "0.2"
 tower-http = { version = "0.2.0", features = ["fs", "trace", "cors"] }
 tower-cookies = "0.4"
 dirs = "4.0"
-lazy_static = "1.4"
 public-ip = "0.2"
+rust-embed="6.3.0"
+mime_guess = { version = "2" }
 
 [build-dependencies]
 tonic-build = "0.6"
