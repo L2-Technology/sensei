@@ -8,14 +8,11 @@
 // licenses.
 
 use super::{PaginationRequest, PaginationResponse};
-use crate::error::Error as SenseiError;
-use crate::{
-    config::LightningNodeBackendConfig,
-    database::{
-        self,
-        admin::{AdminDatabase, Node, Role, Status},
-    },
+use crate::database::{
+    self,
+    admin::{AdminDatabase, Node, Role, Status},
 };
+use crate::error::Error as SenseiError;
 use crate::{
     config::{LightningNodeConfig, SenseiConfig},
     hex_utils,

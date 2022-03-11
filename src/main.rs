@@ -21,7 +21,7 @@ mod node;
 mod services;
 mod utils;
 
-use crate::config::{SenseiConfig, LightningNodeBackendConfig};
+use crate::config::{LightningNodeBackendConfig, SenseiConfig};
 use crate::database::admin::AdminDatabase;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
@@ -35,7 +35,7 @@ use axum::{
     routing::{get, get_service},
     AddExtensionLayer, Router,
 };
-use clap::{Parser, ArgEnum};
+use clap::Parser;
 
 use std::net::SocketAddr;
 use tower_cookies::CookieManagerLayer;
@@ -74,7 +74,6 @@ pub struct RequestContext {
     pub node_directory: NodeDirectory,
     pub admin_service: AdminService,
 }
-
 
 /// Sensei daemon
 #[derive(Parser, Debug)]
