@@ -42,7 +42,6 @@ use lightning::ln::channelmanager::{self, ChannelDetails, SimpleArcChannelManage
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
     IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
-    SimpleArcPeerManager as LdkSimpleArcPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId};
