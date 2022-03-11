@@ -36,7 +36,7 @@ ureq = { version = "~2.2.0", features = ["json"] }
 tokio = { version = "1", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
 log = "^0.4"
 bdk = { git = "https://github.com/johncantrell97/bdk" }
-bdk-ldk = { git = "https://github.com/johncantrell97/bdk-ldk#aff5a99953121ad3eaed7a415c2f6d208d2df46f" }
+bdk-ldk = { git = "https://github.com/johncantrell97/bdk-ldk", rev = "44a055721735779a6e225e8d4418660741d79dec" }
 tonic = "0.6"
 prost = "0.9"
 pin-project = "1.0"

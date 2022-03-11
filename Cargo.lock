@@ -186,7 +186,7 @@ dependencies = [
 [[package]]
 name = "bdk-ldk"
 version = "0.1.0"
-source = "git+https://github.com/johncantrell97/bdk-ldk#aff5a99953121ad3eaed7a415c2f6d208d2df46f#44a055721735779a6e225e8d4418660741d79dec"
+source = "git+https://github.com/johncantrell97/bdk-ldk?rev=44a055721735779a6e225e8d4418660741d79dec#44a055721735779a6e225e8d4418660741d79dec"
 dependencies = [
  "bdk",
  "lightning",
