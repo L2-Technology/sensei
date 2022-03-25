@@ -10,6 +10,9 @@ service Admin {
     rpc GetStatus (GetStatusRequest) returns (GetStatusResponse);
     rpc StartNode (AdminStartNodeRequest) returns (AdminStartNodeResponse);
     rpc StopNode (AdminStopNodeRequest) returns (AdminStopNodeResponse);
+    rpc ListTokens (ListTokensRequest) returns (ListTokensResponse);
+    rpc CreateToken (CreateTokenRequest) returns (Token);
+    rpc DeleteToken (DeleteTokenRequest) returns (DeleteTokenResponse);
 }
 
 service Node {
@@ -47,6 +50,18 @@ message ListNode {
     uint32 status = 12;
 }
 
+message Token {
+    uint64 id = 1;
+    string external_id = 2;
+    string created_at = 3;
+    string updated_at = 4;
+    uint64 expires_at = 5;
+    string name = 6;
+    string token = 7;
+    bool single_use = 8;
+    string scope = 9;
+}
+
 message PaginationRequest {
     uint32 page = 1;
     uint32 take = 3;
@@ -67,6 +82,15 @@ message ListNodesResponse {
     PaginationResponse pagination = 2;
 }
 
+message ListTokensRequest {
+    optional PaginationRequest pagination = 1;
+}
+
+message ListTokensResponse {
+    repeated Token tokens = 1;
+    PaginationResponse pagination = 2;
+}
+
 message CreateAdminRequest {
     string username = 1;
     string alias = 2;
@@ -79,6 +103,7 @@ message CreateAdminResponse {
     string macaroon = 2;
     string external_id = 3;
     uint32 role = 4;
+    string token = 5;
 }
 
 message CreateNodeRequest {
@@ -97,12 +122,25 @@ message DeleteNodeRequest {
 }
 message DeleteNodeResponse {}
 
+message CreateTokenRequest {
+    string name = 1;
+    string scope = 2;
+    uint64 expires_at = 3;
+    bool single_use = 4;
+}
+
+message DeleteTokenRequest {
+    uint64 id = 1;
+}
+message DeleteTokenResponse {}
+
 message StartAdminRequest {
     string passphrase = 1;
 }
 message StartAdminResponse {
     string pubkey = 1;
     string macaroon = 2;
+    string token = 3;
 }
 
 message GetStatusRequest {}

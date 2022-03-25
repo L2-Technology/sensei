@@ -8,5 +8,5 @@
 // licenses.
 
 pub mod admin;
-pub mod macaroon_header;
+pub mod auth_header;
 pub mod node;
