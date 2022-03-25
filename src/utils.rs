@@ -17,8 +17,14 @@ use std::{
 
 pub fn hours_since_epoch() -> Result<u64, SystemTimeError> {
     let time_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-    let hours_since_epoch = time_since_epoch.as_secs() / 3600;
+    let hours_since_epoch = seconds_since_epoch()? / 3600;
     Ok(hours_since_epoch)
+}
+
+pub fn seconds_since_epoch() -> Result<u64, SystemTimeError> {
+    Ok(SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs())
 }
 
 pub fn macaroon_from_hex_str(hex_str: &str) -> Result<Macaroon, Error> {

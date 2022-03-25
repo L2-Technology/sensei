@@ -9,6 +9,7 @@
 
 use super::{PaginationRequest, PaginationResponse};
 use crate::chain::manager::SenseiChainManager;
+use crate::database::admin::AccessToken;
 use crate::database::{
     self,
     admin::{AdminDatabase, Node, Role, Status},
@@ -29,7 +30,7 @@ use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::Mutex;
 pub enum AdminRequest {
     GetStatus {
-        pubkey: String,
+        authenticated: bool,
     },
     CreateAdmin {
         username: String,
@@ -59,6 +60,18 @@ pub enum AdminRequest {
     StopNode {
         pubkey: String,
     },
+    CreateToken {
+        name: String,
+        expires_at: u64,
+        scope: String,
+        single_use: bool,
+    },
+    ListTokens {
+        pagination: PaginationRequest,
+    },
+    DeleteToken {
+        id: u64,
+    },
 }
 
 #[derive(Serialize)]
@@ -78,10 +91,12 @@ pub enum AdminResponse {
         macaroon: String,
         external_id: String,
         role: u8,
+        token: String,
     },
     StartAdmin {
         pubkey: String,
         macaroon: String,
+        token: String,
     },
     CreateNode {
         pubkey: String,
@@ -96,6 +111,14 @@ pub enum AdminResponse {
         macaroon: String,
     },
     StopNode {},
+    CreateToken {
+        token: AccessToken,
+    },
+    ListTokens {
+        tokens: Vec<AccessToken>,
+        pagination: PaginationResponse,
+    },
+    DeleteToken {},
     Error(Error),
 }
 
@@ -160,12 +183,11 @@ impl From<macaroon::MacaroonError> for Error {
 impl AdminService {
     pub async fn call(&self, request: AdminRequest) -> Result<AdminResponse, Error> {
         match request {
-            AdminRequest::GetStatus { pubkey } => {
+            AdminRequest::GetStatus { authenticated } => {
                 let mut database = self.database.lock().await;
                 let admin_node = database.get_admin_node()?;
                 let created = admin_node.is_some();
-                let node = database.get_node_by_pubkey(&pubkey)?;
-                match node {
+                match admin_node {
                     Some(node) => {
                         let directory = self.node_directory.lock().await;
                         let node_running = directory.contains_key(&node.pubkey);
@@ -173,15 +195,15 @@ impl AdminService {
                             alias: Some(node.alias),
                             created,
                             running: node_running,
-                            authenticated: pubkey == node.pubkey,
-                            pubkey: Some(pubkey),
+                            authenticated,
+                            pubkey: Some(node.pubkey),
                             username: Some(node.username),
                             role: Some(node.role),
                         })
                     }
                     None => Ok(AdminResponse::GetStatus {
                         alias: None,
-                        pubkey: Some(pubkey),
+                        pubkey: None,
                         created,
                         running: false,
                         authenticated: false,
@@ -199,6 +221,14 @@ impl AdminService {
                 let (lightning_node, node) = self
                     .create_node(username, alias, passphrase.clone(), Role::Admin)
                     .await?;
+
+                let access_token = AccessToken::new_admin();
+
+                {
+                    let mut database = self.database.lock().await;
+                    database.create_access_token(&access_token).unwrap();
+                }
+
                 let node_info = lightning_node.node_info()?;
                 let macaroon = lightning_node.macaroon.serialize(macaroon::Format::V2)?;
 
@@ -210,15 +240,16 @@ impl AdminService {
                     macaroon: hex_utils::hex_str(macaroon.as_slice()),
                     external_id: node.external_id,
                     role: node.role,
+                    token: access_token.token,
                 })
             }
             AdminRequest::StartAdmin { passphrase } => {
-                let db_node_result = {
+                let (db_node, access_token) = {
                     let mut database = self.database.lock().await;
-                    database.get_admin_node()
+                    let db_node = database.get_admin_node()?;
+                    let access_token = database.get_admin_access_token()?;
+                    (db_node, access_token)
                 };
-
-                let db_node = db_node_result?;
 
                 match db_node {
                     Some(node) => {
@@ -228,6 +259,7 @@ impl AdminService {
                         Ok(AdminResponse::StartAdmin {
                             pubkey: node_info.node_pubkey,
                             macaroon: hex_utils::hex_str(macaroon.as_slice()),
+                            token: access_token.expect("no token in db").token,
                         })
                     }
                     None => Err(Error::Generic(String::from(
@@ -307,6 +339,30 @@ impl AdminService {
                     None => Err(Error::Generic(String::from("node not found"))),
                 }
             }
+            AdminRequest::CreateToken {
+                name,
+                expires_at,
+                scope,
+                single_use,
+            } => {
+                let access_token = AccessToken::new(name, scope, expires_at, single_use);
+
+                let mut database = self.database.lock().await;
+                database.create_access_token(&access_token)?;
+
+                Ok(AdminResponse::CreateToken {
+                    token: access_token,
+                })
+            }
+            AdminRequest::ListTokens { pagination } => {
+                let (tokens, pagination) = self.list_tokens(pagination).await?;
+                Ok(AdminResponse::ListTokens { tokens, pagination })
+            }
+            AdminRequest::DeleteToken { id } => {
+                let mut database = self.database.lock().await;
+                database.delete_access_token(id)?;
+                Ok(AdminResponse::DeleteToken {})
+            }
         }
     }
 
@@ -317,6 +373,14 @@ impl AdminService {
         let mut database = self.database.lock().await;
         let node = database.get_node_by_pubkey(&pubkey)?;
         Ok(node)
+    }
+
+    async fn list_tokens(
+        &self,
+        pagination: PaginationRequest,
+    ) -> Result<(Vec<AccessToken>, PaginationResponse), crate::error::Error> {
+        let mut database = self.database.lock().await;
+        Ok(database.list_access_tokens(pagination)?)
     }
 
     async fn list_nodes(

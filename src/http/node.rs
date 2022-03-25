@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use crate::http::macaroon_header::MacaroonHeader;
+use crate::http::auth_header::AuthHeader;
 use crate::services::admin::AdminRequest;
 use crate::services::node::{NodeRequest, NodeRequestError, NodeResponse};
 use crate::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
@@ -188,7 +188,7 @@ pub fn add_routes(router: Router) -> Router {
 
 pub async fn get_unused_address(
     Extension(request_context): Extension<Arc<RequestContext>>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     handle_authenticated_request(
@@ -202,7 +202,7 @@ pub async fn get_unused_address(
 
 pub async fn get_wallet_balance(
     Extension(request_context): Extension<Arc<RequestContext>>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     handle_authenticated_request(
@@ -217,7 +217,7 @@ pub async fn get_wallet_balance(
 pub async fn handle_get_payments(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Query(params): Query<ListPaymentsParams>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = NodeRequest::ListPayments {
@@ -231,7 +231,7 @@ pub async fn handle_get_payments(
 pub async fn get_channels(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Query(params): Query<ListChannelsParams>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = NodeRequest::ListChannels {
@@ -244,7 +244,7 @@ pub async fn get_channels(
 pub async fn get_transactions(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Query(params): Query<ListTransactionsParams>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = NodeRequest::ListTransactions {
@@ -256,7 +256,7 @@ pub async fn get_transactions(
 
 pub async fn get_info(
     Extension(request_context): Extension<Arc<RequestContext>>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     handle_authenticated_request(request_context, NodeRequest::NodeInfo {}, macaroon, cookies).await
@@ -264,7 +264,7 @@ pub async fn get_info(
 
 pub async fn get_peers(
     Extension(request_context): Extension<Arc<RequestContext>>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     handle_authenticated_request(
@@ -278,7 +278,7 @@ pub async fn get_peers(
 
 pub async fn stop_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     handle_authenticated_request(request_context, NodeRequest::StopNode {}, macaroon, cookies).await
@@ -366,7 +366,7 @@ pub async fn handle_authenticated_request(
 pub async fn start_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -382,7 +382,7 @@ pub async fn start_node(
 pub async fn create_invoice(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -398,7 +398,7 @@ pub async fn create_invoice(
 pub async fn label_payment(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -414,7 +414,7 @@ pub async fn label_payment(
 pub async fn delete_payment(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -430,7 +430,7 @@ pub async fn delete_payment(
 pub async fn pay_invoice(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -446,7 +446,7 @@ pub async fn pay_invoice(
 pub async fn open_channel(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -462,7 +462,7 @@ pub async fn open_channel(
 pub async fn close_channel(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -478,7 +478,7 @@ pub async fn close_channel(
 pub async fn keysend(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -494,7 +494,7 @@ pub async fn keysend(
 pub async fn connect_peer(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
@@ -510,7 +510,7 @@ pub async fn connect_peer(
 pub async fn sign_message(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
