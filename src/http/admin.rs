@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Extension, Query},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use tower_cookies::{Cookie, Cookies};
@@ -28,7 +28,7 @@ use crate::{
     utils, RequestContext,
 };
 
-use super::macaroon_header::MacaroonHeader;
+use super::auth_header::AuthHeader;
 
 #[derive(Deserialize)]
 pub struct DeleteNodeParams {
@@ -97,6 +97,36 @@ impl From<CreateNodeParams> for AdminRequest {
 }
 
 #[derive(Deserialize)]
+pub struct CreateTokenParams {
+    pub name: String,
+    pub expires_at: u64,
+    pub scope: String,
+    pub single_use: bool,
+}
+
+impl From<CreateTokenParams> for AdminRequest {
+    fn from(params: CreateTokenParams) -> Self {
+        Self::CreateToken {
+            name: params.name,
+            expires_at: params.expires_at,
+            scope: params.scope,
+            single_use: params.single_use,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct DeleteTokenParams {
+    pub id: u64,
+}
+
+impl From<DeleteTokenParams> for AdminRequest {
+    fn from(params: DeleteTokenParams) -> Self {
+        Self::DeleteToken { id: params.id }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct CreateAdminParams {
     pub username: String,
     pub passphrase: String,
@@ -128,22 +158,23 @@ impl From<StartAdminParams> for AdminRequest {
     }
 }
 
-pub fn get_macaroon_hex_str_from_cookies_or_header(
+pub fn get_token_from_cookies_or_header(
     cookies: &Cookies,
-    macaroon: Option<HeaderValue>,
+    token: Option<HeaderValue>,
 ) -> Result<String, StatusCode> {
-    match macaroon {
-        Some(macaroon) => {
-            let res = macaroon
+    match token {
+        Some(token) => {
+            let res = token
                 .to_str()
                 .map(|str| str.to_string())
                 .map_err(|_| StatusCode::UNAUTHORIZED);
+            println!("{:?}", res);
             res
         }
-        None => match cookies.get("macaroon") {
-            Some(macaroon_cookie) => {
-                let macaroon_cookie_str = macaroon_cookie.value().to_string();
-                Ok(macaroon_cookie_str)
+        None => match cookies.get("token") {
+            Some(token_cookie) => {
+                let token_cookie_str = token_cookie.value().to_string();
+                Ok(token_cookie_str)
             }
             None => Err(StatusCode::UNAUTHORIZED),
         },
@@ -152,46 +183,31 @@ pub fn get_macaroon_hex_str_from_cookies_or_header(
 
 pub async fn authenticate_request(
     request_context: &RequestContext,
+    scope: &str,
     cookies: &Cookies,
-    macaroon: Option<HeaderValue>,
+    token: Option<HeaderValue>,
 ) -> Result<bool, StatusCode> {
-    let macaroon_hex_string = get_macaroon_hex_str_from_cookies_or_header(cookies, macaroon)?;
+    let token = get_token_from_cookies_or_header(&cookies, token)?;
 
-    let (macaroon, session) = utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
-        .map_err(|_e| StatusCode::UNAUTHORIZED)?;
+    let access_token = {
+        let mut database = request_context.admin_service.database.lock().await;
+        database.get_access_token(token)
+    }
+    .map_err(|_e| StatusCode::UNAUTHORIZED)?;
 
-    let pubkey = session.pubkey.clone();
-
-    let admin_node = {
-        let mut admin_database = request_context.admin_service.database.lock().await;
-        admin_database
-            .get_admin_node()
-            .map_err(|_e| StatusCode::UNAUTHORIZED)?
-    };
-
-    match admin_node {
-        Some(admin_node) => {
-            if admin_node.pubkey != pubkey {
-                return Ok(false);
-            }
-
-            let node_directory = request_context.node_directory.lock().await;
-            let node = node_directory.get(&session.pubkey);
-
-            match node {
-                Some(handle) => {
-                    handle
-                        .node
-                        .verify_macaroon(macaroon, session)
-                        .await
-                        .map_err(|_e| StatusCode::UNAUTHORIZED)?;
-
-                    Ok(true)
+    match access_token {
+        Some(access_token) => {
+            if access_token.is_valid(Some(scope)) {
+                if access_token.single_use {
+                    let mut database = request_context.admin_service.database.lock().await;
+                    database.delete_access_token(access_token.id).unwrap();
                 }
-                None => Ok(false),
+                Ok(true)
+            } else {
+                Ok(false)
             }
         }
-        None => Ok(false),
+        None => return Ok(false),
     }
 }
 
@@ -203,19 +219,97 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/nodes/start", post(start_node))
         .route("/v1/nodes/stop", post(stop_node))
         .route("/v1/nodes/delete", post(delete_node))
+        .route("/v1/tokens", get(list_tokens))
+        .route("/v1/tokens", post(create_token))
+        .route("/v1/tokens", delete(delete_token))
         .route("/v1/status", get(get_status))
         .route("/v1/start", post(start_sensei))
         .route("/v1/login", post(login))
         .route("/v1/logout", post(logout))
 }
 
+pub async fn list_tokens(
+    Extension(request_context): Extension<Arc<RequestContext>>,
+    cookies: Cookies,
+    Query(pagination): Query<PaginationRequest>,
+    AuthHeader { macaroon, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated =
+        authenticate_request(&request_context, "tokens/list", &cookies, token).await?;
+    if authenticated {
+        match request_context
+            .admin_service
+            .call(AdminRequest::ListTokens { pagination })
+            .await
+        {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+pub async fn create_token(
+    Extension(request_context): Extension<Arc<RequestContext>>,
+    Json(payload): Json<Value>,
+    cookies: Cookies,
+    AuthHeader { macaroon, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated =
+        authenticate_request(&request_context, "tokens/create", &cookies, token).await?;
+    let request = {
+        let params: Result<CreateTokenParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+
+    if authenticated {
+        match request_context.admin_service.call(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+pub async fn delete_token(
+    Extension(request_context): Extension<Arc<RequestContext>>,
+    Json(payload): Json<Value>,
+    cookies: Cookies,
+    AuthHeader { macaroon, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated =
+        authenticate_request(&request_context, "tokens/delete", &cookies, token).await?;
+    let request = {
+        let params: Result<DeleteTokenParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+
+    if authenticated {
+        match request_context.admin_service.call(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
 pub async fn list_nodes(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated = authenticate_request(&request_context, &cookies, macaroon).await?;
+    let authenticated =
+        authenticate_request(&request_context, "nodes/list", &cookies, token).await?;
     if authenticated {
         match request_context
             .admin_service
@@ -247,9 +341,14 @@ pub async fn login(
 
     match node {
         Some(node) => {
-            let request = AdminRequest::StartNode {
-                pubkey: node.pubkey.clone(),
-                passphrase: params.passphrase,
+            let request = match node.is_admin() {
+                true => AdminRequest::StartAdmin {
+                    passphrase: params.passphrase,
+                },
+                false => AdminRequest::StartNode {
+                    pubkey: node.pubkey.clone(),
+                    passphrase: params.passphrase,
+                },
             };
 
             match request_context.admin_service.call(request).await {
@@ -267,6 +366,28 @@ pub async fn login(
                             "role": node.role
                         })))
                     }
+                    AdminResponse::StartAdmin {
+                        pubkey,
+                        macaroon,
+                        token,
+                    } => {
+                        let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
+                            .domain("localhost")
+                            .http_only(true)
+                            .finish();
+                        cookies.add(macaroon_cookie);
+                        let token_cookie = Cookie::build("token", token.clone())
+                            .domain("localhost")
+                            .http_only(true)
+                            .finish();
+                        cookies.add(token_cookie);
+                        Ok(Json(json!({
+                            "pubkey": node.pubkey,
+                            "alias": node.alias,
+                            "macaroon": macaroon,
+                            "role": node.role,
+                        })))
+                    }
                     _ => Err(StatusCode::UNPROCESSABLE_ENTITY),
                 },
                 Err(_err) => Err(StatusCode::UNPROCESSABLE_ENTITY),
@@ -278,6 +399,7 @@ pub async fn login(
 
 pub async fn logout(cookies: Cookies) -> Result<Json<Value>, StatusCode> {
     cookies.remove(Cookie::new("macaroon", ""));
+    cookies.remove(Cookie::new("token", ""));
     Ok(Json::default())
 }
 
@@ -299,17 +421,26 @@ pub async fn init_sensei(
                 macaroon,
                 external_id,
                 role,
+                token,
             } => {
                 let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
                     .domain("localhost")
                     .http_only(true)
                     .finish();
+
+                let token_cookie = Cookie::build("token", token.clone())
+                    .domain("localhost")
+                    .http_only(true)
+                    .finish();
+
                 cookies.add(macaroon_cookie);
+                cookies.add(token_cookie);
                 Ok(Json(AdminResponse::CreateAdmin {
                     pubkey,
                     macaroon,
                     external_id,
                     role,
+                    token,
                 }))
             }
             _ => Err(StatusCode::UNPROCESSABLE_ENTITY),
@@ -321,23 +452,26 @@ pub async fn init_sensei(
 pub async fn get_status(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let pubkey = {
-        match get_macaroon_hex_str_from_cookies_or_header(&cookies, macaroon) {
-            Ok(macaroon_hex_string) => {
-                match utils::macaroon_with_session_from_hex_str(&macaroon_hex_string) {
-                    Ok((_macaroon, session)) => session.pubkey,
-                    Err(_e) => String::from(""),
-                }
-            }
-            Err(_e) => String::from(""),
-        }
+    let token = match get_token_from_cookies_or_header(&cookies, token) {
+        Ok(token) => token,
+        Err(e) => String::from(""),
+    };
+
+    let admin_token = {
+        let mut database = request_context.admin_service.database.lock().await;
+        database.get_admin_access_token().unwrap()
+    };
+
+    let authenticated = match admin_token {
+        Some(access_token) => access_token.token == token,
+        None => false,
     };
 
     match request_context
         .admin_service
-        .call(AdminRequest::GetStatus { pubkey })
+        .call(AdminRequest::GetStatus { authenticated })
         .await
     {
         Ok(response) => Ok(Json(response)),
@@ -364,14 +498,28 @@ pub async fn start_sensei(
                 .await
             {
                 Ok(response) => match response {
-                    AdminResponse::StartAdmin { pubkey, macaroon } => {
+                    AdminResponse::StartAdmin {
+                        pubkey,
+                        macaroon,
+                        token,
+                    } => {
                         let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
                             .domain("localhost")
                             .http_only(true)
                             .permanent()
                             .finish();
                         cookies.add(macaroon_cookie);
-                        Ok(Json(AdminResponse::StartAdmin { pubkey, macaroon }))
+                        let token_cookie = Cookie::build("token", token.clone())
+                            .domain("localhost")
+                            .http_only(true)
+                            .permanent()
+                            .finish();
+                        cookies.add(token_cookie);
+                        Ok(Json(AdminResponse::StartAdmin {
+                            pubkey,
+                            macaroon,
+                            token,
+                        }))
                     }
                     _ => Err(StatusCode::UNPROCESSABLE_ENTITY),
                 },
@@ -386,9 +534,10 @@ pub async fn create_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated = authenticate_request(&request_context, &cookies, macaroon).await?;
+    let authenticated =
+        authenticate_request(&request_context, "nodes/create", &cookies, token).await?;
     let request = {
         let params: Result<CreateNodeParams, _> = serde_json::from_value(payload);
         match params {
@@ -411,9 +560,10 @@ pub async fn start_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated = authenticate_request(&request_context, &cookies, macaroon).await?;
+    let authenticated =
+        authenticate_request(&request_context, "nodes/start", &cookies, token).await?;
     let request = {
         let params: Result<StartNodeParams, _> = serde_json::from_value(payload);
         match params {
@@ -436,9 +586,10 @@ pub async fn stop_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated = authenticate_request(&request_context, &cookies, macaroon).await?;
+    let authenticated =
+        authenticate_request(&request_context, "nodes/stop", &cookies, token).await?;
     let request = {
         let params: Result<StopNodeParams, _> = serde_json::from_value(payload);
         match params {
@@ -461,9 +612,10 @@ pub async fn delete_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    MacaroonHeader(macaroon): MacaroonHeader,
+    AuthHeader { macaroon, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated = authenticate_request(&request_context, &cookies, macaroon).await?;
+    let authenticated =
+        authenticate_request(&request_context, "nodes/delete", &cookies, token).await?;
     let request = {
         let params: Result<DeleteNodeParams, _> = serde_json::from_value(payload);
         match params {

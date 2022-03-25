@@ -213,26 +213,17 @@ async fn main() {
     }
 }
 
-// We use static route matchers ("/" and "/index.html") to serve our home
-// page.
-async fn index_handler() -> impl IntoResponse {
-    static_handler("/index.html".parse::<Uri>().unwrap()).await
-}
-
 // We use a wildcard matcher ("/static/*file") to match against everything
 // within our defined assets directory. This is the directory on our Asset
 // struct below, where folder = "examples/public/".
 async fn static_handler(uri: Uri) -> impl IntoResponse {
     let mut path = uri.path().trim_start_matches('/').to_string();
-    println!("in static handler with path: {}", path);
 
     if path.starts_with("admin/static/") {
         path = path.replace("admin/static/", "static/");
     } else {
         path = String::from("index.html");
     }
-
-    println!("out static handler with path: {}", path);
 
     StaticFile(path)
 }

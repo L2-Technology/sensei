@@ -12,10 +12,13 @@ use axum::{
     extract::{FromRequest, RequestParts},
 };
 
-pub struct MacaroonHeader(pub Option<http::HeaderValue>);
+pub struct AuthHeader {
+    pub macaroon: Option<http::HeaderValue>,
+    pub token: Option<http::HeaderValue>,
+}
 
 #[async_trait]
-impl<B> FromRequest<B> for MacaroonHeader
+impl<B> FromRequest<B> for AuthHeader
 where
     B: Send,
 {
@@ -27,10 +30,19 @@ where
             "headers already extracted",
         ))?;
 
+        let mut auth_header = Self {
+            macaroon: None,
+            token: None,
+        };
+
         if let Some(value) = headers.get("macaroon") {
-            Ok(Self(Some(value.clone())))
-        } else {
-            Ok(Self(None))
+            auth_header.macaroon = Some(value.clone());
         }
+
+        if let Some(value) = headers.get("token") {
+            auth_header.token = Some(value.clone());
+        }
+
+        Ok(auth_header)
     }
 }
