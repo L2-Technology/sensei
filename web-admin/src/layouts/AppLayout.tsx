@@ -12,7 +12,8 @@ import {
   CollectionIcon,
   ShoppingCartIcon,
   QrcodeIcon,
-  LinkIcon
+  LinkIcon,
+  KeyIcon,
 } from "@heroicons/react/outline";
 
 import { NavLink } from "react-router-dom";
@@ -23,7 +24,7 @@ import { useAuth } from "../contexts/auth";
 const AppLayout = () => {
   const auth = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const navigation = []
+  const navigation = [];
 
   if (auth.isAdmin()) {
     navigation.push({
@@ -37,15 +38,13 @@ const AppLayout = () => {
     name: "Fund Node",
     href: "/admin/fund",
     icon: QrcodeIcon,
-  })
+  });
 
-  navigation.push(
-    {
-      name: "Chain",
-      href: "/admin/chain",
-      icon: LinkIcon,
-    },
-  );
+  navigation.push({
+    name: "Chain",
+    href: "/admin/chain",
+    icon: LinkIcon,
+  });
 
   navigation.push({
     name: "Channels",
@@ -63,6 +62,12 @@ const AppLayout = () => {
     name: "Receive Money",
     href: "/admin/receive-money",
     icon: CashIcon,
+  });
+
+  navigation.push({
+    name: "Access Tokens",
+    href: "/admin/tokens",
+    icon: KeyIcon,
   });
 
   navigation.push({ name: "Logout", href: "/admin/logout", icon: LogoutIcon });
@@ -191,7 +196,7 @@ const AppLayout = () => {
           <div className="flex-1 flex flex-col min-h-0 bg-gray-senseihero">
             <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
               <div className="flex items-center flex-shrink-0 pb-4">
-                <SenseiLogo className="h-10 w-auto pl-3"  />
+                <SenseiLogo className="h-10 w-auto pl-3" />
               </div>
               <nav className="mt-2 flex-1 px-2 space-y-1">
                 {navigation.map((item) => (
