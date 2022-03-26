@@ -316,6 +316,9 @@ pub fn get_scope_from_request(request: &AdminRequest) -> Option<&'static str> {
         AdminRequest::ListNodes { .. } => Some("nodes/list"),
         AdminRequest::DeleteNode { .. } => Some("nodes/delete"),
         AdminRequest::StopNode { .. } => Some("nodes/stop"),
+        AdminRequest::ListTokens { .. } => Some("tokens/list"),
+        AdminRequest::CreateToken { .. } => Some("tokens/create"),
+        AdminRequest::DeleteToken { .. } => Some("tokens/delete"),
         _ => None,
     }
 }
