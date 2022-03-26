@@ -166,7 +166,7 @@ async fn main() {
     let router = add_node_routes(router);
 
     let origins = vec![
-        "http://localhost:3000".parse().unwrap(),
+        "http://localhost:3001".parse().unwrap(),
         "http://localhost:5401".parse().unwrap(),
     ];
     let http_service = router

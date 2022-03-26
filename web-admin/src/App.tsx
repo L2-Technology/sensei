@@ -23,6 +23,8 @@ import ErrorModal from "./components/layout/app/ErrorModal";
 import NotificationContainer from "./components/layout/app/NotificationContainer";
 import OpenChannelPage from "./channels/pages/OpenChannelPage";
 import LogoutPage from "./auth/pages/LogoutPage";
+import TokensPage from "./tokens/pages/TokensPage";
+import NewTokenPage from "./tokens/pages/NewTokenPage";
 
 function App() {
   const { isLoading, data } = useQuery("status", getStatus, {
@@ -58,6 +60,8 @@ function App() {
           <Route path="/admin/peers" element={<PeersPage />} />
           <Route path="/admin/nodes" element={<NodesPage />} />
           <Route path="/admin/nodes/new" element={<NewNodePage />} />
+          <Route path="/admin/tokens" element={<TokensPage />} />
+          <Route path="/admin/tokens/new" element={<NewTokenPage />} />
         </Route>
       </Routes>
       <Modal />
