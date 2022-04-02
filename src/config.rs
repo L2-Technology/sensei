@@ -90,10 +90,6 @@ impl SenseiConfig {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct LightningNodeConfig {
-    pub bitcoind_rpc_host: String,
-    pub bitcoind_rpc_port: u16,
-    pub bitcoind_rpc_username: String,
-    pub bitcoind_rpc_password: String,
     pub data_dir: String,
     pub ldk_peer_listening_port: u16,
     pub ldk_announced_listen_addr: Vec<String>,
@@ -106,10 +102,6 @@ pub struct LightningNodeConfig {
 impl Default for LightningNodeConfig {
     fn default() -> Self {
         LightningNodeConfig {
-            bitcoind_rpc_host: String::from("127.0.0.1"),
-            bitcoind_rpc_port: 8133,
-            bitcoind_rpc_username: String::from("bitcoin"),
-            bitcoind_rpc_password: String::from("bitcoin"),
             data_dir: ".".into(),
             ldk_peer_listening_port: 9735,
             ldk_announced_listen_addr: vec![],

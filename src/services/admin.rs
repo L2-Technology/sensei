@@ -487,10 +487,6 @@ impl AdminService {
         let external_router = node.is_user();
         let config = self.config.lock().await;
         LightningNodeConfig {
-            bitcoind_rpc_host: config.bitcoind_rpc_host.clone(),
-            bitcoind_rpc_port: config.bitcoind_rpc_port,
-            bitcoind_rpc_username: config.bitcoind_rpc_username.clone(),
-            bitcoind_rpc_password: config.bitcoind_rpc_password.clone(),
             data_dir: format!("{}/{}/{}", self.data_dir, config.network, node.external_id),
             ldk_peer_listening_port: node.listen_port,
             ldk_announced_listen_addr: vec![],

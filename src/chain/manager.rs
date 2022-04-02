@@ -6,7 +6,7 @@ use crate::{
 };
 use bitcoin::BlockHash;
 use lightning::chain::{BestBlock, Listen};
-use lightning_block_sync::poll::ValidatedBlockHeader;
+use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use lightning_block_sync::SpvClient;
 use lightning_block_sync::{init, poll, UnboundedCache};
 use std::ops::Deref;
@@ -37,7 +37,7 @@ impl SenseiChainManager {
             .await
             .expect("invalid bitcoind rpc config"),
         );
-
+        
         let block_source_poller = bitcoind_client.clone();
         let listener_poller = listener.clone();
         tokio::spawn(async move {
@@ -88,10 +88,11 @@ impl SenseiChainManager {
     }
 
     pub async fn get_best_block(&self) -> Result<BestBlock, crate::error::Error> {
-        let blockchain_info = self.bitcoind_client.get_blockchain_info().await;
+        let mut block_source = self.bitcoind_client.deref();
+        let (latest_blockhash, latest_height) = block_source.get_best_block().await.unwrap();
         Ok(BestBlock::new(
-            blockchain_info.latest_blockhash,
-            blockchain_info.latest_height as u32,
+            latest_blockhash,
+            latest_height.unwrap(),
         ))
     }
 }

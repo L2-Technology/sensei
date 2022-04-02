@@ -7,8 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use crate::chain::bitcoind_client::BitcoindClient;
 use crate::chain::broadcaster::SenseiBroadcaster;
+use crate::chain::fee_estimator::SenseiFeeEstimator;
 use crate::chain::listener_database::ListenerDatabase;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::LightningNodeConfig;
@@ -21,20 +21,15 @@ use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, No
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
 use crate::{database, disk, hex_utils};
-use bdk::blockchain::ConfigurableBlockchain;
 use bdk::database::SqliteDatabase;
 use bdk::keys::ExtendedKey;
 use bdk::wallet::AddressIndex;
 use bdk::TransactionDetails;
 use bitcoin::hashes::Hash;
 use lightning::chain::channelmonitor::ChannelMonitor;
-use lightning::chain::{Confirm, Listen};
-use lightning_block_sync::BlockSource;
-use lightning_block_sync::UnboundedCache;
 
 use lightning::ln::msgs::NetAddress;
 use lightning::routing::router::{self, Payee, RouteParameters};
-use lightning_block_sync::init;
 use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
 
@@ -47,7 +42,7 @@ use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
 use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager};
 use lightning::chain::{self, Filter};
-use lightning::chain::{BestBlock, Watch};
+use lightning::chain::{Watch};
 use lightning::ln::channelmanager::{self, ChannelDetails, SimpleArcChannelManager};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
@@ -148,7 +143,7 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
     InMemorySigner,
     Arc<dyn Filter + Send + Sync>,
     Arc<SenseiBroadcaster>,
-    Arc<BitcoindClient>,
+    Arc<SenseiFeeEstimator>,
     Arc<FilesystemLogger>,
     Arc<FilesystemPersister>,
 >;
@@ -167,12 +162,12 @@ pub type PeerManager = SimpleArcPeerManager<
     SocketDescriptor,
     ChainMonitor,
     SenseiBroadcaster,
-    BitcoindClient,
+    SenseiFeeEstimator,
     FilesystemLogger,
 >;
 
 pub type ChannelManager =
-    SimpleArcChannelManager<ChainMonitor, SenseiBroadcaster, BitcoindClient, FilesystemLogger>;
+    SimpleArcChannelManager<ChainMonitor, SenseiBroadcaster, SenseiFeeEstimator, FilesystemLogger>;
 
 pub type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 
@@ -187,7 +182,7 @@ pub type InvoicePayer = payment::InvoicePayer<
 pub type SyncableMonitor = (
     ChannelMonitor<InMemorySigner>,
     Arc<SenseiBroadcaster>,
-    Arc<BitcoindClient>,
+    Arc<SenseiFeeEstimator>,
     Arc<FilesystemLogger>,
 );
 
@@ -406,10 +401,14 @@ impl LightningNode {
         let listener_database =
             ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
 
-        let fee_estimator = chain_manager.bitcoind_client.clone();
-        let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
+            let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
+
+        let fee_estimator = Arc::new(SenseiFeeEstimator {
+            fee_estimator: chain_manager.bitcoind_client.clone()
+        });
+        
         let broadcaster = Arc::new(SenseiBroadcaster {
-            bitcoind_client: chain_manager.bitcoind_client.clone(),
+            broadcaster: chain_manager.bitcoind_client.clone(),
             listener_database: listener_database.clone(),
         });
 
