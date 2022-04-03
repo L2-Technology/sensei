@@ -15,7 +15,6 @@ use crate::database::{
     admin::{AdminDatabase, Node, Role, Status},
 };
 use crate::error::Error as SenseiError;
-use crate::AdminRequestResponse;
 use crate::{
     config::{LightningNodeConfig, SenseiConfig},
     hex_utils,
@@ -23,9 +22,8 @@ use crate::{
     NodeDirectory, NodeHandle,
 };
 
-use lightning_block_sync::BlockSource;
 use serde::Serialize;
-use std::sync::mpsc::Receiver;
+use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::Mutex;
 pub enum AdminRequest {
@@ -539,9 +537,12 @@ impl AdminService {
         let entry = node_directory.entry(pubkey.clone());
 
         if let Entry::Occupied(entry) = entry {
-            let node_handle = entry.remove();
-            // TODO: stop accepting new incoming connections somehow?
+            let node_handle = entry.remove();  
+            
+            // Disconnect our peers and stop accepting new connections. This ensures we don't continue
+	        // updating our channel data after we've stopped the background processor.
             node_handle.node.peer_manager.disconnect_all_peers();
+	        node_handle.node.stop_listen.store(true, Ordering::Release);
             let _res = node_handle.background_processor.stop();
             for handle in node_handle.handles {
                 handle.abort();

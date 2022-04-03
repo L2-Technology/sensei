@@ -35,7 +35,7 @@ use axum::{
     handler::Handler,
     http::StatusCode,
     response::{Html, IntoResponse, Response},
-    routing::{get, get_service},
+    routing::{get},
     AddExtensionLayer, Router,
 };
 use clap::Parser;
@@ -43,7 +43,6 @@ use rust_embed::RustEmbed;
 
 use std::net::SocketAddr;
 use tower_cookies::CookieManagerLayer;
-use tower_http::services::ServeDir;
 
 use grpc::admin::{AdminServer, AdminService as GrpcAdminService};
 use grpc::node::{NodeServer, NodeService as GrpcNodeService};

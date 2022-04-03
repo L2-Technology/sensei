@@ -7,10 +7,8 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::time::SystemTime;
-
 use super::Error;
-use crate::utils::{self, seconds_since_epoch};
+use crate::utils::{self};
 use crate::{
     hex_utils,
     services::{PaginationRequest, PaginationResponse},
