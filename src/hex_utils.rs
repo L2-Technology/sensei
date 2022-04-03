@@ -39,7 +39,22 @@ pub fn hex_str(value: &[u8]) -> String {
     res
 }
 
+pub fn sanitize_string(bytes: &[u8]) -> String {
+	let mut ret = String::with_capacity(bytes.len());
+	// We should really support some sane subset of UTF-8 here, but limiting to printable ASCII
+	// instead makes this trivial.
+	for b in bytes {
+		if *b >= 0x20 && *b <= 0x7e {
+			ret.push(*b as char);
+		}
+	}
+	ret
+}
+
 pub fn to_compressed_pubkey(hex: &str) -> Option<PublicKey> {
+    if hex.len() != 33 * 2 {
+		return None;
+	}
     let data = match to_vec(&hex[0..33 * 2]) {
         Some(bytes) => bytes,
         None => return None,

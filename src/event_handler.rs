@@ -43,6 +43,9 @@ pub struct LightningNodeEventHandler {
 impl EventHandler for LightningNodeEventHandler {
     fn handle_event(&self, event: &Event) {
         match event {
+            Event::OpenChannelRequest { .. } => {
+                // Unreachable, we don't set manually_accept_inbound_channels
+            },
             Event::FundingGenerationReady {
                 temporary_channel_id,
                 channel_value_satoshis,
@@ -68,7 +71,7 @@ impl EventHandler for LightningNodeEventHandler {
                 let wallet = self.wallet.lock().unwrap();
 
                 let mut tx_builder = wallet.build_tx();
-                let fee_sats_per_1000_wu = self
+                let _fee_sats_per_1000_wu = self
                     .chain_manager
                     .bitcoind_client
                     .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);

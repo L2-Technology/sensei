@@ -13,7 +13,7 @@ use crate::chain::listener_database::ListenerDatabase;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::LightningNodeConfig;
 use crate::database::node::NodeDatabase;
-use crate::disk::FilesystemLogger;
+use crate::disk::{FilesystemLogger, DataPersister};
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
@@ -29,7 +29,6 @@ use bitcoin::hashes::Hash;
 use lightning::chain::channelmonitor::ChannelMonitor;
 
 use lightning::ln::msgs::NetAddress;
-use lightning::routing::router::{self, Payee, RouteParameters};
 use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
 
@@ -40,7 +39,7 @@ use bitcoin::secp256k1::PublicKey;
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
-use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager};
+use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager, Recipient};
 use lightning::chain::{self, Filter};
 use lightning::chain::{Watch};
 use lightning::ln::channelmanager::{self, ChannelDetails, SimpleArcChannelManager};
@@ -50,11 +49,12 @@ use lightning::ln::peer_handler::{
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId};
-use lightning::routing::scoring::{Scorer, ScorerUsingTime};
+use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScorerUsingTime};
 use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
+use bitcoin::hashes::sha256::Hash as Sha256;
 use lightning_invoice::{payment, utils, Currency, Invoice};
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
@@ -65,10 +65,10 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
-use std::iter;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use std::{fmt, fs};
@@ -174,7 +174,7 @@ pub type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 pub type InvoicePayer = payment::InvoicePayer<
     Arc<ChannelManager>,
     Router,
-    Arc<Mutex<Scorer>>,
+    Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph>>>>,
     Arc<FilesystemLogger>,
     Arc<LightningNodeEventHandler>,
 >;
@@ -254,7 +254,8 @@ pub struct LightningNode {
     pub keys_manager: Arc<KeysManager>,
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
-    pub scorer: Arc<Mutex<ScorerUsingTime<Instant>>>,
+    pub scorer: Arc<Mutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
+    pub stop_listen: Arc<AtomicBool>
 }
 
 impl LightningNode {
@@ -434,7 +435,7 @@ impl LightningNode {
 
         let best_block = chain_manager.get_best_block().await?;
 
-        let (channel_manager_blockhash, mut channel_manager) = {
+        let (channel_manager_blockhash, channel_manager) = {
             if let Ok(mut f) = fs::File::open(channel_manager_path) {
                 let mut channel_monitor_mut_references = Vec::new();
                 for (_, channel_monitor) in channelmonitors.iter_mut() {
@@ -489,16 +490,14 @@ impl LightningNode {
             ));
         }
 
-        let channel_manager_info = (channel_manager_blockhash, &mut channel_manager);
-
         let monitor_info = bundled_channel_monitors
             .iter_mut()
-            .map(|monitor_bundle| (monitor_bundle.0, &mut monitor_bundle.1))
-            .collect::<Vec<(BlockHash, &mut SyncableMonitor)>>();
+            .map(|monitor_bundle| (monitor_bundle.0, &monitor_bundle.1))
+            .collect::<Vec<(BlockHash, &SyncableMonitor)>>();
 
         let mut chain_listeners = vec![(
-            channel_manager_info.0,
-            channel_manager_info.1 as &(dyn chain::Listen + Send + Sync),
+            channel_manager_blockhash,
+            &channel_manager as &(dyn chain::Listen + Send + Sync),
         )];
 
         for (block_hash, monitor) in monitor_info.into_iter() {
@@ -568,16 +567,23 @@ impl LightningNode {
 
         let peer_manager = Arc::new(PeerManager::new(
             lightning_msg_handler,
-            keys_manager.get_node_secret(),
+            keys_manager.get_node_secret(Recipient::Node).unwrap(),
             &ephemeral_bytes,
             logger.clone(),
             Arc::new(IgnoringMessageHandler {}),
         ));
 
         let scorer_path = config.scorer_path();
-        let scorer = Arc::new(Mutex::new(disk::read_scorer(Path::new(&scorer_path))));
+        let scorer = Arc::new(Mutex::new(disk::read_scorer(
+            Path::new(&scorer_path),
+            Arc::clone(&network_graph),
+        )));
 
-        let router = DefaultRouter::new(network_graph.clone(), logger.clone());
+        let router = DefaultRouter::new(
+            network_graph.clone(), 
+            logger.clone(), 
+            keys_manager.get_secure_random_bytes()
+        );
 
         let pubkey = channel_manager.get_our_node_id().to_string();
 
@@ -609,6 +615,8 @@ impl LightningNode {
             payment::RetryAttempts(5),
         ));
 
+        let stop_listen = Arc::new(AtomicBool::new(false));
+
         Ok(LightningNode {
             config,
             database,
@@ -625,6 +633,7 @@ impl LightningNode {
             logger,
             scorer,
             invoice_payer,
+            stop_listen 
         })
     }
 
@@ -644,29 +653,10 @@ impl LightningNode {
             .await
             .unwrap();
 
-        if !config.external_router {
-            let network_graph = self.network_graph.clone();
-            let network_graph_path = config.network_graph_path();
-
-            handles.push(tokio::spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(600));
-                loop {
-                    interval.tick().await;
-                    if disk::persist_network(Path::new(&network_graph_path), &network_graph.clone())
-                        .is_err()
-                    {
-                        // Persistence errors here are non-fatal as we can just fetch the routing graph
-                        // again later, but they may indicate a disk error which could be fatal elsewhere.
-                        eprintln!(
-                            "Warning: Failed to persist network graph, check your disk and permissions"
-                        );
-                    }
-                }
-            }));
-        }
-
         let peer_manager_connection_handler = self.peer_manager.clone();
 
+        
+	    let stop_listen_ref = Arc::clone(&self.stop_listen);
         handles.push(tokio::spawn(async move {
             let listener = tokio::net::TcpListener::bind(format!(
                 "0.0.0.0:{}",
@@ -677,6 +667,9 @@ impl LightningNode {
             loop {
                 let peer_mgr = peer_manager_connection_handler.clone();
                 let tcp_stream = listener.accept().await.unwrap().0;
+                if stop_listen_ref.load(Ordering::Acquire) {
+                    return;
+                }
                 tokio::spawn(async move {
                     lightning_net_tokio::setup_inbound(
                         peer_mgr.clone(),
@@ -704,14 +697,15 @@ impl LightningNode {
             }
         }));
 
-        let persist_channel_manager_callback = move |node: &ChannelManager| {
-            FilesystemPersister::persist_manager(self.config.data_dir(), &*node)
+        let persister = DataPersister { 
+            data_dir: self.config.data_dir(), 
+            external_router: self.config.external_router 
         };
 
         // TODO: should we allow 'child' nodes to update NetworkGraph based on payment failures?
         //       feels like probably but depends on exactly what is updated
         let background_processor = BackgroundProcessor::start(
-            persist_channel_manager_callback,
+            persister,
             self.invoice_payer.clone(),
             self.chain_monitor.clone(),
             self.channel_manager.clone(),
@@ -896,39 +890,49 @@ impl LightningNode {
         Ok(())
     }
 
-    pub fn keysend(&self, payee_pubkey: PublicKey, amt_msat: u64) -> Result<(), Error> {
-        let first_hops = self.channel_manager.list_usable_channels();
-        let payer_pubkey = self.channel_manager.get_our_node_id();
+    fn keysend<K: KeysInterface>(
+        &self, invoice_payer: &InvoicePayer, payee_pubkey: PublicKey, amt_msat: u64, keys: &K,
+    )  -> Result<(), Error> {
+        let payment_preimage = keys.get_secure_random_bytes();
 
-        let payee = Payee::for_keysend(payee_pubkey);
-        let params = RouteParameters {
-            payee,
-            final_value_msat: amt_msat,
-            final_cltv_expiry_delta: 40,
+        let status = match invoice_payer.pay_pubkey(
+            payee_pubkey,
+            PaymentPreimage(payment_preimage),
+            amt_msat,
+            40,
+        ) {
+            Ok(_payment_id) => {
+                println!("EVENT: initiated sending {} msats to {}", amt_msat, payee_pubkey);
+                print!("> ");
+                HTLCStatus::Pending
+            }
+            Err(PaymentError::Invoice(e)) => {
+                println!("ERROR: invalid payee: {}", e);
+                print!("> ");
+                return Ok(());
+            }
+            Err(PaymentError::Routing(e)) => {
+                println!("ERROR: failed to find route: {}", e.err);
+                print!("> ");
+                return Ok(());
+            }
+            Err(PaymentError::Sending(e)) => {
+                println!("ERROR: failed to send payment: {:?}", e);
+                print!("> ");
+                HTLCStatus::Failed
+            }
         };
 
-        let route = router::find_route(
-            &payer_pubkey,
-            &params,
-            &self.network_graph,
-            Some(&first_hops.iter().collect::<Vec<_>>()),
-            self.logger.clone(),
-            &self.scorer.lock().unwrap(),
-        )?;
+        let payment_hash = PaymentHash(Sha256::hash(&payment_preimage).into_inner());
 
         let mut database = self.database.lock().unwrap();
-        let payment_hash = self
-            .channel_manager
-            .send_spontaneous_payment(&route, None)
-            .unwrap()
-            .0;
-
+     
         database.create_or_update_payment(
             PaymentInfo {
                 hash: payment_hash,
                 preimage: None,
                 secret: None,
-                status: HTLCStatus::Pending,
+                status,
                 amt_msat: MillisatAmount(Some(amt_msat)),
                 origin: PaymentOrigin::SpontaneousOutgoing,
                 label: None,
@@ -1038,7 +1042,7 @@ impl LightningNode {
 
                 channel.alias = self
                     .get_alias_for_channel_counterparty(&chan_info)
-                    .map(|alias_bytes| String::from_utf8(alias_bytes.to_vec()).unwrap());
+                    .map(|alias_bytes| hex_utils::sanitize_string(&alias_bytes));
 
                 let match_channel = channel.clone();
                 let matches_channel_id = match_channel.channel_id.contains(&query);
@@ -1156,12 +1160,7 @@ impl LightningNode {
 
     pub fn node_info(&self) -> Result<NodeInfo, Error> {
         let chans = self.channel_manager.list_channels();
-        let local_balance_msat = chans
-            .iter()
-            .map(|c| {
-                c.unspendable_punishment_reserve.unwrap_or(0) * 1000 + c.outbound_capacity_msat
-            })
-            .sum::<u64>();
+        let local_balance_msat = chans.iter().map(|c| c.balance_msat).sum::<u64>();
 
         Ok(NodeInfo {
             node_pubkey: self.channel_manager.get_our_node_id().to_string(),
@@ -1191,7 +1190,7 @@ impl LightningNode {
     pub fn sign_message(&self, message: String) -> Result<String, Error> {
         Ok(lightning::util::message_signing::sign(
             message.as_bytes(),
-            &self.keys_manager.get_node_secret(),
+            &self.keys_manager.get_node_secret(Recipient::Node).unwrap(),
         )?)
     }
 
@@ -1268,7 +1267,12 @@ impl LightningNode {
                 amt_msat,
             } => match hex_utils::to_compressed_pubkey(&dest_pubkey) {
                 Some(pubkey) => {
-                    self.keysend(pubkey, amt_msat)?;
+                    self.keysend(
+						&*self.invoice_payer,
+						pubkey,
+						amt_msat,
+						&*self.keys_manager,
+					)?;
                     Ok(NodeResponse::Keysend {})
                 }
                 None => Err(NodeRequestError::Sensei("invalid dest_pubkey".into())),

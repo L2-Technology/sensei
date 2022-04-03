@@ -74,7 +74,7 @@ impl ListenerDatabase {
         let mut outputs_sum: u64 = 0;
 
         // look for our own inputs
-        for (i, input) in tx.input.iter().enumerate() {
+        for (_i, input) in tx.input.iter().enumerate() {
             if let Some(previous_output) = database
                 .get_previous_output(&input.previous_output)
                 .unwrap()

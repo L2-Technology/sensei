@@ -16,7 +16,7 @@ use std::{
 };
 
 pub fn hours_since_epoch() -> Result<u64, SystemTimeError> {
-    let time_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+    let _time_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
     let hours_since_epoch = seconds_since_epoch()? / 3600;
     Ok(hours_since_epoch)
 }
