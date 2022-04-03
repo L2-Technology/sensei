@@ -14,7 +14,6 @@ use crate::{
     services::{PaginationRequest, PaginationResponse, PaymentsFilter},
 };
 use bitcoin::consensus::encode::{deserialize, serialize};
-use std::str::FromStr;
 
 use super::Error;
 use bitcoin::BlockHash;

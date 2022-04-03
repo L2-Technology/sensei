@@ -21,7 +21,6 @@ use super::sensei::{
 use crate::{
     database::admin::AccessToken,
     services::admin::{AdminRequest, AdminResponse},
-    utils,
 };
 use tonic::{metadata::MetadataMap, Response, Status};
 

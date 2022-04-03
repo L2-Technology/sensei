@@ -25,7 +25,7 @@ use crate::{
         admin::{AdminRequest, AdminResponse},
         PaginationRequest,
     },
-    utils, RequestContext,
+    RequestContext,
 };
 
 use super::auth_header::AuthHeader;
@@ -168,7 +168,6 @@ pub fn get_token_from_cookies_or_header(
                 .to_str()
                 .map(|str| str.to_string())
                 .map_err(|_| StatusCode::UNAUTHORIZED);
-            println!("{:?}", res);
             res
         }
         None => match cookies.get("token") {
@@ -232,7 +231,7 @@ pub async fn list_tokens(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "tokens/list", &cookies, token).await?;
@@ -254,7 +253,7 @@ pub async fn create_token(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "tokens/create", &cookies, token).await?;
@@ -280,7 +279,7 @@ pub async fn delete_token(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "tokens/delete", &cookies, token).await?;
@@ -306,7 +305,7 @@ pub async fn list_nodes(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/list", &cookies, token).await?;
@@ -367,7 +366,7 @@ pub async fn login(
                         })))
                     }
                     AdminResponse::StartAdmin {
-                        pubkey,
+                        pubkey:_,
                         macaroon,
                         token,
                     } => {
@@ -452,7 +451,7 @@ pub async fn init_sensei(
 pub async fn get_status(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let token = match get_token_from_cookies_or_header(&cookies, token) {
         Ok(token) => token,
@@ -534,7 +533,7 @@ pub async fn create_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/create", &cookies, token).await?;
@@ -560,7 +559,7 @@ pub async fn start_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/start", &cookies, token).await?;
@@ -586,7 +585,7 @@ pub async fn stop_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/stop", &cookies, token).await?;
@@ -612,7 +611,7 @@ pub async fn delete_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon:_, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/delete", &cookies, token).await?;
