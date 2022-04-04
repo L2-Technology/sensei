@@ -22,7 +22,7 @@ RUN rustup component add rustfmt
 RUN cargo build --verbose --release
 
 # our final base
-FROM debian:buster-slim
+FROM rust:1.56
 
 # copy the build artifact from the build stage
 COPY --from=build-sensei /build/target/release/senseid .
