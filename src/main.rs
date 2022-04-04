@@ -77,17 +77,17 @@ pub struct RequestContext {
 #[clap(version)]
 struct SenseiArgs {
     /// Sensei data directory, defaults to home directory
-    #[clap(long)]
+    #[clap(long, env = "DATA_DIR")]
     data_dir: Option<String>,
-    #[clap(long)]
+    #[clap(long, env = "NETWORK")]
     network: Option<String>,
-    #[clap(long)]
+    #[clap(long, env = "BITCOIND_RPC_HOST")]
     bitcoind_rpc_host: Option<String>,
-    #[clap(long)]
+    #[clap(long, env = "BITCOIND_RPC_PORT")]
     bitcoind_rpc_port: Option<u16>,
-    #[clap(long)]
+    #[clap(long, env = "BITCOIND_RPC_USERNAME")]
     bitcoind_rpc_username: Option<String>,
-    #[clap(long)]
+    #[clap(long, env = "BITCOIND_RPC_PASSWORD")]
     bitcoind_rpc_password: Option<String>,
 }
 
