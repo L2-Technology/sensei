@@ -1,9 +1,21 @@
-FROM rust:1.56 as build
+FROM node:16 as build-web-admin
 
-WORKDIR /senseid
+WORKDIR /build
+
+COPY . .
+
+WORKDIR /build/web-admin
+RUN npm install
+RUN npm run build
+
+FROM rust:1.56 as build-sensei
+
+WORKDIR /build
 
 # copy your source tree
 COPY . .
+
+COPY --from=build-web-admin /build/web-admin/build/ /build/web-admin/build/
 
 RUN rustup component add rustfmt
 
@@ -13,7 +25,7 @@ RUN cargo build --verbose --release
 FROM debian:buster-slim
 
 # copy the build artifact from the build stage
-COPY --from=build /senseid/target/release/senseid .
+COPY --from=build-sensei /build/target/release/senseid .
 
 # set the startup command to run your binary
 CMD ["./senseid"]
