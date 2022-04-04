@@ -1,6 +1,6 @@
 [package]
 name = "sensei"
-version = "0.0.2"
+version = "0.2.1"
 edition = "2021"
 
 [[bin]] # Bin to run sensei cli
@@ -39,7 +39,7 @@ tonic = "0.6"
 prost = "0.9"
 pin-project = "1.0"
 hyper = "0.14"
-clap = { version = "3.0", features = [ "derive" ] }
+clap = { version = "3.0", features = [ "derive", "env" ] }
 headers = "0.3"
 tindercrypt = { version = "0.3.2", default-features = false }
 portpicker = "0.1"

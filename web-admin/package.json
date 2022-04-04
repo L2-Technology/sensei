@@ -1,6 +1,6 @@
 {
   "name": "web-admin",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "homepage": "http://localhost:5401/admin",
   "private": true,
   "dependencies": {
