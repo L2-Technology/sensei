@@ -164,27 +164,7 @@ async fn main() {
     let router = add_admin_routes(router);
     let router = add_node_routes(router);
 
-    let origins = vec![
-        "http://localhost:3001".parse().unwrap(),
-        "http://localhost:5401".parse().unwrap(),
-    ];
     let http_service = router
-        .layer(
-            // see https://docs.rs/tower-http/latest/tower_http/cors/index.html
-            // for more details
-            CorsLayer::new()
-                .allow_headers(vec![AUTHORIZATION, ACCEPT, COOKIE, CONTENT_TYPE])
-                .allow_credentials(true)
-                .allow_origin(Origin::list(origins))
-                .allow_methods(vec![
-                    Method::GET,
-                    Method::POST,
-                    Method::OPTIONS,
-                    Method::DELETE,
-                    Method::PUT,
-                    Method::PATCH,
-                ]),
-        )
         .layer(CookieManagerLayer::new())
         .layer(AddExtensionLayer::new(request_context.clone()))
         .into_make_service();
