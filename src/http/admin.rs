@@ -354,7 +354,6 @@ pub async fn login(
                 Ok(response) => match response {
                     AdminResponse::StartNode { macaroon } => {
                         let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
-                            .domain("localhost")
                             .http_only(true)
                             .finish();
                         cookies.add(macaroon_cookie);
@@ -371,12 +370,10 @@ pub async fn login(
                         token,
                     } => {
                         let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
-                            .domain("localhost")
                             .http_only(true)
                             .finish();
                         cookies.add(macaroon_cookie);
                         let token_cookie = Cookie::build("token", token.clone())
-                            .domain("localhost")
                             .http_only(true)
                             .finish();
                         cookies.add(token_cookie);
@@ -423,12 +420,10 @@ pub async fn init_sensei(
                 token,
             } => {
                 let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
-                    .domain("localhost")
                     .http_only(true)
                     .finish();
 
                 let token_cookie = Cookie::build("token", token.clone())
-                    .domain("localhost")
                     .http_only(true)
                     .finish();
 
@@ -503,13 +498,11 @@ pub async fn start_sensei(
                         token,
                     } => {
                         let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
-                            .domain("localhost")
                             .http_only(true)
                             .permanent()
                             .finish();
                         cookies.add(macaroon_cookie);
                         let token_cookie = Cookie::build("token", token.clone())
-                            .domain("localhost")
                             .http_only(true)
                             .permanent()
                             .finish();
