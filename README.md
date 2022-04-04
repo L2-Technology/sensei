@@ -1,6 +1,6 @@
 ![Sensei Logo](./web-admin/public/images/sensei-logo.svg)
 
-### **WARNING: This software is in beta. Do not use it on mainnet until this warning is removed. Expect breaking changes to the api and database schema until the 0.1.0 release.**
+### **WARNING: This software is in beta. Please do not use it with a lot of funds.
 
 <br/>
 
@@ -25,8 +25,9 @@ To run from source you will need to take the following steps:
 
 In order to see your changes live you will need to:
 
-1. Run the web-admin dev server: `cd sensei/web-admin && npm install && npm run start`
-2. Visit the admin using port 3000: `http://localhost:3000/admin/nodes`
+1. Run sensei in development mode: `cargo run --bin senseid -- --development_mode=true --network=regtest --bitcoind-rpc-host=localhost --bitcoind-rpc-port=18443 --bitcoind-rpc-username=admin1 --bitcoind-rpc-password=123`
+2. Run the web-admin dev server: `cd sensei/web-admin && npm install && npm run start`
+3. Visit the admin using port 3001: `http://localhost:3001/admin/nodes`
 
 ## Using with Nigiri
 
