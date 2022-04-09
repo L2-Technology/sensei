@@ -1,4 +1,48 @@
-import React from "react";
+import React, { useState, useEffect, PropsWithChildren } from "react";
+import { XIcon, ExclamationIcon } from "@heroicons/react/outline";
+
+interface AlertMsgProps {
+  type: "error" | "warning";
+  className?: string;
+}
+
+export const AlertMsg = ({
+  children,
+  type,
+  className,
+}: PropsWithChildren<AlertMsgProps>) => {
+  const [mount, setMount] = useState(false);
+
+  const Icon = type === "error" ? XIcon : ExclamationIcon;
+
+  useEffect(() => {
+    setMount(true);
+  }, []);
+
+  return (
+    <>
+      <div
+        className={`${
+          mount ? "opacity-100 " : "h-0 scale-y-0 opacity-0"
+        } ${className} relative overflow-hidden rounded-xl bg-plum-200 p-2.5 shadow transition-all duration-500`}
+      >
+        <div className="flex items-center">
+          <span className={`${type} w-8`}>
+            <Icon className="h-6 w-6" />
+          </span>
+
+          <div className="flex-1 px-2">
+            <p className="text-sm text-gray-text">{children}</p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
+
+
+
+
 
 type ErrorAlertProps = {
   message: String;
