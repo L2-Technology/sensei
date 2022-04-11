@@ -2,10 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @layer components {
   .btn-orange {
     @apply inline-flex cursor-pointer items-center rounded-xl border border-transparent bg-orange px-4 py-2 font-semibold text-white shadow transition duration-150 ease-in-out hover:bg-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orange-hover active:scale-95 active:shadow-none disabled:pointer-events-none disabled:opacity-50;
