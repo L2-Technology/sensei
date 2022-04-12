@@ -220,7 +220,9 @@ export const UserDropdownMenu = () => {
           </div>
 
           {actionItems.map((item, i) => (
-            <Menu.Item key={item.name}>
+            <Fragment key={item.name}>
+            {actionItems.length - 1 === i && <hr className="my-2 opacity-30" />}
+            <Menu.Item >
               <Link
                 to={item.href}
                 className="flex w-full items-center space-x-2 rounded-xl px-3 py-2 hover:bg-white hover:bg-opacity-5"
@@ -229,6 +231,7 @@ export const UserDropdownMenu = () => {
                 <span className="capitalize">{item.name}</span>
               </Link>
             </Menu.Item>
+            </Fragment>
           ))}
         </Menu.Items>
       </Menu>

@@ -173,7 +173,7 @@ const ChannelRow = ({ result, extraClass, attributes }) => {
   };
 
   return (
-    <tr className={`border-b border-plum-200 ${extraClass}`}>
+    <tr className={`${extraClass}`}>
       {attributes.map(({ key, label, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
@@ -273,6 +273,7 @@ const ChannelsList = () => {
       hasHeader
       itemsPerPage={5}
       RowComponent={ChannelRow}
+      striped={true}
     />
   );
 };

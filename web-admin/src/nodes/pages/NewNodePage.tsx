@@ -22,7 +22,7 @@ const NewNodePage = () => {
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
         <div className="py-4">
-          <div className="bg-plum-100 text-light-plum shadow p-4 rounded-lg">
+          <div className="bg-plum-100 text-light-plum shadow p-4 rounded-xl">
             <NewNodeForm />
           </div>
         </div>

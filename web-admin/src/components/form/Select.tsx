@@ -29,7 +29,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
 
     return (
       <div {...outerProps} className={`mb-5 ${className}`}>
-        <label className="block text-sm leading-5 font-medium text-light-plum">
+        <label className="block text-sm leading-5 mb-1 font-medium text-light-plum">
           {label}
         </label>
         <select
@@ -37,7 +37,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           disabled={submitting}
           {...props}
           ref={ref}
-          className="bg-plum text-light-plum mt-1 form-select block w-full pl-3 pr-10 py-2 text-base leading-6 border-plum-200 focus:outline-none focus:ring-blue focus:border-blue-300 sm:text-sm sm:leading-5"
+          className="input"
         >
           {options.map((option: SelectOption) => (
             <option key={option.value} value={option.value}>
