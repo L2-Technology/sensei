@@ -136,7 +136,7 @@ const TokenRow = ({ result, extraClass, attributes }) => {
   };
 
   return (
-    <tr className={`border-b border-plum-200 ${extraClass}`}>
+    <tr className={`${extraClass}`}>
       {attributes.map(({ key, label, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
@@ -219,6 +219,7 @@ const TokensListCard = () => {
       hasHeader
       itemsPerPage={5}
       RowComponent={TokenRow}
+      striped={true}
     />
   );
 };

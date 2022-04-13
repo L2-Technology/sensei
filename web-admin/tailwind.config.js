@@ -15,6 +15,7 @@ module.exports = {
           background: "#221F30",
           accent1: "#615F7E",
           accent2: "#343046",
+          accent3: "#3B364F",
           senseihero: "#282536",
         },
         'plum': '#282536',

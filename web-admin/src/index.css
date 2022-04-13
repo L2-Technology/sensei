@@ -1,3 +1,49 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .btn-orange {
+    @apply inline-flex cursor-pointer items-center rounded-xl border border-transparent bg-orange px-4 py-2 font-semibold text-white shadow transition duration-150 ease-in-out hover:bg-orange-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orange-hover active:scale-95 active:shadow-none disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex cursor-pointer items-center rounded-xl border border-transparent bg-white bg-opacity-5 px-4 py-2 font-semibold text-white transition duration-150 ease-in-out hover:bg-gray-accent1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orange-hover active:scale-95 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-pill {
+    @apply rounded-full border border-white px-3 py-1 text-xs font-semibold text-white hover:bg-white hover:text-orange disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .input {
+    @apply block w-full rounded-xl bg-plum py-2.5 pr-10 text-light-plum transition duration-150 ease-in-out focus:border-orange focus:ring-orange disabled:!bg-plum-100 disabled:!text-white sm:text-sm;
+  }
+
+  /* Toast ********************* */
+
+  .info {
+    @apply text-sky-500;
+  }
+
+  .success {
+    @apply text-emerald-500;
+  }
+
+  .warning {
+    @apply text-yellow-500;
+  }
+
+  .error {
+    @apply text-pink-500;
+  }
+}
+
+.Toastify__close-button {
+  color: #fff !important;
+}
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #413c56 inset !important;
+}

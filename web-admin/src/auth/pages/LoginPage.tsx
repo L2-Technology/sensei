@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router";
+import { AlertMsg } from "src/components/ErrorAlert";
 import { useAuth } from "../../contexts/auth";
 import logo from "../../images/Icon-Lightning@2x.png";
 
@@ -40,7 +41,7 @@ const LoginPage = () => {
   return (
     <div className="min-h-full flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-plum-100 text-light-plum py-8 px-4 shadow sm:rounded-lg sm:px-10">
+        <div className="bg-plum-100 text-light-plum py-8 px-4 shadow sm:rounded-xl sm:px-10">
           <div className="sm:mx-auto sm:w-full sm:max-w-md">
             
               <img src={logo} alt="sensei logo" className="h-20 mx-auto" />
@@ -50,6 +51,8 @@ const LoginPage = () => {
               Login to your node
             </h2>
           </div>
+
+          {submitError && <AlertMsg  type="error" className="-mt-2 mb-2" >{submitError}</AlertMsg>}
 
           <form
             onSubmit={handleSubmit}
@@ -68,13 +71,12 @@ const LoginPage = () => {
               </label>
               <div className="mt-1">
                 <input
+                autoFocus
                   id="username"
                   name="username"
                   type="text"
                   required
-                  className={`${
-                    submitError ? "border-red-400" : "border-plum-200"
-                  } bg-plum text-light-plum appearance-none block w-full px-3 py-2 border  rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm`}
+                  className={`${ submitError ? "!border-red-400" : "" } input`}
                 />
               </div>
             </div>
@@ -93,9 +95,7 @@ const LoginPage = () => {
                   name="passphrase"
                   type="password"
                   required
-                  className={`${
-                    submitError ? "border-red-400" : "border-plum-200"
-                  } bg-plum text-light-plum appearance-none block w-full px-3 py-2 border  rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm`}
+                  className={`${ submitError ? "!border-red-400" : "" } input`}
                 />
               </div>
             </div>
@@ -104,7 +104,7 @@ const LoginPage = () => {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange hover:bg-orange-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                className="btn-orange w-full justify-center"
               >
                 {submitting && <span>...</span>}
                 {!submitting && <span>Login</span>}

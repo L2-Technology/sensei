@@ -80,7 +80,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         <div
           className={`${label ? "mt-1" : ""} ${
             innerImage || append || prepend ? "relative" : ""
-          } rounded-md shadow-sm flex`}
+          } rounded-xl shadow-sm flex`}
         >
           {prepend && (
             <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 sm:text-sm">
@@ -98,10 +98,10 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             {...props}
             ref={ref}
             autoComplete="off"
-            className={`bg-plum text-light-plum appearance-none block w-full px-3 py-2 border border-plum-200 rounded-md shadow-sm placeholder-gray-400 focus:outline-none sm:text-sm ${
+            className={`input ${
               hasError
-                ? "border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500"
-                : "focus:ring-blue-300 focus:border-blue-300"
+                ? "border-red-300 focus:border-red-500 focus:ring-red-500"
+                : ""
             } ${prepend ? "rounded-l-none" : ""} ${append ? "pr-12" : ""} ${
               innerImage ? "pl-10" : ""
             } ${extraClass}`}

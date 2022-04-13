@@ -25,7 +25,7 @@ To run from source you will need to take the following steps:
 
 In order to see your changes live you will need to:
 
-1. Run sensei in development mode: `cargo run --bin senseid -- --development_mode=true --network=regtest --bitcoind-rpc-host=localhost --bitcoind-rpc-port=18443 --bitcoind-rpc-username=admin1 --bitcoind-rpc-password=123`
+1. Run sensei in development mode: `cargo run --bin senseid -- --development-mode=true --network=regtest --bitcoind-rpc-host=localhost --bitcoind-rpc-port=18443 --bitcoind-rpc-username=admin1 --bitcoind-rpc-password=123`
 2. Run the web-admin dev server: `cd sensei/web-admin && npm install && npm run start`
 3. Visit the admin using port 3001: `http://localhost:3001/admin/nodes`
 

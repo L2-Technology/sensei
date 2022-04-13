@@ -6,12 +6,13 @@ import copy from "copy-to-clipboard";
 import { useState } from "react";
 import StartNodeForm from "../components/StartNodeForm";
 import { useModal } from "../../contexts/modal";
-import { PlayIcon, StopIcon } from "@heroicons/react/outline";
+import { PlayIcon, StopIcon, DotsHorizontalIcon } from "@heroicons/react/outline";
 import { useConfirm } from "../../contexts/confirm";
 import adminStopNode from "../mutations/adminStopNode";
 import { useQueryClient } from "react-query";
 import { Link } from "react-router-dom";
 import { Node } from "@l2-technology/sensei-client"
+import Dropdown from "../../components/layout/app/Dropdown";
 
 const SimpleColumn = ({ value, className }) => {
   return (
@@ -52,28 +53,28 @@ const ActionsColumn = ({ value, node, className }) => {
     });
   };
 
+  const actionItems = [
+    {
+      label: node.status === "Stopped" ? "play" : "stop",
+      icon: node.status === "Stopped" ? <PlayIcon className="w-6" /> : <StopIcon className="w-6" /> ,
+      onClick: node.status === "Stopped" ? startNodeClicked : stopNodeClicked ,
+      className: node.status === "Stopped" ? "text-green-400" : "text-yellow-400",
+    },
+    {
+      label: "open channel",
+      icon: <PlusCircleIcon className="w-5" />,
+      path: `/admin/channels/open?connection=${node.pubkey}@127.0.0.1:${node.listenPort}`,
+    }
+  ]
+
   return (
     <td
       className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
-      {node.status === "Stopped" && (
-        <PlayIcon
-          className="inline-block h-6 cursor-pointer"
-          onClick={startNodeClicked}
-        />
-      )}
-      {node.status === "Running" && (
-        <StopIcon
-          className="inline-block h-6 cursor-pointer"
-          onClick={stopNodeClicked}
-        />
-      )}
-
-      <Link
-        to={`/admin/channels/open?connection=${node.pubkey}@127.0.0.1:${node.listenPort}`}
-      >
-        <PlusCircleIcon className="inline-block h-6 cursor-pointer" />
-      </Link>
+    <Dropdown
+        items={actionItems}
+        button={<DotsHorizontalIcon className="w-6" />}
+      />
     </td>
   );
 };
@@ -141,7 +142,7 @@ const NodeRow = ({ result, extraClass, attributes }) => {
   };
 
   return (
-    <tr className={`border-b border-plum-200 ${extraClass}`}>
+    <tr className={`${extraClass}`}>
       {attributes.map(({ key, label, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
@@ -228,6 +229,7 @@ const NodesListCard = () => {
       hasHeader
       itemsPerPage={5}
       RowComponent={NodeRow}
+      striped={true}
     />
   );
 };
