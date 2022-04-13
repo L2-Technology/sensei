@@ -77,7 +77,7 @@ const NewTokenForm = () => {
         }
       }}
     >
-      <Input label="Name" name="name" />
+      <Input autoFocus label="Name" name="name" />
       <Select label="Scope" name="scope" options={scopeOptions} />
       <Select label="Expiration" name="expiresAt" options={expirationOptions} />
       <Select label="Usage Limit" name="singleUse" options={singleUseOptions} />

@@ -6,17 +6,19 @@ import { ClipboardCopyIcon, PlusCircleIcon } from "@heroicons/react/outline";
 import copy from "copy-to-clipboard";
 import { useState } from "react";
 import { useModal } from "../../contexts/modal";
-import { TrashIcon } from "@heroicons/react/outline";
+import { TrashIcon,DotsHorizontalIcon } from "@heroicons/react/outline";
 import { useConfirm } from "../../contexts/confirm";
 import { useQueryClient } from "react-query";
 import { Link } from "react-router-dom";
 import { AccessToken } from "@l2-technology/sensei-client";
 import formatDistanceToNow from "date-fns/formatDistanceToNow";
+import Dropdown from "src/components/layout/app/Dropdown";
+
 
 const SimpleColumn = ({ value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value}
     </td>
@@ -40,13 +42,22 @@ const ActionsColumn = ({ value, token, className }) => {
     });
   };
 
+   const actionItems = [
+    {
+      label:  "delete",
+      icon:  <TrashIcon className="w-6" /> ,
+      onClick:  deleteTokenClicked ,
+      className:  "text-pink-500",
+    }
+  ]
+
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
-      <TrashIcon
-        className="inline-block h-6 cursor-pointer"
-        onClick={deleteTokenClicked}
+      <Dropdown
+        items={actionItems}
+        button={<DotsHorizontalIcon className="w-6" />}
       />
     </td>
   );
@@ -59,7 +70,7 @@ const StatusColumn = ({ token, value, className }) => {
 
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {expired && (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-200 text-red-800">
@@ -83,7 +94,7 @@ const StatusColumn = ({ token, value, className }) => {
 const SingleUseColumn = ({ value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value && <span className="">Single</span>}
       {!value && <span className="">Unlimited</span>}
@@ -104,7 +115,7 @@ const TokenColumn = ({ token, value, className }) => {
 
   return copied ? (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       Copied! &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
@@ -116,7 +127,7 @@ const TokenColumn = ({ token, value, className }) => {
   ) : (
     <td
       onClick={copyClicked}
-      className={`group cursor-pointer px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`group cursor-pointer p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {truncateMiddle(value, 10)}{" "}
       <span className="inline-block group-hover:hidden">
@@ -185,6 +196,7 @@ const TokensListCard = () => {
     {
       key: "actions",
       label: "Actions",
+      className:"text-center"
     },
   ];
 

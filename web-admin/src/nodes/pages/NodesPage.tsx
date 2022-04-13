@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 
 const NodesPage = () => {
   return (
-    <div className="py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="py-5">
+      <div className="">
         <div className="pb-5 border-b border-plum-200 sm:flex sm:items-center sm:justify-between">
           <h3 className="text-2xl leading-6 font-medium text-light-plum">Nodes</h3>
           <div className="mt-3 sm:mt-0 sm:ml-4">
@@ -17,8 +17,8 @@ const NodesPage = () => {
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
-        <div className="py-4">
+      <div className="py-4">
+        <div className="bg-gray-accent2 -mx-4 sm:mx-0 sm:rounded-xl overflow-x-auto">
           <NodesListCard />
         </div>
       </div>

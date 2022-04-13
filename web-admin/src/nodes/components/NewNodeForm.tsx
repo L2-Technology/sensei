@@ -28,7 +28,7 @@ const NewNodeForm = () => {
         }
       }}
     >
-      <Input label="Username" name="username" />
+      <Input autoFocus label="Username" name="username" />
       <Input label="Alias" name="alias" />
       <Input label="Passphrase" name="passphrase" type="password" />
     </Form>

@@ -46,6 +46,7 @@ const OpenChannelForm = () => {
       }}
     >
       <Input
+        autoFocus
         label="Node Connection Info (pubkey@host:port)"
         name="node_connection_string"
       />

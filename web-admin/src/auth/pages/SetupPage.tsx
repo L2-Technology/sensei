@@ -1,13 +1,18 @@
+import React from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../../contexts/auth";
 import logo from "../../images/Icon-Lightning@2x.png";
+import Spinner from "src/components/Spinner";
+
 
 const UsernamePassphraseStep = () => {
+  let [submitting, setSubmitting] = React.useState<boolean>(false);
   let navigate = useNavigate();
   let auth = useAuth();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSubmitting(true)
 
     let formData = new FormData(event.currentTarget);
     let username = formData.get("username") as string;
@@ -20,6 +25,7 @@ const UsernamePassphraseStep = () => {
       passphrase,
       true
     );
+    setSubmitting(false)
     await navigate("/admin/chain");
   }
 
@@ -36,10 +42,10 @@ const UsernamePassphraseStep = () => {
           </div>
           <form
             onSubmit={handleSubmit}
-            className="space-y-6"
             action="#"
             method="POST"
           >
+           <fieldset disabled={submitting} className="space-y-6">
             <div>
               <label
                 htmlFor="username"
@@ -49,7 +55,7 @@ const UsernamePassphraseStep = () => {
               </label>
               <div className="mt-1">
                 <input
-                autoFocus
+                  autoFocus
                   id="username"
                   name="username"
                   type="text"
@@ -97,11 +103,13 @@ const UsernamePassphraseStep = () => {
             <div>
               <button
                 type="submit"
+                disabled={submitting}
                 className="btn-orange w-full justify-center"
               >
-                Setup
+                {submitting ? <Spinner/> : "Setup"}
               </button>
             </div>
+            </fieldset>
           </form>
         </div>
       </div>

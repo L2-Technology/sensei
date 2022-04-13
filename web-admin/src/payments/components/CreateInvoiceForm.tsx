@@ -15,7 +15,7 @@ const NewInvoiceNotification = ({ invoice }) => {
   const { hideNotification } = useNotification();
 
   return (
-    <>
+    <div className="">
       <p className="text-sm font-medium text-gray-50">Invoice Created</p>
       <p className="mt-1 text-sm text-light-plum">
         Easily copy invoice to clipboard or dismiss and find it later below
@@ -27,19 +27,19 @@ const NewInvoiceNotification = ({ invoice }) => {
             copy(invoice);
             hideNotification();
           }}
-          className="bg-plum-50 p-1 text-light-plum rounded-md text-sm font-medium  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="btn-ghost text-sm"
         >
           Copy
         </button>
         <button
           type="button"
           onClick={hideNotification}
-          className="bg-plum-50 p-1 text-light-plum  rounded-md text-sm font-medium  hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="btn-ghost text-sm"
         >
           Dismiss
         </button>
       </div>
-    </>
+    </div>
   );
 };
 
@@ -72,7 +72,7 @@ const CreateInvoiceForm = () => {
         }
       }}
     >
-      <Input label="Description" name="description" />
+      <Input autoFocus label="Description" name="description" />
       <Input label="Amount Millisats" name="amountMillisats" type="number" />
     </Form>
   );

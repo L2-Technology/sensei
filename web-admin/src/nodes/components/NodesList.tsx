@@ -12,12 +12,12 @@ import adminStopNode from "../mutations/adminStopNode";
 import { useQueryClient } from "react-query";
 import { Link } from "react-router-dom";
 import { Node } from "@l2-technology/sensei-client"
-import Dropdown from "../../components/layout/app/Dropdown";
+import Dropdown from "src/components/layout/app/Dropdown";
 
 const SimpleColumn = ({ value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value}
     </td>
@@ -69,7 +69,7 @@ const ActionsColumn = ({ value, node, className }) => {
 
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
     <Dropdown
         items={actionItems}
@@ -80,20 +80,23 @@ const ActionsColumn = ({ value, node, className }) => {
 };
 
 const StatusColumn = ({ value, className }) => {
+
+  let dot = "bg-white";
+
+  if (value === "Running")
+    dot = "bg-gradient-to-br from-green-400 to-green-700";
+
+  if (value === "Stopped")
+    dot = "bg-gradient-to-br from-yellow-400 to-yellow-700";
+
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
-      {value === "Stopped" && (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-200 text-red-800">
-          Stopped
-        </span>
-      )}
-      {value === "Running" && (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          Running
-        </span>
-      )}
+    <div className="flex items-center justify-center md:justify-start">
+        <div className={`${dot} mr-2 h-4 w-4 rounded-full shadow-md`} />
+        <span className="capitalize hidden md:block">{value}</span>
+      </div>
     </td>
   );
 };
@@ -111,7 +114,7 @@ const ConnectionInfoColumn = ({ node, value, className }) => {
 
   return copied ? (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       Copied! &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
       &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
@@ -123,7 +126,7 @@ const ConnectionInfoColumn = ({ node, value, className }) => {
   ) : (
     <td
       onClick={copyClicked}
-      className={`group cursor-pointer px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`group cursor-pointer p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value}{" "}
       <span className="inline-block group-hover:hidden">
@@ -191,6 +194,7 @@ const NodesListCard = () => {
     {
       key: "actions",
       label: "Actions",
+      className:"text-center"
     },
   ];
 

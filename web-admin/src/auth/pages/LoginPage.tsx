@@ -1,9 +1,9 @@
 import React from "react";
 import { useNavigate, useLocation } from "react-router";
 import { AlertMsg } from "src/components/ErrorAlert";
+import Spinner from "src/components/Spinner";
 import { useAuth } from "../../contexts/auth";
 import logo from "../../images/Icon-Lightning@2x.png";
-
 
 const LoginPage = () => {
   let [submitting, setSubmitting] = React.useState<boolean>(false);
@@ -43,73 +43,70 @@ const LoginPage = () => {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-plum-100 text-light-plum py-8 px-4 shadow sm:rounded-xl sm:px-10">
           <div className="sm:mx-auto sm:w-full sm:max-w-md">
-            
-              <img src={logo} alt="sensei logo" className="h-20 mx-auto" />
-            
+            <img src={logo} alt="sensei logo" className="h-20 mx-auto" />
 
             <h2 className="mt-6 mb-6 text-center text-2xl font-bold text-gray-100">
               Login to your node
             </h2>
           </div>
 
-          {submitError && <AlertMsg  type="error" className="-mt-2 mb-2" >{submitError}</AlertMsg>}
+          {submitError && (
+            <AlertMsg type="error" className="-mt-2 mb-2">
+              {submitError}
+            </AlertMsg>
+          )}
 
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-6"
-            action="#"
-            method="POST"
-          >
-            <div>
-              <label
-                htmlFor="username"
-                className={`block text-sm font-medium ${
-                  submitError ? "text-red-400" : "text-light-plum"
-                }`}
-              >
-                Username
-              </label>
-              <div className="mt-1">
-                <input
-                autoFocus
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  className={`${ submitError ? "!border-red-400" : "" } input`}
-                />
+          <form onSubmit={handleSubmit} action="#" method="POST">
+            <fieldset disabled={submitting} className="space-y-6">
+              <div>
+                <label
+                  htmlFor="username"
+                  className={`block text-sm font-medium ${
+                    submitError ? "text-red-400" : "text-light-plum"
+                  }`}
+                >
+                  Username
+                </label>
+                <div className="mt-1">
+                  <input
+                    autoFocus
+                    id="username"
+                    name="username"
+                    type="text"
+                    required
+                    className={`${submitError ? "!border-red-400" : ""} input`}
+                  />
+                </div>
               </div>
-            </div>
-            <div>
-              <label
-                htmlFor="passphrase"
-                className={`block text-sm font-medium ${
-                  submitError ? "text-red-400" : "text-light-plum"
-                }`}
-              >
-                Passphrase
-              </label>
-              <div className="mt-1">
-                <input
-                  id="passphrase"
-                  name="passphrase"
-                  type="password"
-                  required
-                  className={`${ submitError ? "!border-red-400" : "" } input`}
-                />
+              <div>
+                <label
+                  htmlFor="passphrase"
+                  className={`block text-sm font-medium ${
+                    submitError ? "text-red-400" : "text-light-plum"
+                  }`}
+                >
+                  Passphrase
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="passphrase"
+                    name="passphrase"
+                    type="password"
+                    required
+                    className={`${submitError ? "!border-red-400" : ""} input`}
+                  />
+                </div>
               </div>
-            </div>
 
-            <div>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="btn-orange w-full justify-center"
-              >
-                {submitting && <span>...</span>}
-                {!submitting && <span>Login</span>}
-              </button>
-            </div>
+              <div>
+                <button
+                  type="submit"
+                  className="btn-orange w-full justify-center"
+                >
+                  {submitting ? <Spinner /> : "Login"}
+                </button>
+              </div>
+            </fieldset>
           </form>
         </div>
       </div>

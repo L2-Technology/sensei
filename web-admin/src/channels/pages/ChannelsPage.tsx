@@ -4,7 +4,7 @@ import ChannelsList from "../components/ChannelsList";
 const ChannelsPage = () => {
   return (
     <div className="py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="">
         <div className="pb-5 border-b border-plum-200 sm:flex sm:items-center sm:justify-between">
           <h3 className="text-2xl leading-6 font-medium text-light-plum">
             Channels
@@ -19,8 +19,8 @@ const ChannelsPage = () => {
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
-        <div className="py-4">
+      <div className="py-4">
+        <div className="bg-gray-accent2 -mx-4 sm:mx-0 sm:rounded-xl overflow-x-auto">
           <ChannelsList />
         </div>
       </div>
