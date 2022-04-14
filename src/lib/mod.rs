@@ -8,3 +8,4 @@
 // licenses.
 
 pub mod network_graph;
+pub mod persist;

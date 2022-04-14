@@ -1075,8 +1075,6 @@ dependencies = [
 [[package]]
 name = "lightning"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "580647f97f8e6d138ad724027c8ca9b890b1001b05374c270bbee4c10309b641"
 dependencies = [
  "bitcoin",
  "secp256k1",
@@ -1085,8 +1083,6 @@ dependencies = [
 [[package]]
 name = "lightning-background-processor"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a9c8c4c6e4b9652287d8ce2fc3a168861fdb40eb68793567be5ed77ecce6eb"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -1096,11 +1092,10 @@ dependencies = [
 [[package]]
 name = "lightning-block-sync"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8731c4f20bd4e0d588db6e849ac2114674a112cdfda65354cf9b4cf6018878a"
 dependencies = [
  "bitcoin",
  "chunked_transfer",
+ "futures",
  "lightning",
  "serde",
  "serde_json",
@@ -1109,8 +1104,6 @@ dependencies = [
 [[package]]
 name = "lightning-invoice"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f069b6eb46d7639d07977d14dc7d9a40d9d8bc5ac2b47f1924318fec13edd5c0"
 dependencies = [
  "bech32",
  "bitcoin_hashes",
@@ -1122,8 +1115,6 @@ dependencies = [
 [[package]]
 name = "lightning-net-tokio"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85119f898ac097d46c17a0ad7dda0f6ef6b923e5bcb4d1a5e39d33c3c68aa7bc"
 dependencies = [
  "bitcoin",
  "lightning",
@@ -1133,8 +1124,6 @@ dependencies = [
 [[package]]
 name = "lightning-persister"
 version = "0.0.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f8aac01a61b302f3928adf235660c38aa5c246113fc7d19cc4cb60b5f53b7ae"
 dependencies = [
  "bitcoin",
  "libc",

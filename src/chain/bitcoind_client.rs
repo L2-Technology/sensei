@@ -74,29 +74,29 @@ pub enum Target {
 
 impl BlockSource for &BitcoindClient {
     fn get_header<'a>(
-        &'a mut self,
+        &'a self,
         header_hash: &'a BlockHash,
         height_hint: Option<u32>,
     ) -> AsyncBlockSourceResult<'a, BlockHeaderData> {
         Box::pin(async move {
-            let mut rpc = self.bitcoind_rpc_client.lock().await;
+            let rpc = self.bitcoind_rpc_client.lock().await;
             rpc.get_header(header_hash, height_hint).await
         })
     }
 
     fn get_block<'a>(
-        &'a mut self,
+        &'a self,
         header_hash: &'a BlockHash,
     ) -> AsyncBlockSourceResult<'a, Block> {
         Box::pin(async move {
-            let mut rpc = self.bitcoind_rpc_client.lock().await;
+            let rpc = self.bitcoind_rpc_client.lock().await;
             rpc.get_block(header_hash).await
         })
     }
 
     fn get_best_block(&mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
         Box::pin(async move {
-            let mut rpc = self.bitcoind_rpc_client.lock().await;
+            let rpc = self.bitcoind_rpc_client.lock().await;
             rpc.get_best_block().await
         })
     }

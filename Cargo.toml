@@ -12,12 +12,12 @@ name = "senseid"
 path = "src/main.rs"
 
 [dependencies]
-lightning = { version = "0.0.106", features = ["max_level_trace"] }
-lightning-block-sync = { version = "0.0.106", features = [ "rpc-client" ] }
-lightning-invoice = { version = "0.14.0" }
-lightning-net-tokio = { version = "0.0.106" }
-lightning-persister = { version = "0.0.106" }
-lightning-background-processor = { version = "0.0.106" }
+lightning = { version = "0.0.106", features = ["max_level_trace"], path = "/Users/developer/Development/rust-lightning/lightning" }
+lightning-block-sync = { version = "0.0.106", features = [ "rpc-client" ], path = "/Users/developer/Development/rust-lightning/lightning-block-sync" }
+lightning-invoice = { version = "0.14.0", path = "/Users/developer/Development/rust-lightning/lightning-invoice" }
+lightning-net-tokio = { version = "0.0.106", path = "/Users/developer/Development/rust-lightning/lightning-net-tokio" }
+lightning-persister = { version = "0.0.106", path = "/Users/developer/Development/rust-lightning/lightning-persister" }
+lightning-background-processor = { version = "0.0.106", path = "/Users/developer/Development/rust-lightning/lightning-background-processor" }
 
 base64 = "0.13.0"
 bitcoin = "0.27"
