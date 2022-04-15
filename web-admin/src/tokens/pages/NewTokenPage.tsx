@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 const NewTokenPage = () => {
   return (
     <div className="py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="">
         <div className="pb-5 border-b border-gray-400 sm:flex sm:items-center sm:justify-between">
           <h3 className="text-2xl leading-6 font-medium text-light-plum">
             Create Token
@@ -20,7 +20,7 @@ const NewTokenPage = () => {
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
+      <div className="">
         <div className="py-4">
           <div className="bg-plum-100 text-light-plum shadow p-4 rounded-lg">
             <NewTokenForm />

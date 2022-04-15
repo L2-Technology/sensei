@@ -48,10 +48,10 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
             disabled={submitting}
             {...props}
             ref={ref}
-            className={`form-input block rounded-xl w-full bg-plum text-light-plum transition duration-150 ease-in-out sm:text-sm sm:leading-5 flex-1 ${
+            className={`form-input block border rounded-xl w-full bg-plum text-light-plum transition duration-150 ease-in-out sm:text-sm sm:leading-5 flex-1 ${
               hasError
-                ? "border-red-300 text-red-900 placeholder-red-300 focus:border-red-300 focus:ring-red"
-                : "border-gray-plum-100 focus:border-orange focus:ring-orange"
+                ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                : "border-gray-plum-100 focus:border-orange focus:border-orange focus:ring-orange"
             } ${extraClass}`}
           ></textarea>
         </div>

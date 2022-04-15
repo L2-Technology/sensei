@@ -12,7 +12,7 @@ const NotificationContainer = () => {
       {/* Global notification live region, render this permanently at the end of the document */}
       <div
         aria-live="assertive"
-        className="fixed inset-0 flex items-end px-4 py-6 pointer-events-none sm:p-6 sm:items-start"
+        className="fixed inset-0 z-[5] flex items-end px-4 py-6 pointer-events-none sm:p-6 sm:items-start"
       >
         <div className="w-full flex flex-col items-center space-y-4 sm:items-end">
           <Transition
@@ -37,7 +37,7 @@ const NotificationContainer = () => {
                   <div className="ml-3 w-0 flex-1 pt-0.5">{component}</div>
                   <div className="ml-4 flex-shrink-0 flex">
                     <button
-                      className="p-1 bg-plum-100 rounded-md inline-flex text-light-plum hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                      className="p-1 rounded-xl inline-flex text-light-plum focus:!outline-none hover:text-white focus:outline-none focus:ring-2 focus:ring-orange"
                       onClick={hideNotification}
                     >
                       <span className="sr-only">Close</span>

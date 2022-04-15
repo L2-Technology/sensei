@@ -52,7 +52,7 @@ const NoChannels = () => {
 const StatusColumn = ({ value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value === "pending_confirmations" && (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -76,7 +76,7 @@ const StatusColumn = ({ value, className }) => {
 const SimpleColumn = ({ channel, value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value}
     </td>
@@ -86,7 +86,7 @@ const SimpleColumn = ({ channel, value, className }) => {
 const AmountColumn = ({ channel, value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {new Intl.NumberFormat().format(value / 1000)}
     </td>
@@ -98,7 +98,7 @@ const VisibilityColumn = ({ channel, value, className }) => {
   let displayValue = value ? "Public" : "Private";
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       <Icon className="w-4 inline-block" /> {displayValue}
     </td>
@@ -137,7 +137,7 @@ const ActionsColumn = ({ value, channel, className }) => {
 
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       <StopIcon
         className="inline-block h-6 cursor-pointer"
@@ -155,7 +155,7 @@ const AliasColumn = ({ channel, value, className }) => {
   let displayValue = value || "Unknown";
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {displayValue}
     </td>

@@ -16,7 +16,7 @@ import { TransactionDetails } from "@l2-technology/sensei-client";
 const StatusColumn = ({ value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value === "unconfirmed" && (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
@@ -36,7 +36,7 @@ const StatusColumn = ({ value, className }) => {
 const SimpleColumn = ({ transaction, value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {value}
     </td>
@@ -46,7 +46,7 @@ const SimpleColumn = ({ transaction, value, className }) => {
 const AmountColumn = ({ transaction, value, className }) => {
   return (
     <td
-      className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
       {new Intl.NumberFormat().format(value)}
     </td>

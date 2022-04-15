@@ -43,7 +43,7 @@ export const SimpleRow = ({ result, extraClass, attributes }) => {
         return (
           <td
             key={key}
-            className={`px-6 py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
+            className={`p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
           >
             {value}
           </td>
@@ -60,7 +60,7 @@ export const ResultRow = ({
   striped,
   RowComponent,
 }) => {
-  const bgColor = striped ? "even:bg-transparent odd:bg-gray-accent3" : "";
+  const bgColor = striped ? "even:bg-gray-accent2 odd:bg-gray-accent3" : "";
   const linkClass = result.link ? "cursor-pointer hover:bg-plum-50" : "";
 
   if (result.link) {
@@ -112,7 +112,7 @@ export const SimpleTable = ({
               return (
                 <th
                   key={key}
-                  className={`px-6 py-3 bg-plum-100 text-left text-xs leading-4 font-bold text-plum-light uppercase tracking-wider ${className}`}
+                  className={`p-3 md:px-6 md:py-4 bg-plum-100 text-left text-xs leading-4 font-bold text-plum-light uppercase tracking-wider ${className}`}
                 >
                   {label}
                 </th>
@@ -274,9 +274,9 @@ const SimpleSearchableTable = <T extends object>({
 
   return (
     <div className={`flex flex-col ${className}`}>
-      <div className="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-        <div className="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
-          <div className="shadow overflow-hidden bg-gray-accent2 sm:rounded-xl">
+      <div className="">
+        <div className="inline-block min-w-full py-2 align-middle">
+          <div className="">
             <SearchBar
               query={searchTerm}
               setQuery={setSearchTerm}
