@@ -419,7 +419,7 @@ impl AdminDatabase {
         let mut statement = self.connection.prepare("
             SELECT nodes.id, nodes.external_id, nodes.created_at, nodes.updated_at, nodes.username, nodes.alias, nodes.role, nodes.network, nodes.listen_addr, nodes.listen_port, nodes.pubkey, nodes.status
             FROM nodes
-            WHERE nodes.role=1 AND (instr(nodes.alias, :query) > 0 OR instr(nodes.username, :query) > 0 OR instr(nodes.pubkey, :query) > 0)
+            WHERE (instr(nodes.alias, :query) > 0 OR instr(nodes.username, :query) > 0 OR instr(nodes.pubkey, :query) > 0)
             ORDER BY nodes.updated_at DESC
             LIMIT :take
             OFFSET :offset
