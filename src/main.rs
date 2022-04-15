@@ -22,7 +22,8 @@ mod node;
 mod services;
 mod utils;
 
-use crate::config::SenseiConfig;
+use crate::chain::bitcoind_client::BitcoindClient;
+use crate::{config::SenseiConfig, chain::manager::SenseiChainManager};
 use crate::database::admin::AdminDatabase;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
@@ -159,11 +160,31 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
     let node_directory = Arc::new(Mutex::new(HashMap::new()));
 
+    let bitcoind_client = Arc::new(
+        BitcoindClient::new(
+            config.bitcoind_rpc_host.clone(),
+            config.bitcoind_rpc_port,
+            config.bitcoind_rpc_username.clone(),
+            config.bitcoind_rpc_password.clone(),
+            tokio::runtime::Handle::current(),
+        )
+        .await
+        .expect("invalid bitcoind rpc config"),
+    );
+
+    let chain_manager = Arc::new(SenseiChainManager::new(
+        config.clone(),
+        bitcoind_client.clone(),
+        bitcoind_client.clone(),
+        bitcoind_client
+    ).await.unwrap());
+
     let admin_service = AdminService::new(
         &sensei_dir,
         config.clone(),
         node_directory.clone(),
         database,
+        chain_manager
     )
     .await;
 

@@ -73,7 +73,7 @@ impl EventHandler for LightningNodeEventHandler {
                 let mut tx_builder = wallet.build_tx();
                 let _fee_sats_per_1000_wu = self
                     .chain_manager
-                    .bitcoind_client
+                    .fee_estimator
                     .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 
                 // TODO: is this the correct conversion??
@@ -273,7 +273,7 @@ impl EventHandler for LightningNodeEventHandler {
 
                 let tx_feerate = self
                     .chain_manager
-                    .bitcoind_client
+                    .fee_estimator
                     .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 
                 let spending_tx = self
@@ -288,7 +288,7 @@ impl EventHandler for LightningNodeEventHandler {
                     .unwrap();
 
                 self.chain_manager
-                    .bitcoind_client
+                    .broadcaster
                     .broadcast_transaction(&spending_tx);
             }
             Event::ChannelClosed {

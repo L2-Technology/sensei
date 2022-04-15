@@ -8,6 +8,7 @@
 // licenses.
 
 use super::{PaginationRequest, PaginationResponse};
+use crate::chain::bitcoind_client::BitcoindClient;
 use crate::chain::manager::SenseiChainManager;
 use crate::database::admin::AccessToken;
 use crate::database::{
@@ -136,13 +137,14 @@ impl AdminService {
         config: SenseiConfig,
         node_directory: NodeDirectory,
         database: AdminDatabase,
+        chain_manager: Arc<SenseiChainManager>
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
             config: Arc::new(config.clone()),
             node_directory,
             database: Arc::new(Mutex::new(database)),
-            chain_manager: Arc::new(SenseiChainManager::new(config).await.unwrap()),
+            chain_manager,
         }
     }
 }

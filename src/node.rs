@@ -408,11 +408,11 @@ impl LightningNode {
         let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
 
         let fee_estimator = Arc::new(SenseiFeeEstimator {
-            fee_estimator: chain_manager.bitcoind_client.clone(),
+            fee_estimator: chain_manager.fee_estimator.clone()
         });
 
         let broadcaster = Arc::new(SenseiBroadcaster {
-            broadcaster: chain_manager.bitcoind_client.clone(),
+            broadcaster: chain_manager.broadcaster.clone(),
             listener_database: listener_database.clone(),
         });
 
