@@ -371,7 +371,6 @@ impl LightningNode {
         let mut node_database = NodeDatabase::new(config.node_database_path());
 
         let network = config.network;
-        let channel_manager_path = config.channel_manager_path();
         let admin_macaroon_path = config.admin_macaroon_path();
 
         let seed =
@@ -588,7 +587,6 @@ impl LightningNode {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
-        let scorer_path = config.scorer_path();
         let scorer = Arc::new(Mutex::new(persister.read_scorer(Arc::clone(&network_graph))));
 
         let router = DefaultRouter::new(
@@ -680,7 +678,6 @@ impl LightningNode {
             }
         }));
 
-        let scorer_path = self.config.scorer_path();
         let scorer_persister = Arc::clone(&self.persister);
         let scorer_persist = Arc::clone(&self.scorer);
 
@@ -714,7 +711,6 @@ impl LightningNode {
 
         // Reconnect to channel peers if possible.
 
-        let channel_peer_data_path = config.channel_peer_data_path();
         let channel_manager_reconnect = self.channel_manager.clone();
         let peer_manager_reconnect = self.peer_manager.clone();
         let persister_peer = self.persister.clone();

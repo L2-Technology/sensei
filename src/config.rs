@@ -134,19 +134,4 @@ impl LightningNodeConfig {
     pub fn admin_macaroon_path(&self) -> String {
         format!("{}/admin.macaroon", self.data_dir())
     }
-    pub fn seed_path(&self) -> String {
-        format!("{}/seed", self.data_dir())
-    }
-    pub fn channel_manager_path(&self) -> String {
-        format!("{}/manager", self.data_dir())
-    }
-    pub fn network_graph_path(&self) -> String {
-        format!("{}/network_graph", self.data_dir())
-    }
-    pub fn scorer_path(&self) -> String {
-        format!("{}/scorer", self.data_dir())
-    }
-    pub fn channel_peer_data_path(&self) -> String {
-        format!("{}/channel_peer_data", self.data_dir())
-    }
 }
