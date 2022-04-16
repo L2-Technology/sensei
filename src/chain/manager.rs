@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{sync::{Arc, Mutex, Condvar, atomic::{AtomicBool, Ordering}}, time::Duration};
 
 use crate::{
     config::SenseiConfig,
@@ -20,6 +20,7 @@ pub struct SenseiChainManager {
     config: SenseiConfig,
     pub listener: Arc<SenseiChainListener>,
     pub bitcoind_client: Arc<BitcoindClient>,
+    poller_paused: Arc<AtomicBool>,
 }
 
 impl SenseiChainManager {
@@ -38,8 +39,12 @@ impl SenseiChainManager {
             .expect("invalid bitcoind rpc config"),
         );
         
+
+        let poller_paused = Arc::new(AtomicBool::new(false));
+
         let block_source_poller = bitcoind_client.clone();
         let listener_poller = listener.clone();
+        let poller_paused_poller = poller_paused.clone();
         tokio::spawn(async move {
             let derefed = &mut block_source_poller.deref();
             let mut cache = UnboundedCache::new();
@@ -48,7 +53,9 @@ impl SenseiChainManager {
             let mut spv_client =
                 SpvClient::new(chain_tip, chain_poller, &mut cache, listener_poller);
             loop {
-                spv_client.poll_best_tip().await.unwrap();
+                if !poller_paused_poller.load(Ordering::Relaxed) {
+                    let _tip = spv_client.poll_best_tip().await.unwrap();
+                }
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
         });
@@ -57,6 +64,7 @@ impl SenseiChainManager {
             config,
             listener,
             bitcoind_client,
+            poller_paused
         })
     }
 
@@ -78,12 +86,22 @@ impl SenseiChainManager {
 
     pub async fn keep_in_sync(
         &self,
+        synced_hash: BlockHash,
         channel_manager: Arc<ChannelManager>,
         chain_monitor: Arc<ChainMonitor>,
         listener_database: ListenerDatabase,
     ) -> Result<(), crate::error::Error> {
-        let chain_listener = (chain_monitor, channel_manager, listener_database);
-        self.listener.add_listener(chain_listener);
+        let listeners = vec![
+            (synced_hash, channel_manager.deref() as &(dyn Listen + Send + Sync)),
+            (synced_hash, chain_monitor.deref() as &(dyn Listen + Send + Sync)),
+            (synced_hash, &listener_database as &(dyn Listen + Send + Sync))
+        ];
+
+        self.poller_paused.store(true, Ordering::Relaxed);
+        // could skip this if synced_hash === current_tip
+        let _new_tip = self.synchronize_to_tip(listeners).await.unwrap();
+        self.listener.add_listener((chain_monitor, channel_manager, listener_database));
+        self.poller_paused.store(false, Ordering::Relaxed);
         Ok(())
     }
 
