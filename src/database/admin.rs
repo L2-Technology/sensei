@@ -404,7 +404,7 @@ impl AdminDatabase {
 
         let mut count_statement = self
             .connection
-            .prepare("SELECT COUNT(1) as cnt FROM nodes WHERE role=1 AND (instr(nodes.alias, :query) > 0 OR instr(nodes.username, :query) > 0 OR instr(nodes.pubkey, :query) > 0)")?;
+            .prepare("SELECT COUNT(1) as cnt FROM nodes WHERE (instr(nodes.alias, :query) > 0 OR instr(nodes.username, :query) > 0 OR instr(nodes.pubkey, :query) > 0)")?;
 
         let count = count_statement.query_row(
             named_params! {
