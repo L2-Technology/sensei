@@ -6,7 +6,8 @@ on:
 
 name: CD
 env:
-  BIN: sensei
+  CLI: senseicli
+  DAEMON: senseid
 
 jobs:
   # This job downloads and stores `cross` as an artifact, so that it can be
@@ -81,8 +82,10 @@ jobs:
       - run: bash ci/build.bash cargo ${{ matrix.target }} RELEASE
       - run: |
           cd ./target/${{ matrix.target }}/release/
-          7z a "${{ env.BIN }}.zip" "${{ env.BIN }}.exe"
-          mv "${{ env.BIN }}.zip" $GITHUB_WORKSPACE
+          7z a "${{ env.DAEMON }}.zip" "${{ env.DAEMON }}.exe"
+          mv "${{ env.DAEMON }}.zip" $GITHUB_WORKSPACE
+          7z a "${{ env.CLI }}.zip" "${{ env.CLI }}.exe"
+          mv "${{ env.CLI }}.zip" $GITHUB_WORKSPACE
         shell: bash
         # We're using using a fork of `actions/create-release` that detects
         # whether a release is already available or not first.
@@ -99,13 +102,23 @@ jobs:
           prerelease: false
 
       - uses: actions/upload-release-asset@v1
-        id: upload-release-asset
+        id: upload-cli-release-asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.BIN }}.zip
-          asset_name: ${{ env.BIN }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.zip
+          asset_path: ${{ env.CLI }}.zip
+          asset_name: ${{ env.CLI }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.zip
+          asset_content_type: application/zip
+
+      - uses: actions/upload-release-asset@v1
+        id: upload-daemon-release-asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.DAEMON }}.zip
+          asset_name: ${{ env.DAEMON }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.zip
           asset_content_type: application/zip
 
   macos:
@@ -160,7 +173,9 @@ jobs:
           args: --release --target ${{ matrix.target }}
           use-cross: ${{ matrix.os == 'ubuntu-latest' }}
 
-      - run: tar -czvf ${{ env.BIN }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.BIN }}
+      - run: tar -czvf ${{ env.CLI }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.CLI }}
+      - run: tar -czvf ${{ env.DAEMON }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.DAEMON }}
+
       - uses: XAMPPRocky/create-release@v1.0.2
         id: create_release
         env:
@@ -172,13 +187,23 @@ jobs:
           prerelease: false
 
       - uses: actions/upload-release-asset@v1
-        id: upload-release-asset
+        id: upload-cli-release-asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.BIN }}.tar.gz
-          asset_name: ${{ env.BIN }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.tar.gz
+          asset_path: ${{ env.CLI }}.tar.gz
+          asset_name: ${{ env.CLI }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.tar.gz
+          asset_content_type: application/gzip
+
+      - uses: actions/upload-release-asset@v1
+        id: upload-daemon-release-asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.DAEMON }}.tar.gz
+          asset_name: ${{ env.DAEMON }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.tar.gz
           asset_content_type: application/gzip
 
   linux:
@@ -247,7 +272,10 @@ jobs:
 
       - run: ci/set_rust_version.bash stable ${{ matrix.target }}
       - run: ci/build.bash /tmp/cross ${{ matrix.target }} RELEASE
-      - run: tar -czvf ${{ env.BIN }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.BIN }}
+
+      - run: tar -czvf ${{ env.CLI }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.CLI }}
+      - run: tar -czvf ${{ env.DAEMON }}.tar.gz --directory=target/${{ matrix.target }}/release ${{ env.DAEMON }}
+
       - uses: XAMPPRocky/create-release@v1.0.2
         id: create_release
         env:
@@ -258,13 +286,24 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Upload Release Asset
-        id: upload-release-asset
+      - name: Upload CLI Release Asset
+        id: upload-cli-release-asset
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.BIN }}.tar.gz
-          asset_name: ${{ env.BIN }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.tar.gz
+          asset_path: ${{ env.CLI }}.tar.gz
+          asset_name: ${{ env.CLI }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.tar.gz
+          asset_content_type: application/gzip
+
+      - name: Upload Daemon Release Asset
+        id: upload-daemon-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.DAEMON }}.tar.gz
+          asset_name: ${{ env.DAEMON }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.tar.gz
           asset_content_type: application/gzip
