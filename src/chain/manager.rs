@@ -1,4 +1,10 @@
-use std::{sync::{Arc, Mutex, Condvar, atomic::{AtomicBool, Ordering}}, time::Duration};
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
+    },
+    time::Duration,
+};
 
 use crate::{
     config::SenseiConfig,
@@ -6,9 +12,9 @@ use crate::{
 };
 use bitcoin::BlockHash;
 use lightning::chain::{BestBlock, Listen};
-use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use lightning_block_sync::SpvClient;
 use lightning_block_sync::{init, poll, UnboundedCache};
+use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use std::ops::Deref;
 
 use super::{
@@ -38,7 +44,6 @@ impl SenseiChainManager {
             .await
             .expect("invalid bitcoind rpc config"),
         );
-        
 
         let poller_paused = Arc::new(AtomicBool::new(false));
 
@@ -64,7 +69,7 @@ impl SenseiChainManager {
             config,
             listener,
             bitcoind_client,
-            poller_paused
+            poller_paused,
         })
     }
 
@@ -92,15 +97,25 @@ impl SenseiChainManager {
         listener_database: ListenerDatabase,
     ) -> Result<(), crate::error::Error> {
         let listeners = vec![
-            (synced_hash, channel_manager.deref() as &(dyn Listen + Send + Sync)),
-            (synced_hash, chain_monitor.deref() as &(dyn Listen + Send + Sync)),
-            (synced_hash, &listener_database as &(dyn Listen + Send + Sync))
+            (
+                synced_hash,
+                channel_manager.deref() as &(dyn Listen + Send + Sync),
+            ),
+            (
+                synced_hash,
+                chain_monitor.deref() as &(dyn Listen + Send + Sync),
+            ),
+            (
+                synced_hash,
+                &listener_database as &(dyn Listen + Send + Sync),
+            ),
         ];
 
         self.poller_paused.store(true, Ordering::Relaxed);
         // could skip this if synced_hash === current_tip
         let _new_tip = self.synchronize_to_tip(listeners).await.unwrap();
-        self.listener.add_listener((chain_monitor, channel_manager, listener_database));
+        self.listener
+            .add_listener((chain_monitor, channel_manager, listener_database));
         self.poller_paused.store(false, Ordering::Relaxed);
         Ok(())
     }
@@ -108,9 +123,6 @@ impl SenseiChainManager {
     pub async fn get_best_block(&self) -> Result<BestBlock, crate::error::Error> {
         let mut block_source = self.bitcoind_client.deref();
         let (latest_blockhash, latest_height) = block_source.get_best_block().await.unwrap();
-        Ok(BestBlock::new(
-            latest_blockhash,
-            latest_height.unwrap(),
-        ))
+        Ok(BestBlock::new(latest_blockhash, latest_height.unwrap()))
     }
 }

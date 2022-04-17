@@ -10,17 +10,21 @@
 use std::sync::Arc;
 
 pub use super::sensei::admin_server::{Admin, AdminServer};
-use super::{sensei::{
-    AdminStartNodeRequest, AdminStartNodeResponse, AdminStopNodeRequest, AdminStopNodeResponse,
-    CreateAdminRequest, CreateAdminResponse, CreateNodeRequest, CreateNodeResponse,
-    CreateTokenRequest, DeleteNodeRequest, DeleteNodeResponse, DeleteTokenRequest,
-    DeleteTokenResponse, GetStatusRequest, GetStatusResponse, ListNode, ListNodesRequest,
-    ListNodesResponse, ListTokensRequest, ListTokensResponse, StartAdminRequest,
-    StartAdminResponse, Token,
-}, utils::raw_macaroon_from_metadata};
+use super::{
+    sensei::{
+        AdminStartNodeRequest, AdminStartNodeResponse, AdminStopNodeRequest, AdminStopNodeResponse,
+        CreateAdminRequest, CreateAdminResponse, CreateNodeRequest, CreateNodeResponse,
+        CreateTokenRequest, DeleteNodeRequest, DeleteNodeResponse, DeleteTokenRequest,
+        DeleteTokenResponse, GetStatusRequest, GetStatusResponse, ListNode, ListNodesRequest,
+        ListNodesResponse, ListTokensRequest, ListTokensResponse, StartAdminRequest,
+        StartAdminResponse, Token,
+    },
+    utils::raw_macaroon_from_metadata,
+};
 use crate::{
     database::admin::AccessToken,
-    services::admin::{AdminRequest, AdminResponse}, utils,
+    services::admin::{AdminRequest, AdminResponse},
+    utils,
 };
 use tonic::{metadata::MetadataMap, Response, Status};
 

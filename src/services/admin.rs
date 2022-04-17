@@ -201,18 +201,16 @@ impl AdminService {
                                     username: Some(pubkey_node.username),
                                     role: Some(pubkey_node.role),
                                 })
-                            },
-                            None => {
-                                Ok(AdminResponse::GetStatus {
-                                    alias: None,
-                                    created: true,
-                                    running: false,
-                                    authenticated: false,
-                                    pubkey: None,
-                                    username: None,
-                                    role: None,
-                                })
                             }
+                            None => Ok(AdminResponse::GetStatus {
+                                alias: None,
+                                created: true,
+                                running: false,
+                                authenticated: false,
+                                pubkey: None,
+                                username: None,
+                                role: None,
+                            }),
                         }
                     }
                     None => Ok(AdminResponse::GetStatus {
@@ -553,12 +551,12 @@ impl AdminService {
         let entry = node_directory.entry(pubkey.clone());
 
         if let Entry::Occupied(entry) = entry {
-            let node_handle = entry.remove();  
-            
+            let node_handle = entry.remove();
+
             // Disconnect our peers and stop accepting new connections. This ensures we don't continue
-	        // updating our channel data after we've stopped the background processor.
+            // updating our channel data after we've stopped the background processor.
             node_handle.node.peer_manager.disconnect_all_peers();
-	        node_handle.node.stop_listen.store(true, Ordering::Release);
+            node_handle.node.stop_listen.store(true, Ordering::Release);
             let _res = node_handle.background_processor.stop();
             for handle in node_handle.handles {
                 handle.abort();

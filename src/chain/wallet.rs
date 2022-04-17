@@ -4,10 +4,10 @@ use bdk::database::BatchDatabase;
 use bdk::wallet::{AddressIndex, Wallet};
 use bdk::SignOptions;
 
+use crate::error::Error;
 use lightning::chain::chaininterface::BroadcasterInterface;
 use lightning::chain::chaininterface::{ConfirmationTarget, FeeEstimator};
 use std::sync::{Mutex, MutexGuard};
-use crate::error::Error;
 
 /// Lightning Wallet
 ///

@@ -11,16 +11,20 @@ use std::sync::Arc;
 
 pub use super::sensei::node_server::{Node, NodeServer};
 
-use super::{sensei::{
-    CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-    CreateInvoiceRequest, CreateInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse,
-    GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
-    InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, LabelPaymentRequest,
-    LabelPaymentResponse, ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest,
-    ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
-    OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
-    SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse,
-}, utils::raw_macaroon_from_metadata};
+use super::{
+    sensei::{
+        CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
+        CreateInvoiceRequest, CreateInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse,
+        GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
+        InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, LabelPaymentRequest,
+        LabelPaymentResponse, ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest,
+        ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
+        OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
+        SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest,
+        StopNodeResponse,
+    },
+    utils::raw_macaroon_from_metadata,
+};
 
 use crate::{
     services::{
