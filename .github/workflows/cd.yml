@@ -11,7 +11,7 @@ env:
 jobs:
   # This job downloads and stores `cross` as an artifact, so that it can be
   # re-downloaded across all of the jobs. Currently this copied pasted between
-  # `mean_bean_ci.yml` and `mean_bean_deploy.yml`. Make sure to update both places when making
+  # `ci.yml` and `deploy.yml`. Make sure to update both places when making
   # changes.
   install-cross:
     runs-on: ubuntu-latest
@@ -38,10 +38,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/setup-node@v3
+      - name: Get tag
+        id: tag
+        uses: dawidd6/action-get-tag@v1
+
+      - name: build web
+        uses: actions/setup-node@v3
         with:
           node-version: "16"
       - run: cd web-admin && npm install && CI=false npm run build
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-web-admin-artifact-${{steps.tag.outputs.tag}}
+          path: web-admin/build
 
   windows:
     runs-on: windows-latest
@@ -61,6 +72,11 @@ jobs:
         uses: dawidd6/action-get-tag@v1
 
       - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v3
+        with:
+          name: build-web-admin-artifact-${{steps.tag.outputs.tag}}
+          path: web-admin/build
+
       - run: bash ci/set_rust_version.bash stable ${{ matrix.target }}
       - run: bash ci/build.bash cargo ${{ matrix.target }} RELEASE
       - run: |
@@ -114,6 +130,11 @@ jobs:
 
       - name: Setup | Checkout
         uses: actions/checkout@v2
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: build-web-admin-artifact-${{steps.tag.outputs.tag}}
+          path: web-admin/build
 
       # Cache files between builds
       - name: Setup | Cache Cargo
@@ -213,6 +234,11 @@ jobs:
         uses: dawidd6/action-get-tag@v1
 
       - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v3
+        with:
+          name: build-web-admin-artifact-${{steps.tag.outputs.tag}}
+          path: web-admin/build
+
       - uses: actions/download-artifact@v1
         with:
           name: cross-linux-musl
