@@ -512,10 +512,12 @@ impl LightningNode {
             &listener_database as &(dyn chain::Listen + Send + Sync),
         ));
 
-        chain_manager
+        let tip = chain_manager
             .synchronize_to_tip(chain_listeners)
             .await
             .unwrap();
+
+        let synced_hash = tip.header.block_hash();
 
         for confirmable_monitor in bundled_channel_monitors.drain(..) {
             chain_monitor
@@ -524,6 +526,18 @@ impl LightningNode {
         }
 
         let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
+
+        // is it safe to start this now instead of in `start`
+        // need to better understand separation; will depend on actual creation and startup flows
+        let listener_database =
+            ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
+        let channel_manager_sync = channel_manager.clone();
+        let chain_monitor_sync = chain_monitor.clone();
+
+        chain_manager
+            .keep_in_sync(synced_hash, channel_manager_sync, chain_monitor_sync, listener_database)
+            .await
+            .unwrap();
 
         let network_graph = match network_graph {
             Some(network_graph) => network_graph,
@@ -640,18 +654,6 @@ impl LightningNode {
     pub async fn start(self) -> (Vec<JoinHandle<()>>, BackgroundProcessor) {
         let mut handles = vec![];
         let config = self.config.clone();
-
-        // is it safe to start this now instead of in `start`
-        // need to better understand separation; will depend on actual creation and startup flows
-        let listener_database =
-            ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
-        let channel_manager_sync = self.channel_manager.clone();
-        let chain_monitor_sync = self.chain_monitor.clone();
-
-        self.chain_manager
-            .keep_in_sync(channel_manager_sync, chain_monitor_sync, listener_database)
-            .await
-            .unwrap();
 
         let peer_manager_connection_handler = self.peer_manager.clone();
 
