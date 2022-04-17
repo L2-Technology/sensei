@@ -107,7 +107,7 @@ jobs:
         channel: [stable]
         target:
           # MSVC
-          - i686-pc-windows-msvc
+          # - i686-pc-windows-msvc
           - x86_64-pc-windows-msvc
           # GNU: You typically only need to test Windows GNU if you're
           # specifically targetting it, and it can cause issues with some
