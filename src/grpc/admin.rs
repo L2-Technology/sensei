@@ -393,9 +393,8 @@ impl Admin for AdminService {
     ) -> Result<tonic::Response<GetStatusResponse>, tonic::Status> {
         let macaroon_hex_string = raw_macaroon_from_metadata(request.metadata().clone())?;
 
-        let (_macaroon, session) =
-            utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
-                .map_err(|_e| tonic::Status::unauthenticated("invalid macaroon"))?;
+        let (_macaroon, session) = utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
+            .map_err(|_e| tonic::Status::unauthenticated("invalid macaroon"))?;
         let pubkey = session.pubkey.clone();
 
         let request = AdminRequest::GetStatus { pubkey };

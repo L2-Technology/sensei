@@ -373,9 +373,7 @@ pub async fn login(
                             .http_only(true)
                             .finish();
                         cookies.add(macaroon_cookie);
-                        let token_cookie = Cookie::build("token", token)
-                            .http_only(true)
-                            .finish();
+                        let token_cookie = Cookie::build("token", token).http_only(true).finish();
                         cookies.add(token_cookie);
                         Ok(Json(json!({
                             "pubkey": node.pubkey,
