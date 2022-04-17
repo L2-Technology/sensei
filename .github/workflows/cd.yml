@@ -34,9 +34,18 @@ jobs:
       matrix:
         platform: [linux-musl]
 
+  build-web-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+      - run: cd web-admin && npm install && CI=false npm run build
+
   windows:
     runs-on: windows-latest
-    needs: install-cross
+    needs: ["install-cross", "build-web-admin"]
     strategy:
       matrix:
         target:
@@ -85,6 +94,7 @@ jobs:
 
   macos:
     runs-on: macos-latest
+    needs: build-web-admin
     strategy:
       matrix:
         target:
