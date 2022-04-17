@@ -199,7 +199,7 @@ impl Listen for ListenerDatabase {
         }
 
         // delete all utxos from the deleted txs
-        if deleted_txids.len() > 0 {
+        if !deleted_txids.is_empty() {
             for utxo in database.iter_utxos().unwrap() {
                 if deleted_txids.contains(&utxo.outpoint.txid) {
                     database.del_utxo(&utxo.outpoint).unwrap();
@@ -230,8 +230,7 @@ pub(crate) trait DatabaseUtils: Database {
         D: FnOnce() -> Result<Option<Transaction>, bdk::Error>,
     {
         self.get_tx(txid, true)?
-            .map(|t| t.transaction)
-            .flatten()
+            .and_then(|t| t.transaction)
             .map_or_else(default, |t| Ok(Some(t)))
     }
 

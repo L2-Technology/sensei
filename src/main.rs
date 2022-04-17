@@ -35,7 +35,7 @@ use axum::{
     handler::Handler,
     http::StatusCode,
     response::{Html, IntoResponse, Response},
-    routing::{get},
+    routing::get,
     AddExtensionLayer, Router,
 };
 use clap::Parser;
@@ -90,7 +90,7 @@ struct SenseiArgs {
     #[clap(long, env = "BITCOIND_RPC_PASSWORD")]
     bitcoind_rpc_password: Option<String>,
     #[clap(long, env = "DEVELOPMENT_MODE")]
-    development_mode: Option<bool>
+    development_mode: Option<bool>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -167,21 +167,21 @@ async fn main() {
     let router = add_node_routes(router);
 
     let router = match args.development_mode {
-        Some(_development_mode) => {
-            router.layer(CorsLayer::new()
-            .allow_headers(vec![AUTHORIZATION, ACCEPT, COOKIE, CONTENT_TYPE])
-            .allow_credentials(true)
-            .allow_origin(Origin::list(vec!["http://localhost:3001".parse().unwrap()]))
-            .allow_methods(vec![
-                Method::GET,
-                Method::POST,
-                Method::OPTIONS,
-                Method::DELETE,
-                Method::PUT,
-                Method::PATCH,
-            ]))
-        } 
-        None => router
+        Some(_development_mode) => router.layer(
+            CorsLayer::new()
+                .allow_headers(vec![AUTHORIZATION, ACCEPT, COOKIE, CONTENT_TYPE])
+                .allow_credentials(true)
+                .allow_origin(Origin::list(vec!["http://localhost:3001".parse().unwrap()]))
+                .allow_methods(vec![
+                    Method::GET,
+                    Method::POST,
+                    Method::OPTIONS,
+                    Method::DELETE,
+                    Method::PUT,
+                    Method::PATCH,
+                ]),
+        ),
+        None => router,
     };
 
     let http_service = router

@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .required(true)
                         .index(2)
                         .help("alias used for the root lightning node"),
-                )
+                ),
         )
         .subcommand(App::new("start").about("unlock and start your sensei node"))
         .subcommand(App::new("listnodes").about("list all the lightning nodes"))
@@ -202,7 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let username = command_args.value_of("username").unwrap();
         let alias = command_args.value_of("alias").unwrap();
-       
+
         let mut passphrase = String::new();
         print!("set a passphrase: ");
         io::stdin().read_line(&mut passphrase)?;

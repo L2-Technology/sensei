@@ -28,15 +28,9 @@ impl TryInto<FeeResponse> for JsonResponse {
         let errored = !self.0["errors"].is_null();
         Ok(FeeResponse {
             errored,
-            feerate_sat_per_kw: match self.0["feerate"].as_f64() {
-                // Bitcoin Core gives us a feerate in BTC/KvB, which we need to convert to
-                // satoshis/KW. Thus, we first multiply by 10^8 to get satoshis, then divide by 4
-                // to convert virtual-bytes into weight units.
-                Some(feerate_btc_per_kvbyte) => {
-                    Some((feerate_btc_per_kvbyte * 100_000_000.0 / 4.0).round() as u32)
-                }
-                None => None,
-            },
+            feerate_sat_per_kw: self.0["feerate"].as_f64().map(|feerate_btc_per_kvbyte| {
+                (feerate_btc_per_kvbyte * 100_000_000.0 / 4.0).round() as u32
+            }),
         })
     }
 }
@@ -97,7 +91,7 @@ impl BlockSource for &BitcoindClient {
         })
     }
 
-    fn get_best_block<'a>(&'a mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
+    fn get_best_block(&mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
         Box::pin(async move {
             let mut rpc = self.bitcoind_rpc_client.lock().await;
             rpc.get_best_block().await
@@ -121,7 +115,7 @@ impl BitcoindClient {
             base64::encode(format!("{}:{}", rpc_user.clone(), rpc_password.clone()));
         let mut bitcoind_rpc_client = RpcClient::new(&rpc_credentials, http_endpoint)?;
         let _dummy = bitcoind_rpc_client
-            .call_method::<BlockchainInfo>("getblockchaininfo", &vec![])
+            .call_method::<BlockchainInfo>("getblockchaininfo", &[])
             .await
             .map_err(|_| {
                 std::io::Error::new(std::io::ErrorKind::PermissionDenied,
@@ -162,7 +156,7 @@ impl BitcoindClient {
                     let resp = rpc
                         .call_method::<FeeResponse>(
                             "estimatesmartfee",
-                            &vec![background_conf_target, background_estimate_mode],
+                            &[background_conf_target, background_estimate_mode],
                         )
                         .await
                         .unwrap();
@@ -179,7 +173,7 @@ impl BitcoindClient {
                     let resp = rpc
                         .call_method::<FeeResponse>(
                             "estimatesmartfee",
-                            &vec![normal_conf_target, normal_estimate_mode],
+                            &[normal_conf_target, normal_estimate_mode],
                         )
                         .await
                         .unwrap();
@@ -196,7 +190,7 @@ impl BitcoindClient {
                     let resp = rpc
                         .call_method::<FeeResponse>(
                             "estimatesmartfee",
-                            &vec![high_prio_conf_target, high_prio_estimate_mode],
+                            &[high_prio_conf_target, high_prio_estimate_mode],
                         )
                         .await
                         .unwrap();
@@ -242,7 +236,7 @@ impl BitcoindClient {
 
     pub async fn get_blockchain_info(&self) -> BlockchainInfo {
         let mut rpc = self.bitcoind_rpc_client.lock().await;
-        rpc.call_method::<BlockchainInfo>("getblockchaininfo", &vec![])
+        rpc.call_method::<BlockchainInfo>("getblockchaininfo", &[])
             .await
             .unwrap()
     }
@@ -279,7 +273,7 @@ impl BroadcasterInterface for BitcoindClient {
             // This may error due to RL calling `broadcast_transaction` with the same transaction
             // multiple times, but the error is safe to ignore.
             match rpc
-                .call_method::<Txid>("sendrawtransaction", &vec![tx_serialized])
+                .call_method::<Txid>("sendrawtransaction", &[tx_serialized])
                 .await
             {
                 Ok(_) => {}

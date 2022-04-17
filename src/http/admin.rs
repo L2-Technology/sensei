@@ -25,7 +25,7 @@ use crate::{
         admin::{AdminRequest, AdminResponse},
         PaginationRequest,
     },
-    RequestContext, utils,
+    utils, RequestContext,
 };
 
 use super::{auth_header::AuthHeader, utils::get_macaroon_hex_str_from_cookies_or_header};
@@ -186,7 +186,7 @@ pub async fn authenticate_request(
     cookies: &Cookies,
     token: Option<HeaderValue>,
 ) -> Result<bool, StatusCode> {
-    let token = get_token_from_cookies_or_header(&cookies, token)?;
+    let token = get_token_from_cookies_or_header(cookies, token)?;
 
     let access_token = {
         let mut database = request_context.admin_service.database.lock().await;
@@ -206,7 +206,7 @@ pub async fn authenticate_request(
                 Ok(false)
             }
         }
-        None => return Ok(false),
+        None => Ok(false),
     }
 }
 
@@ -231,7 +231,7 @@ pub async fn list_tokens(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "tokens/list", &cookies, token).await?;
@@ -253,7 +253,7 @@ pub async fn create_token(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "tokens/create", &cookies, token).await?;
@@ -279,7 +279,7 @@ pub async fn delete_token(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "tokens/delete", &cookies, token).await?;
@@ -305,7 +305,7 @@ pub async fn list_nodes(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/list", &cookies, token).await?;
@@ -365,7 +365,7 @@ pub async fn login(
                         })))
                     }
                     AdminResponse::StartAdmin {
-                        pubkey:_,
+                        pubkey: _,
                         macaroon,
                         token,
                     } => {
@@ -373,7 +373,7 @@ pub async fn login(
                             .http_only(true)
                             .finish();
                         cookies.add(macaroon_cookie);
-                        let token_cookie = Cookie::build("token", token.clone())
+                        let token_cookie = Cookie::build("token", token)
                             .http_only(true)
                             .finish();
                         cookies.add(token_cookie);
@@ -450,22 +450,18 @@ pub async fn init_sensei(
 pub async fn get_status(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let pubkey = {
         match get_macaroon_hex_str_from_cookies_or_header(&cookies, macaroon) {
-            Ok(macaroon_hex) => {
-                match utils::macaroon_with_session_from_hex_str(&macaroon_hex) {
-                    Ok((macaroon, session)) => {
-                        session.pubkey
-                    },
-                    Err(_) => String::from("")
-                }
+            Ok(macaroon_hex) => match utils::macaroon_with_session_from_hex_str(&macaroon_hex) {
+                Ok((_macaroon, session)) => session.pubkey,
+                Err(_) => String::from(""),
             },
-            Err(_) => String::from("")
+            Err(_) => String::from(""),
         }
     };
-    
+
     match request_context
         .admin_service
         .call(AdminRequest::GetStatus { pubkey })
@@ -529,7 +525,7 @@ pub async fn create_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/create", &cookies, token).await?;
@@ -555,7 +551,7 @@ pub async fn start_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/start", &cookies, token).await?;
@@ -581,7 +577,7 @@ pub async fn stop_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/stop", &cookies, token).await?;
@@ -607,7 +603,7 @@ pub async fn delete_node(
     Extension(request_context): Extension<Arc<RequestContext>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
         authenticate_request(&request_context, "nodes/delete", &cookies, token).await?;

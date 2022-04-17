@@ -45,7 +45,7 @@ impl EventHandler for LightningNodeEventHandler {
         match event {
             Event::OpenChannelRequest { .. } => {
                 // Unreachable, we don't set manually_accept_inbound_channels
-            },
+            }
             Event::FundingGenerationReady {
                 temporary_channel_id,
                 channel_value_satoshis,

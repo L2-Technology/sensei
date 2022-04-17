@@ -9,8 +9,16 @@ use lightning::chain::Listen;
 
 use super::listener_database::ListenerDatabase;
 
+type Listener = (Arc<ChainMonitor>, Arc<ChannelManager>, ListenerDatabase);
+
 pub struct SenseiChainListener {
-    listeners: Mutex<HashMap<String, (Arc<ChainMonitor>, Arc<ChannelManager>, ListenerDatabase)>>,
+    listeners: Mutex<HashMap<String, Listener>>,
+}
+
+impl Default for SenseiChainListener {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SenseiChainListener {
@@ -20,25 +28,16 @@ impl SenseiChainListener {
         }
     }
 
-    fn get_key(
-        &self,
-        listener: &(Arc<ChainMonitor>, Arc<ChannelManager>, ListenerDatabase),
-    ) -> String {
+    fn get_key(&self, listener: &Listener) -> String {
         listener.1.get_our_node_id().to_string()
     }
 
-    pub fn add_listener(
-        &self,
-        listener: (Arc<ChainMonitor>, Arc<ChannelManager>, ListenerDatabase),
-    ) {
+    pub fn add_listener(&self, listener: Listener) {
         let mut listeners = self.listeners.lock().unwrap();
         listeners.insert(self.get_key(&listener), listener);
     }
 
-    pub fn remove_listener(
-        &self,
-        listener: (Arc<ChainMonitor>, Arc<ChannelManager>, ListenerDatabase),
-    ) {
+    pub fn remove_listener(&self, listener: Listener) {
         let mut listeners = self.listeners.lock().unwrap();
         listeners.remove(&self.get_key(&listener));
     }

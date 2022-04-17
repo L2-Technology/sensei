@@ -9,7 +9,7 @@
 
 use bitcoin::secp256k1::PublicKey;
 use lightning::{
-    ln::msgs::{self, LightningError, RoutingMessageHandler, Init},
+    ln::msgs::{self, Init, LightningError, RoutingMessageHandler},
     util::events::{MessageSendEvent, MessageSendEventsProvider},
 };
 use std::{ops::Deref, sync::Arc};
@@ -46,7 +46,7 @@ impl RoutingMessageHandler for OptionalNetworkGraphMsgHandler {
 
     fn peer_connected(&self, their_node_id: &PublicKey, init: &Init) {
         match &self.network_graph_msg_handler {
-            None => {},
+            None => {}
             Some(network_graph_msg_handler) => {
                 network_graph_msg_handler.peer_connected(their_node_id, init)
             }

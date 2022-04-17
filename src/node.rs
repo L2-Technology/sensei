@@ -13,7 +13,7 @@ use crate::chain::listener_database::ListenerDatabase;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::LightningNodeConfig;
 use crate::database::node::NodeDatabase;
-use crate::disk::{FilesystemLogger, DataPersister};
+use crate::disk::{DataPersister, FilesystemLogger};
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
@@ -34,14 +34,15 @@ use tindercrypt::cryptors::RingCryptor;
 
 use bdk::template::DescriptorTemplateOut;
 use bitcoin::blockdata::constants::genesis_block;
+use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
 use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager, Recipient};
+use lightning::chain::Watch;
 use lightning::chain::{self, Filter};
-use lightning::chain::{Watch};
 use lightning::ln::channelmanager::{self, ChannelDetails, SimpleArcChannelManager};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
@@ -54,7 +55,6 @@ use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig}
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
-use bitcoin::hashes::sha256::Hash as Sha256;
 use lightning_invoice::{payment, utils, Currency, Invoice};
 use lightning_net_tokio::SocketDescriptor;
 use lightning_persister::FilesystemPersister;
@@ -179,6 +179,7 @@ pub type InvoicePayer = payment::InvoicePayer<
     Arc<LightningNodeEventHandler>,
 >;
 
+#[allow(dead_code)]
 pub type SyncableMonitor = (
     ChannelMonitor<InMemorySigner>,
     Arc<SenseiBroadcaster>,
@@ -255,7 +256,7 @@ pub struct LightningNode {
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
     pub scorer: Arc<Mutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
-    pub stop_listen: Arc<AtomicBool>
+    pub stop_listen: Arc<AtomicBool>,
 }
 
 impl LightningNode {
@@ -402,12 +403,12 @@ impl LightningNode {
         let listener_database =
             ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
 
-            let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
+        let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
 
         let fee_estimator = Arc::new(SenseiFeeEstimator {
-            fee_estimator: chain_manager.bitcoind_client.clone()
+            fee_estimator: chain_manager.bitcoind_client.clone(),
         });
-        
+
         let broadcaster = Arc::new(SenseiBroadcaster {
             broadcaster: chain_manager.bitcoind_client.clone(),
             listener_database: listener_database.clone(),
@@ -492,15 +493,14 @@ impl LightningNode {
 
         let monitor_info = bundled_channel_monitors
             .iter_mut()
-            .map(|monitor_bundle| (monitor_bundle.0, &monitor_bundle.1))
-            .collect::<Vec<(BlockHash, &SyncableMonitor)>>();
+            .map(|monitor_bundle| (monitor_bundle.0, &monitor_bundle.1));
 
         let mut chain_listeners = vec![(
             channel_manager_blockhash,
             &channel_manager as &(dyn chain::Listen + Send + Sync),
         )];
 
-        for (block_hash, monitor) in monitor_info.into_iter() {
+        for (block_hash, monitor) in monitor_info {
             chain_listeners.push((block_hash, monitor as &(dyn chain::Listen + Send + Sync)));
         }
 
@@ -535,7 +535,12 @@ impl LightningNode {
         let chain_monitor_sync = chain_monitor.clone();
 
         chain_manager
-            .keep_in_sync(synced_hash, channel_manager_sync, chain_monitor_sync, listener_database)
+            .keep_in_sync(
+                synced_hash,
+                channel_manager_sync,
+                chain_monitor_sync,
+                listener_database,
+            )
             .await
             .unwrap();
 
@@ -594,9 +599,9 @@ impl LightningNode {
         )));
 
         let router = DefaultRouter::new(
-            network_graph.clone(), 
-            logger.clone(), 
-            keys_manager.get_secure_random_bytes()
+            network_graph.clone(),
+            logger.clone(),
+            keys_manager.get_secure_random_bytes(),
         );
 
         let pubkey = channel_manager.get_our_node_id().to_string();
@@ -647,7 +652,7 @@ impl LightningNode {
             logger,
             scorer,
             invoice_payer,
-            stop_listen 
+            stop_listen,
         })
     }
 
@@ -657,8 +662,7 @@ impl LightningNode {
 
         let peer_manager_connection_handler = self.peer_manager.clone();
 
-        
-	    let stop_listen_ref = Arc::clone(&self.stop_listen);
+        let stop_listen_ref = Arc::clone(&self.stop_listen);
         handles.push(tokio::spawn(async move {
             let listener = tokio::net::TcpListener::bind(format!(
                 "0.0.0.0:{}",
@@ -699,9 +703,9 @@ impl LightningNode {
             }
         }));
 
-        let persister = DataPersister { 
-            data_dir: self.config.data_dir(), 
-            external_router: self.config.external_router 
+        let persister = DataPersister {
+            data_dir: self.config.data_dir(),
+            external_router: self.config.external_router,
         };
 
         // TODO: should we allow 'child' nodes to update NetworkGraph based on payment failures?
@@ -893,8 +897,12 @@ impl LightningNode {
     }
 
     fn keysend<K: KeysInterface>(
-        &self, invoice_payer: &InvoicePayer, payee_pubkey: PublicKey, amt_msat: u64, keys: &K,
-    )  -> Result<(), Error> {
+        &self,
+        invoice_payer: &InvoicePayer,
+        payee_pubkey: PublicKey,
+        amt_msat: u64,
+        keys: &K,
+    ) -> Result<(), Error> {
         let payment_preimage = keys.get_secure_random_bytes();
 
         let status = match invoice_payer.pay_pubkey(
@@ -904,7 +912,10 @@ impl LightningNode {
             40,
         ) {
             Ok(_payment_id) => {
-                println!("EVENT: initiated sending {} msats to {}", amt_msat, payee_pubkey);
+                println!(
+                    "EVENT: initiated sending {} msats to {}",
+                    amt_msat, payee_pubkey
+                );
                 print!("> ");
                 HTLCStatus::Pending
             }
@@ -928,7 +939,7 @@ impl LightningNode {
         let payment_hash = PaymentHash(Sha256::hash(&payment_preimage).into_inner());
 
         let mut database = self.database.lock().unwrap();
-     
+
         database.create_or_update_payment(
             PaymentInfo {
                 hash: payment_hash,
@@ -1095,15 +1106,9 @@ impl LightningNode {
         let transaction_details = bdk_wallet
             .list_transactions(false)?
             .into_iter()
-            .filter_map(|tx_details| {
+            .filter(|tx_details| {
                 let match_transaction_details = tx_details.clone();
-                let matches_transaction_id =
-                    match_transaction_details.txid.to_string().contains(&query);
-                if matches_transaction_id {
-                    Some(tx_details)
-                } else {
-                    None
-                }
+                match_transaction_details.txid.to_string().contains(&query)
             })
             .collect::<Vec<TransactionDetails>>();
 
@@ -1132,13 +1137,12 @@ impl LightningNode {
             .read_only()
             .nodes()
             .get(&node_id)
-            .map(|node_info| {
+            .and_then(|node_info| {
                 node_info
                     .announcement_info
                     .clone()
                     .map(|ann_info| ann_info.alias)
-            })
-            .flatten();
+            });
 
         alias
     }
@@ -1269,12 +1273,7 @@ impl LightningNode {
                 amt_msat,
             } => match hex_utils::to_compressed_pubkey(&dest_pubkey) {
                 Some(pubkey) => {
-                    self.keysend(
-						&*self.invoice_payer,
-						pubkey,
-						amt_msat,
-						&*self.keys_manager,
-					)?;
+                    self.keysend(&*self.invoice_payer, pubkey, amt_msat, &*self.keys_manager)?;
                     Ok(NodeResponse::Keysend {})
                 }
                 None => Err(NodeRequestError::Sensei("invalid dest_pubkey".into())),

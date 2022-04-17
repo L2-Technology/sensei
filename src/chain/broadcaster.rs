@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bitcoin::Transaction;
 use lightning::chain::chaininterface::BroadcasterInterface;
 
-use super::{listener_database::ListenerDatabase};
+use super::listener_database::ListenerDatabase;
 
 pub struct SenseiBroadcaster {
     pub broadcaster: Arc<dyn BroadcasterInterface + Send + Sync>,
