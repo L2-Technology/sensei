@@ -206,7 +206,7 @@ export const UserDropdownMenu = () => {
   ];
 
   return (
-    <div className="relative">
+    <div className="relative hidden">
       <Menu>
         <Menu.Button className="h-9 w-9 rounded-full">
           <span className="sr-only">User</span>
