@@ -59,11 +59,16 @@ export const AdminSidebar = ({ setSidebarOpen }: SidebarProps) => {
     { name: "Channels", href: "/admin/channels", icon: AdjustmentsIcon },
     { name: "Send Money", href: "/admin/send-money", icon: ShoppingCartIcon },
     { name: "Receive Money", href: "/admin/receive-money", icon: CashIcon },
-    { name: "Access Tokens", href: "/admin/tokens", icon: KeyIcon },
     { name: "Logout", href: "/admin/logout", icon: LogoutIcon },
   ];
 
   if (auth.isAdmin()) {
+    navigation.unshift({ 
+      name: "Access Tokens", 
+      href: "/admin/tokens", 
+      icon: KeyIcon 
+    })
+    
     navigation.unshift({
       name: "Nodes",
       href: "/admin/nodes",
