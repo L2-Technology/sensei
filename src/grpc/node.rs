@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 pub use super::sensei::node_server::{Node, NodeServer};
 
-use super::sensei::{
+use super::{sensei::{
     CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
     CreateInvoiceRequest, CreateInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse,
     GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
@@ -20,7 +20,7 @@ use super::sensei::{
     ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
     OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
     SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse,
-};
+}, utils::raw_macaroon_from_metadata};
 
 use crate::{
     services::{
@@ -40,7 +40,7 @@ impl NodeService {
         metadata: MetadataMap,
         request: NodeRequest,
     ) -> Result<NodeResponse, tonic::Status> {
-        let macaroon_hex_string = self.raw_macaroon_from_metadata(metadata)?;
+        let macaroon_hex_string = raw_macaroon_from_metadata(metadata)?;
 
         let (macaroon, session) =
             utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
@@ -98,20 +98,6 @@ impl NodeService {
                 _ => Err(Status::not_found("node with that pubkey not found")),
             },
         }
-    }
-
-    fn raw_macaroon_from_metadata(&self, metadata: MetadataMap) -> Result<String, tonic::Status> {
-        let macaroon = metadata.get("macaroon");
-
-        if macaroon.is_none() {
-            return Err(Status::unauthenticated("macaroon is required"));
-        }
-
-        macaroon
-            .unwrap()
-            .to_str()
-            .map(String::from)
-            .map_err(|_e| Status::unauthenticated("invalid macaroon: must be ascii"))
     }
 }
 

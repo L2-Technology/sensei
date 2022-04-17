@@ -28,7 +28,7 @@ use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::Mutex;
 pub enum AdminRequest {
     GetStatus {
-        authenticated: bool,
+        pubkey: String,
     },
     CreateAdmin {
         username: String,
@@ -181,28 +181,44 @@ impl From<macaroon::MacaroonError> for Error {
 impl AdminService {
     pub async fn call(&self, request: AdminRequest) -> Result<AdminResponse, Error> {
         match request {
-            AdminRequest::GetStatus { authenticated } => {
+            AdminRequest::GetStatus { pubkey } => {
                 let mut database = self.database.lock().await;
                 let admin_node = database.get_admin_node()?;
-                let created = admin_node.is_some();
                 match admin_node {
-                    Some(node) => {
-                        let directory = self.node_directory.lock().await;
-                        let node_running = directory.contains_key(&node.pubkey);
-                        Ok(AdminResponse::GetStatus {
-                            alias: Some(node.alias),
-                            created,
-                            running: node_running,
-                            authenticated,
-                            pubkey: Some(node.pubkey),
-                            username: Some(node.username),
-                            role: Some(node.role),
-                        })
+                    Some(admin_node) => {
+                        let pubkey_node = database.get_node_by_pubkey(&pubkey)?;
+                        match pubkey_node {
+                            Some(pubkey_node) => {
+                                let directory = self.node_directory.lock().await;
+                                let node_running = directory.contains_key(&pubkey);
+
+                                Ok(AdminResponse::GetStatus {
+                                    alias: Some(pubkey_node.alias),
+                                    created: true,
+                                    running: node_running,
+                                    authenticated: true,
+                                    pubkey: Some(pubkey_node.pubkey),
+                                    username: Some(pubkey_node.username),
+                                    role: Some(pubkey_node.role),
+                                })
+                            },
+                            None => {
+                                Ok(AdminResponse::GetStatus {
+                                    alias: None,
+                                    created: true,
+                                    running: false,
+                                    authenticated: false,
+                                    pubkey: None,
+                                    username: None,
+                                    role: None,
+                                })
+                            }
+                        }
                     }
                     None => Ok(AdminResponse::GetStatus {
                         alias: None,
                         pubkey: None,
-                        created,
+                        created: false,
                         running: false,
                         authenticated: false,
                         username: None,

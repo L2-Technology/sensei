@@ -25,10 +25,10 @@ use crate::{
         admin::{AdminRequest, AdminResponse},
         PaginationRequest,
     },
-    RequestContext,
+    RequestContext, utils,
 };
 
-use super::auth_header::AuthHeader;
+use super::{auth_header::AuthHeader, utils::get_macaroon_hex_str_from_cookies_or_header};
 
 #[derive(Deserialize)]
 pub struct DeleteNodeParams {
@@ -443,29 +443,32 @@ pub async fn init_sensei(
     }
 }
 
+// this endpoint is overloaded and serves three purposes
+// 1) is the root node created or not
+// 2) is the node specified in my macaroon running?
+// 3) is my macaroon valid?
 pub async fn get_status(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
-    AuthHeader { macaroon:_, token }: AuthHeader,
+    AuthHeader { macaroon, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let token = match get_token_from_cookies_or_header(&cookies, token) {
-        Ok(token) => token,
-        Err(e) => String::from(""),
+    let pubkey = {
+        match get_macaroon_hex_str_from_cookies_or_header(&cookies, macaroon) {
+            Ok(macaroon_hex) => {
+                match utils::macaroon_with_session_from_hex_str(&macaroon_hex) {
+                    Ok((macaroon, session)) => {
+                        session.pubkey
+                    },
+                    Err(_) => String::from("")
+                }
+            },
+            Err(_) => String::from("")
+        }
     };
-
-    let admin_token = {
-        let mut database = request_context.admin_service.database.lock().await;
-        database.get_admin_access_token().unwrap()
-    };
-
-    let authenticated = match admin_token {
-        Some(access_token) => access_token.token == token,
-        None => false,
-    };
-
+    
     match request_context
         .admin_service
-        .call(AdminRequest::GetStatus { authenticated })
+        .call(AdminRequest::GetStatus { pubkey })
         .await
     {
         Ok(response) => Ok(Json(response)),

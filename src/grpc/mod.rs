@@ -10,6 +10,7 @@
 pub mod adaptor;
 pub mod admin;
 pub mod node;
+pub mod utils;
 
 pub mod sensei {
     tonic::include_proto!("sensei");

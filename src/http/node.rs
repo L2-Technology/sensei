@@ -22,6 +22,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use tower_cookies::Cookies;
 
+use super::utils::get_macaroon_hex_str_from_cookies_or_header;
+
 #[derive(Deserialize)]
 pub struct GetInvoiceParams {
     pub amt_msat: u64,
@@ -290,24 +292,7 @@ pub async fn handle_authenticated_request(
     macaroon: Option<HeaderValue>,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
-    let macaroon_hex_string = {
-        match macaroon {
-            Some(macaroon) => {
-                let res = macaroon
-                    .to_str()
-                    .map(|str| str.to_string())
-                    .map_err(|_| StatusCode::UNAUTHORIZED);
-                res
-            }
-            None => match cookies.get("macaroon") {
-                Some(macaroon_cookie) => {
-                    let macaroon_cookie_str = macaroon_cookie.value().to_string();
-                    Ok(macaroon_cookie_str)
-                }
-                None => Err(StatusCode::UNAUTHORIZED),
-            },
-        }
-    }?;
+    let macaroon_hex_string = get_macaroon_hex_str_from_cookies_or_header(&cookies, macaroon)?;
 
     let (macaroon, session) = utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
         .map_err(|_e| StatusCode::UNAUTHORIZED)?;
