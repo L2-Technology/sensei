@@ -185,7 +185,7 @@ impl AdminService {
                 let mut database = self.database.lock().await;
                 let admin_node = database.get_admin_node()?;
                 match admin_node {
-                    Some(admin_node) => {
+                    Some(_admin_node) => {
                         let pubkey_node = database.get_node_by_pubkey(&pubkey)?;
                         match pubkey_node {
                             Some(pubkey_node) => {

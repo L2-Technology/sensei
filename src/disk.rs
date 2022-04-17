@@ -50,7 +50,7 @@ impl Logger for FilesystemLogger {
             // precision for message-receipt information as it makes log entries a target for
             // deanonymization attacks. For testing, however, its quite useful.
             Utc::now().format("%Y-%m-%d %H:%M:%S%.3f"),
-            record.level.to_string(),
+            record.level,
             record.module_path,
             record.line,
             raw_log
@@ -156,16 +156,13 @@ impl
     }
 
     fn persist_graph(&self, network_graph: &NetworkGraph) -> Result<(), std::io::Error> {
-        if !self.external_router {
-            if FilesystemPersister::persist_network_graph(self.data_dir.clone(), network_graph)
-                .is_err()
-            {
-                // Persistence errors here are non-fatal as we can just fetch the routing graph
-                // again later, but they may indicate a disk error which could be fatal elsewhere.
-                eprintln!(
-                    "Warning: Failed to persist network graph, check your disk and permissions"
-                );
-            }
+        if !self.external_router && FilesystemPersister::persist_network_graph(self.data_dir.clone(), network_graph)
+                .is_err() {
+            // Persistence errors here are non-fatal as we can just fetch the routing graph
+            // again later, but they may indicate a disk error which could be fatal elsewhere.
+            eprintln!(
+                "Warning: Failed to persist network graph, check your disk and permissions"
+            );
         }
         Ok(())
     }

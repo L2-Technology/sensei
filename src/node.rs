@@ -1143,13 +1143,12 @@ impl LightningNode {
             .read_only()
             .nodes()
             .get(&node_id)
-            .map(|node_info| {
+            .and_then(|node_info| {
                 node_info
                     .announcement_info
                     .clone()
                     .map(|ann_info| ann_info.alias)
-            })
-            .flatten();
+            });
 
         alias
     }

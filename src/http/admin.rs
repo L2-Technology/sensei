@@ -186,7 +186,7 @@ pub async fn authenticate_request(
     cookies: &Cookies,
     token: Option<HeaderValue>,
 ) -> Result<bool, StatusCode> {
-    let token = get_token_from_cookies_or_header(&cookies, token)?;
+    let token = get_token_from_cookies_or_header(cookies, token)?;
 
     let access_token = {
         let mut database = request_context.admin_service.database.lock().await;
@@ -206,7 +206,7 @@ pub async fn authenticate_request(
                 Ok(false)
             }
         }
-        None => return Ok(false),
+        None => Ok(false),
     }
 }
 
@@ -373,7 +373,7 @@ pub async fn login(
                             .http_only(true)
                             .finish();
                         cookies.add(macaroon_cookie);
-                        let token_cookie = Cookie::build("token", token.clone())
+                        let token_cookie = Cookie::build("token", token)
                             .http_only(true)
                             .finish();
                         cookies.add(token_cookie);
@@ -450,12 +450,12 @@ pub async fn init_sensei(
 pub async fn get_status(
     Extension(request_context): Extension<Arc<RequestContext>>,
     cookies: Cookies,
-    AuthHeader { macaroon, token }: AuthHeader,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let pubkey = {
         match get_macaroon_hex_str_from_cookies_or_header(&cookies, macaroon) {
             Ok(macaroon_hex) => match utils::macaroon_with_session_from_hex_str(&macaroon_hex) {
-                Ok((macaroon, session)) => session.pubkey,
+                Ok((_macaroon, session)) => session.pubkey,
                 Err(_) => String::from(""),
             },
             Err(_) => String::from(""),

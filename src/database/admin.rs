@@ -166,7 +166,7 @@ impl AccessToken {
     pub fn has_access_to_scope(&self, scope: Option<&str>) -> bool {
         match scope {
             Some(scope) => {
-                let scopes: Vec<&str> = self.scope.split(",").collect();
+                let scopes: Vec<&str> = self.scope.split(',').collect();
                 scopes.contains(&"*") || scopes.contains(&scope)
             }
             None => true,
