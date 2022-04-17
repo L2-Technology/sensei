@@ -9,6 +9,7 @@
 
 use bitcoin::secp256k1::key::PublicKey;
 
+#[allow(dead_code)]
 pub fn to_vec(hex: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(hex.len() / 2);
 
@@ -39,6 +40,7 @@ pub fn hex_str(value: &[u8]) -> String {
     res
 }
 
+#[allow(dead_code)]
 pub fn sanitize_string(bytes: &[u8]) -> String {
     let mut ret = String::with_capacity(bytes.len());
     // We should really support some sane subset of UTF-8 here, but limiting to printable ASCII
@@ -51,6 +53,7 @@ pub fn sanitize_string(bytes: &[u8]) -> String {
     ret
 }
 
+#[allow(dead_code)]
 pub fn to_compressed_pubkey(hex: &str) -> Option<PublicKey> {
     if hex.len() != 33 * 2 {
         return None;

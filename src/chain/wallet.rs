@@ -29,12 +29,14 @@ where
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_unused_address(&self) -> Result<Address, Error> {
         let wallet = self.inner.lock().unwrap();
         let address_info = wallet.get_address(AddressIndex::LastUnused)?;
         Ok(address_info.address)
     }
 
+    #[allow(dead_code)]
     pub fn construct_funding_transaction(
         &self,
         output_script: &Script,
@@ -58,15 +60,18 @@ where
         Ok(psbt.extract_tx())
     }
 
+    #[allow(dead_code)]
     pub fn get_balance(&self) -> Result<u64, Error> {
         let wallet = self.inner.lock().unwrap();
         wallet.get_balance().map_err(Error::Bdk)
     }
 
+    #[allow(dead_code)]
     pub fn get_wallet(&self) -> MutexGuard<Wallet<B, D>> {
         self.inner.lock().unwrap()
     }
 
+    #[allow(dead_code)]
     fn sync(&self) -> Result<(), Error> {
         let wallet = self.inner.lock().unwrap();
         wallet.sync(noop_progress(), None)?;

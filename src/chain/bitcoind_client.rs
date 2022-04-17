@@ -28,7 +28,9 @@ impl TryInto<FeeResponse> for JsonResponse {
         let errored = !self.0["errors"].is_null();
         Ok(FeeResponse {
             errored,
-            feerate_sat_per_kw: self.0["feerate"].as_f64().map(|feerate_btc_per_kvbyte| (feerate_btc_per_kvbyte * 100_000_000.0 / 4.0).round() as u32),
+            feerate_sat_per_kw: self.0["feerate"].as_f64().map(|feerate_btc_per_kvbyte| {
+                (feerate_btc_per_kvbyte * 100_000_000.0 / 4.0).round() as u32
+            }),
         })
     }
 }
@@ -89,7 +91,7 @@ impl BlockSource for &BitcoindClient {
         })
     }
 
-    fn get_best_block<'a>(&'a mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
+    fn get_best_block(&mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
         Box::pin(async move {
             let mut rpc = self.bitcoind_rpc_client.lock().await;
             rpc.get_best_block().await

@@ -179,6 +179,7 @@ pub type InvoicePayer = payment::InvoicePayer<
     Arc<LightningNodeEventHandler>,
 >;
 
+#[allow(dead_code)]
 pub type SyncableMonitor = (
     ChannelMonitor<InMemorySigner>,
     Arc<SenseiBroadcaster>,
@@ -492,15 +493,14 @@ impl LightningNode {
 
         let monitor_info = bundled_channel_monitors
             .iter_mut()
-            .map(|monitor_bundle| (monitor_bundle.0, &monitor_bundle.1))
-            .collect::<Vec<(BlockHash, &SyncableMonitor)>>();
+            .map(|monitor_bundle| (monitor_bundle.0, &monitor_bundle.1));
 
         let mut chain_listeners = vec![(
             channel_manager_blockhash,
             &channel_manager as &(dyn chain::Listen + Send + Sync),
         )];
 
-        for (block_hash, monitor) in monitor_info.into_iter() {
+        for (block_hash, monitor) in monitor_info {
             chain_listeners.push((block_hash, monitor as &(dyn chain::Listen + Send + Sync)));
         }
 
@@ -1106,15 +1106,9 @@ impl LightningNode {
         let transaction_details = bdk_wallet
             .list_transactions(false)?
             .into_iter()
-            .filter_map(|tx_details| {
+            .filter(|tx_details| {
                 let match_transaction_details = tx_details.clone();
-                let matches_transaction_id =
-                    match_transaction_details.txid.to_string().contains(&query);
-                if matches_transaction_id {
-                    Some(tx_details)
-                } else {
-                    None
-                }
+                match_transaction_details.txid.to_string().contains(&query)
             })
             .collect::<Vec<TransactionDetails>>();
 
