@@ -38,7 +38,7 @@ jobs:
     needs: build-web-admin
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -59,7 +59,7 @@ jobs:
   install-cross:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 50
       - uses: XAMPPRocky/get-github-release@v1
@@ -69,7 +69,7 @@ jobs:
           repo: cross
           matches: ${{ matrix.platform }}
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v1
+      - uses: actions/upload-artifact@v3
         with:
           name: cross-${{ matrix.platform }}
           path: ${{ steps.cross.outputs.install_path }}
@@ -165,7 +165,7 @@ jobs:
           path: web-admin/build
 
       - name: Download Cross
-        uses: actions/download-artifact@v1
+        uses: actions/download-artifact@v3
         with:
           name: cross-linux-musl
           path: /tmp/

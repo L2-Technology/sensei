@@ -16,7 +16,7 @@ jobs:
   install-cross:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 50
       - uses: XAMPPRocky/get-github-release@v1
@@ -26,7 +26,7 @@ jobs:
           repo: cross
           matches: ${{ matrix.platform }}
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v1
+      - uses: actions/upload-artifact@v3
         with:
           name: cross-${{ matrix.platform }}
           path: ${{ steps.cross.outputs.install_path }}
@@ -37,7 +37,7 @@ jobs:
   build-web-admin:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Get tag
         id: tag
         uses: dawidd6/action-get-tag@v1
@@ -71,7 +71,7 @@ jobs:
         id: tag
         uses: dawidd6/action-get-tag@v1
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
         with:
           name: build-web-admin-artifact-${{steps.tag.outputs.tag}}
@@ -129,7 +129,7 @@ jobs:
         uses: dawidd6/action-get-tag@v1
 
       - name: Setup | Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -233,13 +233,13 @@ jobs:
         id: tag
         uses: dawidd6/action-get-tag@v1
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
         with:
           name: build-web-admin-artifact-${{steps.tag.outputs.tag}}
           path: web-admin/build
 
-      - uses: actions/download-artifact@v1
+      - uses: actions/download-artifact@v3
         with:
           name: cross-linux-musl
           path: /tmp/
