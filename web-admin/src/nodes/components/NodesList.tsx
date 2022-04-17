@@ -55,7 +55,7 @@ const ActionsColumn = ({ value, node, className }) => {
 
   const actionItems = [
     {
-      label: node.status === "Stopped" ? "play" : "stop",
+      label: node.status === "Stopped" ? "start" : "stop",
       icon: node.status === "Stopped" ? <PlayIcon className="w-6" /> : <StopIcon className="w-6" /> ,
       onClick: node.status === "Stopped" ? startNodeClicked : stopNodeClicked ,
       className: node.status === "Stopped" ? "text-green-400" : "text-yellow-400",
