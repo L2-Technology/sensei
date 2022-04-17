@@ -5,7 +5,7 @@ import AppLayout from "./layouts/AppLayout";
 import LoginPage from "./auth/pages/LoginPage";
 import SetupPage from "./auth/pages/SetupPage";
 import RequireAuth from "./components/RequireAuth";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { useQuery } from "react-query";
 import getStatus from "./auth/queries/getStatus";
 import NodesPage from "./nodes/pages/NodesPage";
@@ -63,6 +63,8 @@ function App() {
           <Route path="/admin/tokens" element={<TokensPage />} />
           <Route path="/admin/tokens/new" element={<NewTokenPage />} />
         </Route>
+
+        <Route path="/*" element={<Navigate to="/admin/chain" replace />} />
       </Routes>
       <Modal />
       <ErrorModal />
