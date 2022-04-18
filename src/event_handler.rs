@@ -19,10 +19,7 @@ use bdk::{FeeRate, SignOptions};
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use lightning::{
-    chain::{
-        chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator},
-        keysinterface::KeysManager,
-    },
+    chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
     util::events::{Event, EventHandler, PaymentPurpose},
 };
 use rand::{thread_rng, Rng};

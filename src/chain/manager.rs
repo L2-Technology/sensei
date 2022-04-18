@@ -11,13 +11,16 @@ use crate::{
     node::{ChainMonitor, ChannelManager},
 };
 use bitcoin::BlockHash;
-use lightning::chain::{BestBlock, Listen, chaininterface::{FeeEstimator, BroadcasterInterface}};
+use lightning::chain::{
+    chaininterface::{BroadcasterInterface, FeeEstimator},
+    BestBlock, Listen,
+};
 use lightning_block_sync::SpvClient;
 use lightning_block_sync::{init, poll, UnboundedCache};
 use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use std::ops::Deref;
 
-use super::{listener::SenseiChainListener, listener_database::ListenerDatabase };
+use super::{listener::SenseiChainListener, listener_database::ListenerDatabase};
 
 pub struct SenseiChainManager {
     config: SenseiConfig,
@@ -30,19 +33,21 @@ pub struct SenseiChainManager {
 
 impl SenseiChainManager {
     pub async fn new(
-        config: SenseiConfig, 
+        config: SenseiConfig,
         block_source: Arc<dyn BlockSource + Send + Sync>,
         fee_estimator: Arc<dyn FeeEstimator + Send + Sync>,
-        broadcaster: Arc<dyn BroadcasterInterface + Send + Sync>
+        broadcaster: Arc<dyn BroadcasterInterface + Send + Sync>,
     ) -> Result<Self, crate::error::Error> {
-        let listener = Arc::new(SenseiChainListener::new());    
+        let listener = Arc::new(SenseiChainListener::new());
         let block_source_poller = block_source.clone();
         let listener_poller = listener.clone();
         let poller_paused = Arc::new(AtomicBool::new(false));
         let poller_paused_poller = poller_paused.clone();
         tokio::spawn(async move {
             let mut cache = UnboundedCache::new();
-            let chain_tip = init::validate_best_block_header(block_source_poller.clone()).await.unwrap();
+            let chain_tip = init::validate_best_block_header(block_source_poller.clone())
+                .await
+                .unwrap();
             let chain_poller = poll::ChainPoller::new(block_source_poller, config.network);
             let mut spv_client =
                 SpvClient::new(chain_tip, chain_poller, &mut cache, listener_poller);
@@ -60,7 +65,7 @@ impl SenseiChainManager {
             poller_paused,
             block_source,
             fee_estimator,
-            broadcaster
+            broadcaster,
         })
     }
 
@@ -113,9 +118,6 @@ impl SenseiChainManager {
 
     pub async fn get_best_block(&self) -> Result<BestBlock, crate::error::Error> {
         let (latest_blockhash, latest_height) = self.block_source.get_best_block().await.unwrap();
-        Ok(BestBlock::new(
-            latest_blockhash,
-            latest_height.unwrap(),
-        ))
+        Ok(BestBlock::new(latest_blockhash, latest_height.unwrap()))
     }
 }

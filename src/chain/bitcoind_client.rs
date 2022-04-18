@@ -84,17 +84,14 @@ impl BlockSource for BitcoindClient {
         })
     }
 
-    fn get_block<'a>(
-        &'a self,
-        header_hash: &'a BlockHash,
-    ) -> AsyncBlockSourceResult<'a, Block> {
+    fn get_block<'a>(&'a self, header_hash: &'a BlockHash) -> AsyncBlockSourceResult<'a, Block> {
         Box::pin(async move {
             let rpc = self.bitcoind_rpc_client.lock().await;
             rpc.get_block(header_hash).await
         })
     }
 
-    fn get_best_block(&mut self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
+    fn get_best_block(&self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
         Box::pin(async move {
             let rpc = self.bitcoind_rpc_client.lock().await;
             rpc.get_best_block().await
@@ -116,7 +113,7 @@ impl BitcoindClient {
         let http_endpoint = HttpEndpoint::for_host(host.clone()).with_port(port);
         let rpc_credentials =
             base64::encode(format!("{}:{}", rpc_user.clone(), rpc_password.clone()));
-        let mut bitcoind_rpc_client = RpcClient::new(&rpc_credentials, http_endpoint)?;
+        let bitcoind_rpc_client = RpcClient::new(&rpc_credentials, http_endpoint)?;
         let _dummy = bitcoind_rpc_client
             .call_method::<BlockchainInfo>("getblockchaininfo", &[])
             .await
@@ -153,7 +150,7 @@ impl BitcoindClient {
         handle.spawn(async move {
             loop {
                 let background_estimate = {
-                    let mut rpc = rpc_client.lock().await;
+                    let rpc = rpc_client.lock().await;
                     let background_conf_target = serde_json::json!(144);
                     let background_estimate_mode = serde_json::json!("ECONOMICAL");
                     let resp = rpc
@@ -170,7 +167,7 @@ impl BitcoindClient {
                 };
 
                 let normal_estimate = {
-                    let mut rpc = rpc_client.lock().await;
+                    let rpc = rpc_client.lock().await;
                     let normal_conf_target = serde_json::json!(18);
                     let normal_estimate_mode = serde_json::json!("ECONOMICAL");
                     let resp = rpc
@@ -187,7 +184,7 @@ impl BitcoindClient {
                 };
 
                 let high_prio_estimate = {
-                    let mut rpc = rpc_client.lock().await;
+                    let rpc = rpc_client.lock().await;
                     let high_prio_conf_target = serde_json::json!(6);
                     let high_prio_estimate_mode = serde_json::json!("CONSERVATIVE");
                     let resp = rpc
@@ -229,7 +226,7 @@ impl BitcoindClient {
     }
 
     pub async fn send_raw_transaction(&self, raw_tx: String) {
-        let mut rpc = self.bitcoind_rpc_client.lock().await;
+        let rpc = self.bitcoind_rpc_client.lock().await;
 
         let raw_tx_json = serde_json::json!(raw_tx);
         rpc.call_method::<Txid>("sendrawtransaction", &[raw_tx_json])
@@ -238,7 +235,7 @@ impl BitcoindClient {
     }
 
     pub async fn get_blockchain_info(&self) -> BlockchainInfo {
-        let mut rpc = self.bitcoind_rpc_client.lock().await;
+        let rpc = self.bitcoind_rpc_client.lock().await;
         rpc.call_method::<BlockchainInfo>("getblockchaininfo", &[])
             .await
             .unwrap()
@@ -272,7 +269,7 @@ impl BroadcasterInterface for BitcoindClient {
         let bitcoind_rpc_client = self.bitcoind_rpc_client.clone();
         let tx_serialized = serde_json::json!(encode::serialize_hex(tx));
         self.handle.spawn(async move {
-            let mut rpc = bitcoind_rpc_client.lock().await;
+            let rpc = bitcoind_rpc_client.lock().await;
             // This may error due to RL calling `broadcast_transaction` with the same transaction
             // multiple times, but the error is safe to ignore.
             match rpc

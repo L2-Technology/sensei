@@ -9,7 +9,7 @@
 
 use chrono::Utc;
 use lightning::util::logger::{Logger, Record};
-use lightning::util::ser::{Writer};
+use lightning::util::ser::Writer;
 use std::fs;
 
 pub struct FilesystemLogger {

@@ -1086,7 +1086,6 @@ version = "0.0.106"
 dependencies = [
  "bitcoin",
  "lightning",
- "lightning-persister",
 ]
 
 [[package]]

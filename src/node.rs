@@ -13,15 +13,15 @@ use crate::chain::listener_database::ListenerDatabase;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::LightningNodeConfig;
 use crate::database::node::NodeDatabase;
-use crate::disk::{FilesystemLogger};
+use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
+use crate::lib::persist::{AnyKVStore, FileStore, SenseiPersister};
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
-use crate::{database, disk, hex_utils};
-use crate::lib::persist::{AnyKVStore, FileStore, SenseiPersister};
+use crate::{database, hex_utils};
 use bdk::database::SqliteDatabase;
 use bdk::keys::ExtendedKey;
 use bdk::wallet::AddressIndex;
@@ -30,12 +30,10 @@ use bitcoin::hashes::Hash;
 use lightning::chain::channelmonitor::ChannelMonitor;
 
 use lightning::ln::msgs::NetAddress;
-use lightning::util::persist::Persister;
 use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
 
 use bdk::template::DescriptorTemplateOut;
-use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
 use bitcoin::secp256k1::PublicKey;
@@ -64,10 +62,9 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{Read, Cursor};
 use std::io::Write;
+use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
-use std::path::Path;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -258,7 +255,7 @@ pub struct LightningNode {
     pub invoice_payer: Arc<InvoicePayer>,
     pub scorer: Arc<Mutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
     pub stop_listen: Arc<AtomicBool>,
-    pub persister: Arc<SenseiPersister>
+    pub persister: Arc<SenseiPersister>,
 }
 
 impl LightningNode {
@@ -277,7 +274,7 @@ impl LightningNode {
                 if decrypted_seed.len() != 32 {
                     return Err(Error::InvalidSeedLength);
                 }
-                seed.copy_from_slice(decrypted_seed.as_slice());              
+                seed.copy_from_slice(decrypted_seed.as_slice());
             }
             None => {
                 thread_rng().fill_bytes(&mut seed);
@@ -407,7 +404,7 @@ impl LightningNode {
         let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
 
         let fee_estimator = Arc::new(SenseiFeeEstimator {
-            fee_estimator: chain_manager.fee_estimator.clone()
+            fee_estimator: chain_manager.fee_estimator.clone(),
         });
 
         let broadcaster = Arc::new(SenseiBroadcaster {
@@ -416,7 +413,10 @@ impl LightningNode {
         });
 
         let persistence_store = FileStore::new(data_dir);
-        let persister = Arc::new(SenseiPersister::new(AnyKVStore::File(persistence_store), config.network.clone()));
+        let persister = Arc::new(SenseiPersister::new(
+            AnyKVStore::File(persistence_store),
+            config.network.clone(),
+        ));
         let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
 
         let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
@@ -548,7 +548,7 @@ impl LightningNode {
 
         let network_graph = match network_graph {
             Some(network_graph) => network_graph,
-            None => Arc::new(persister.read_network_graph())
+            None => Arc::new(persister.read_network_graph()),
         };
 
         let network_graph_msg_handler: Arc<NetworkGraphMessageHandler> =
@@ -587,7 +587,9 @@ impl LightningNode {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
-        let scorer = Arc::new(Mutex::new(persister.read_scorer(Arc::clone(&network_graph))));
+        let scorer = Arc::new(Mutex::new(
+            persister.read_scorer(Arc::clone(&network_graph)),
+        ));
 
         let router = DefaultRouter::new(
             network_graph.clone(),
@@ -644,7 +646,7 @@ impl LightningNode {
             scorer,
             invoice_payer,
             stop_listen,
-            persister
+            persister,
         })
     }
 
@@ -685,7 +687,8 @@ impl LightningNode {
             let mut interval = tokio::time::interval(Duration::from_secs(600));
             loop {
                 interval.tick().await;
-                if scorer_persister.persist_scorer(&scorer_persist.lock().unwrap())
+                if scorer_persister
+                    .persist_scorer(&scorer_persist.lock().unwrap())
                     .is_err()
                 {
                     // Persistence errors here are non-fatal as channels will be re-scored as payments
@@ -1267,9 +1270,7 @@ impl LightningNode {
                 let res = self.open_channel(pubkey, amt_satoshis, 0, 0, public);
 
                 if res.is_ok() {
-                    let _ = self.persister.persist_channel_peer(
-                        &node_connection_string,
-                    );
+                    let _ = self.persister.persist_channel_peer(&node_connection_string);
                 }
 
                 Ok(NodeResponse::OpenChannel {})
