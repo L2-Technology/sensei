@@ -63,7 +63,7 @@ const ActionsColumn = ({ value, node, className }) => {
     {
       label: "open channel",
       icon: <PlusCircleIcon className="w-5" />,
-      path: `/admin/channels/open?connection=${node.pubkey}@127.0.0.1:${node.listenPort}`,
+      path: `/admin/channels/open?connection=${node.pubkey}@${node.listenAddr}:${node.listenPort}`,
     }
   ]
 
@@ -204,7 +204,7 @@ const NodesListCard = () => {
         ...node,
         role: node.role === 0 ? "Sensei" : "Child",
         connectionInfo: `${truncateMiddle(node.pubkey, 10)}@${
-          "127.0.0.1"
+          node.listenAddr
         }:${node.listenPort}`,
         status: node.status === 0 ? "Stopped" : "Running",
         actions: "Action",

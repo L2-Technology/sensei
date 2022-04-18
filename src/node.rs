@@ -855,8 +855,19 @@ impl LightningNode {
     }
 
     pub async fn connect_to_peer(&self, pubkey: PublicKey, addr: SocketAddr) -> Result<(), Error> {
-        match lightning_net_tokio::connect_outbound(Arc::clone(&self.peer_manager), pubkey, addr)
-            .await
+        let listen_addr = public_ip::addr().await.unwrap();
+
+        let connect_address = match listen_addr == addr.ip() {
+            true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
+            false => addr,
+        };
+
+        match lightning_net_tokio::connect_outbound(
+            Arc::clone(&self.peer_manager),
+            pubkey,
+            connect_address,
+        )
+        .await
         {
             Some(connection_closed_future) => {
                 let mut connection_closed_future = Box::pin(connection_closed_future);
