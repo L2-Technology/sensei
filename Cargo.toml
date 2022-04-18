@@ -46,7 +46,7 @@ portpicker = "0.1"
 rusqlite = { version = "0.25.3", features = ["uuid", "bundled"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 macaroon = "0.2"
-tower-http = { version = "0.2.0", features = ["fs", "trace", "cors"] }
+tower-http = { version = "0.2.5", features = ["fs", "trace", "cors"] }
 tower-cookies = "0.4"
 dirs = "4.0"
 public-ip = "0.2"

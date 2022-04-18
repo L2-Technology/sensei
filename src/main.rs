@@ -171,7 +171,10 @@ async fn main() {
             CorsLayer::new()
                 .allow_headers(vec![AUTHORIZATION, ACCEPT, COOKIE, CONTENT_TYPE])
                 .allow_credentials(true)
-                .allow_origin(Origin::list(vec!["http://localhost:3001".parse().unwrap()]))
+                .allow_origin(Origin::list(vec![
+                    "http://localhost:3001".parse().unwrap(),
+                    "http://localhost:5401".parse().unwrap(),
+                ]))
                 .allow_methods(vec![
                     Method::GET,
                     Method::POST,
@@ -182,6 +185,11 @@ async fn main() {
                 ]),
         ),
         None => router,
+    };
+
+    let port = match args.development_mode {
+        Some(_) => String::from("3001"),
+        None => format!("{}", config.api_port),
     };
 
     let http_service = router
@@ -204,7 +212,7 @@ async fn main() {
 
     println!(
         "manage your sensei node at http://localhost:{}/admin/nodes",
-        config.api_port
+        port
     );
 
     if let Err(e) = server.await {
