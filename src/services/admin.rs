@@ -420,14 +420,14 @@ impl AdminService {
                 let mut database = self.database.lock().await;
                 let mut rng = rand::thread_rng();
                 let mut port =
-                    rng.gen_range(self.config.port_range_min, self.config.port_range_max + 1);
+                    rng.gen_range(self.config.port_range_min, self.config.port_range_max);
                 let mut port_used_by_system = !portpicker::is_free(port);
                 let mut port_used_by_sensei = database.port_in_use(port)?;
                 let mut attempts_left = 1000;
 
                 while port_used_by_system || port_used_by_sensei {
                     port =
-                        rng.gen_range(self.config.port_range_min, self.config.port_range_max + 1);
+                        rng.gen_range(self.config.port_range_min, self.config.port_range_max);
                     port_used_by_system = portpicker::is_free(port);
                     port_used_by_sensei = database.port_in_use(port)?;
                     attempts_left -= 1;
