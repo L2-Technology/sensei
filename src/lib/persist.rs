@@ -5,7 +5,7 @@ use std::{
     net::SocketAddr,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use bitcoin::secp256k1::key::PublicKey;
@@ -29,11 +29,52 @@ use lightning::{
 };
 use lightning_persister::FilesystemPersister;
 
-use crate::node;
+use crate::{database::node::NodeDatabase, node};
 
 pub trait KVStoreReader {
     fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>>;
     fn list(&self, key: &str) -> std::io::Result<Vec<String>>;
+}
+
+pub struct DatabaseStore {
+    database: Arc<Mutex<NodeDatabase>>,
+}
+
+impl KVStorePersister for DatabaseStore {
+    fn persist<W: Writeable>(&self, key: &str, object: &W) -> std::io::Result<()> {
+        let database = self.database.lock().unwrap();
+        database
+            .set_value(key.to_string(), object.encode())
+            .map_err(|e| e.into())
+    }
+}
+
+impl KVStoreReader for DatabaseStore {
+    fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>> {
+        let database = self.database.lock().unwrap();
+        database.get_value(key.to_string()).map_err(|e| e.into())
+    }
+
+    fn list(&self, key: &str) -> std::io::Result<Vec<String>> {
+        let pattern = format!("{}%", key);
+        let database = self.database.lock().unwrap();
+        database
+            .get_keys(pattern)
+            .map(|full_keys| {
+                let replace_str = format!("{}/", key);
+                full_keys
+                    .iter()
+                    .map(|full_key| full_key.replace(&replace_str, ""))
+                    .collect()
+            })
+            .map_err(|e| e.into())
+    }
+}
+
+impl DatabaseStore {
+    pub fn new(database: Arc<Mutex<NodeDatabase>>) -> Self {
+        Self { database }
+    }
 }
 
 pub struct FileStore {
@@ -83,12 +124,14 @@ impl FileStore {
 
 pub enum AnyKVStore {
     File(FileStore),
+    Database(DatabaseStore),
 }
 
 impl KVStorePersister for AnyKVStore {
     fn persist<W: Writeable>(&self, key: &str, object: &W) -> std::io::Result<()> {
         match self {
             AnyKVStore::File(store) => store.persist(key, object),
+            AnyKVStore::Database(store) => store.persist(key, object),
         }
     }
 }
@@ -97,12 +140,14 @@ impl KVStoreReader for AnyKVStore {
     fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>> {
         match self {
             AnyKVStore::File(store) => store.read(key),
+            AnyKVStore::Database(store) => store.read(key),
         }
     }
 
     fn list(&self, key: &str) -> std::io::Result<Vec<String>> {
         match self {
             AnyKVStore::File(store) => store.list(key),
+            AnyKVStore::Database(store) => store.list(key),
         }
     }
 }
@@ -169,7 +214,7 @@ impl SenseiPersister {
     pub fn persist_channel_peer(&self, peer_info: &str) -> std::io::Result<()> {
         let mut peer_data = self.get_raw_channel_peer_data();
         peer_data.push_str(peer_info);
-        peer_data.push_str("\n");
+        peer_data.push('\n');
         self.store.persist("channel_peer_data", &peer_data)
     }
 

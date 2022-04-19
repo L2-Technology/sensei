@@ -13,6 +13,12 @@ use bitcoin::Network;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum KVPersistence {
+    Filesystem,
+    Database,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SenseiConfig {
     #[serde(skip)]
@@ -25,6 +31,7 @@ pub struct SenseiConfig {
     pub api_port: u16,
     pub port_range_min: u16,
     pub port_range_max: u16,
+    pub kv_persistence: KVPersistence,
 }
 
 impl Default for SenseiConfig {
@@ -41,6 +48,7 @@ impl Default for SenseiConfig {
             api_port: 5401,
             port_range_min: 1024,
             port_range_max: 65535,
+            kv_persistence: KVPersistence::Filesystem,
         }
     }
 }
@@ -103,6 +111,7 @@ pub struct LightningNodeConfig {
     pub network: Network,
     pub passphrase: String,
     pub external_router: bool,
+    pub kv_persistence: KVPersistence,
 }
 
 impl Default for LightningNodeConfig {
@@ -115,6 +124,7 @@ impl Default for LightningNodeConfig {
             network: Network::Bitcoin,
             passphrase: "satoshi".into(),
             external_router: true,
+            kv_persistence: KVPersistence::Filesystem,
         }
     }
 }

@@ -40,6 +40,7 @@ use axum::{
     AddExtensionLayer, Router,
 };
 use clap::Parser;
+use config::KVPersistence;
 use rust_embed::RustEmbed;
 
 use std::net::SocketAddr;
@@ -98,6 +99,8 @@ struct SenseiArgs {
     port_range_max: Option<u16>,
     #[clap(long, env = "API_PORT")]
     api_port: Option<u16>,
+    #[clap(long, env = "KV_PERSISTENCE")]
+    kv_persistence: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -151,6 +154,13 @@ async fn main() {
     }
     if let Some(api_port) = args.api_port {
         config.api_port = api_port;
+    }
+    if let Some(kv_persistence) = args.kv_persistence {
+        config.kv_persistence = match kv_persistence.as_str() {
+            "filesystem" => KVPersistence::Filesystem,
+            "database" => KVPersistence::Database,
+            _ => panic!("invalid kv_persistence value"),
+        };
     }
 
     let sqlite_path = format!("{}/{}/admin.db", sensei_dir, config.network);

@@ -78,6 +78,8 @@ static MIGRATIONS: &[&str] = &[
     "CREATE INDEX idx_to_channel_id ON forwarded_payments(to_channel_id)",
     "CREATE UNIQUE INDEX idx_hours_since_epoch ON forwarded_payments(hours_since_epoch, from_channel_id, to_channel_id)",
     "CREATE TABLE last_sync (blockhash BLOB)",
+    "CREATE TABLE kv_store (k TEXT, v BLOB)",
+    "CREATE UNIQUE INDEX idx_k ON kv_store(k)"
 ];
 
 pub struct NodeDatabase {
@@ -315,6 +317,53 @@ impl NodeDatabase {
                 label: row.get(9)?,
                 invoice: row.get(10)?,
             })),
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_value(&self, key: String, value: Vec<u8>) -> Result<(), Error> {
+        let mut statement = self.connection.prepare_cached(
+            "
+            INSERT INTO kv_store (k, v)
+            VALUES (:key, :value) 
+            ON CONFLICT
+            DO UPDATE SET v = excluded.v
+        ",
+        )?;
+
+        statement.execute(named_params! {
+            ":key": key,
+            ":value": value,
+        })?;
+
+        Ok(())
+    }
+
+    pub fn get_keys(&self, pattern: String) -> Result<Vec<String>, Error> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT k FROM kv_store WHERE k LIKE :pattern")?;
+
+        let mut rows = statement.query(named_params! { ":pattern": pattern })?;
+        let mut keys = vec![];
+        while let Some(row) = rows.next()? {
+            keys.push(row.get(0)?)
+        }
+
+        Ok(keys)
+    }
+
+    pub fn get_value(&self, key: String) -> Result<Option<Vec<u8>>, Error> {
+        let mut statement = self
+            .connection
+            .prepare_cached("SELECT v FROM kv_store WHERE k=:key")?;
+
+        let mut rows = statement.query(named_params! { ":key": key })?;
+
+        let row = rows.next()?;
+
+        match row {
+            Some(row) => Ok(Some(row.get(0)?)),
             None => Ok(None),
         }
     }

@@ -11,13 +11,13 @@ use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::fee_estimator::SenseiFeeEstimator;
 use crate::chain::listener_database::ListenerDatabase;
 use crate::chain::manager::SenseiChainManager;
-use crate::config::LightningNodeConfig;
+use crate::config::{KVPersistence, LightningNodeConfig};
 use crate::database::node::NodeDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
-use crate::lib::persist::{AnyKVStore, FileStore, SenseiPersister};
+use crate::lib::persist::{AnyKVStore, DatabaseStore, FileStore, SenseiPersister};
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
@@ -289,8 +289,10 @@ impl LightningNode {
         seed: &[u8],
         pubkey: String,
         macaroon_path: String,
-        database: &mut NodeDatabase,
+        database: Arc<Mutex<NodeDatabase>>,
     ) -> Result<Macaroon, Error> {
+        let mut database = database.lock().unwrap();
+
         match File::open(macaroon_path.clone()) {
             Ok(mut file) => {
                 let mut bytes: Vec<u8> = Vec::new();
@@ -412,11 +414,15 @@ impl LightningNode {
             listener_database: listener_database.clone(),
         });
 
-        let persistence_store = FileStore::new(data_dir);
-        let persister = Arc::new(SenseiPersister::new(
-            AnyKVStore::File(persistence_store),
-            config.network.clone(),
-        ));
+        let database = Arc::new(Mutex::new(node_database));
+
+        let persistence_store = match config.kv_persistence {
+            KVPersistence::Filesystem => AnyKVStore::File(FileStore::new(data_dir)),
+            KVPersistence::Database => AnyKVStore::Database(DatabaseStore::new(database.clone())),
+        };
+
+        let persister = Arc::new(SenseiPersister::new(persistence_store, config.network));
+
         let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
 
         let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
@@ -506,8 +512,10 @@ impl LightningNode {
             chain_listeners.push((block_hash, monitor as &(dyn chain::Listen + Send + Sync)));
         }
 
-        let bdk_database_last_sync =
-            node_database.find_or_create_last_sync(best_block.block_hash())?;
+        let bdk_database_last_sync = {
+            let mut db = database.lock().unwrap();
+            db.find_or_create_last_sync(best_block.block_hash())?
+        };
 
         chain_listeners.push((
             bdk_database_last_sync,
@@ -603,10 +611,8 @@ impl LightningNode {
             &seed,
             pubkey,
             admin_macaroon_path,
-            &mut node_database,
+            database.clone(),
         )?;
-
-        let database = Arc::new(Mutex::new(node_database));
 
         let event_handler = Arc::new(LightningNodeEventHandler {
             config: config.clone(),

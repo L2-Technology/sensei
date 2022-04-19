@@ -222,6 +222,7 @@ impl EventHandler for LightningNodeEventHandler {
             Event::PaymentForwarded {
                 fee_earned_msat,
                 claim_from_onchain_tx,
+                source_channel_id: _,
             } => {
                 let from_onchain_str = if *claim_from_onchain_tx {
                     "from onchain downstream claim"
