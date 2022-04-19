@@ -22,6 +22,8 @@ pub struct SenseiConfig {
     pub bitcoind_rpc_password: String,
     pub network: Network,
     pub api_port: u16,
+    pub port_range_min: u16,
+    pub port_range_max: u16,
 }
 
 impl Default for SenseiConfig {
@@ -36,6 +38,8 @@ impl Default for SenseiConfig {
             bitcoind_rpc_password: String::from("bitcoin"),
             network: Network::Bitcoin,
             api_port: 5401,
+            port_range_min: 1024,
+            port_range_max: 65535,
         }
     }
 }
@@ -55,6 +59,8 @@ impl SenseiConfig {
                 merge_config.bitcoind_rpc_port = config.bitcoind_rpc_port;
                 merge_config.bitcoind_rpc_username = config.bitcoind_rpc_username;
                 merge_config.bitcoind_rpc_password = config.bitcoind_rpc_password;
+                merge_config.port_range_min = config.port_range_min;
+                merge_config.port_range_max = config.port_range_max;
                 merge_config
             }
             Err(e) => match e.kind() {

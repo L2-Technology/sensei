@@ -91,6 +91,12 @@ struct SenseiArgs {
     bitcoind_rpc_password: Option<String>,
     #[clap(long, env = "DEVELOPMENT_MODE")]
     development_mode: Option<bool>,
+    #[clap(long, env = "PORT_RANGE_MIN")]
+    port_range_min: Option<u16>,
+    #[clap(long, env = "PORT_RANGE_MAX")]
+    port_range_max: Option<u16>,
+    #[clap(long, env = "API_PORT")]
+    api_port: Option<u16>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -135,6 +141,15 @@ async fn main() {
     }
     if let Some(bitcoind_rpc_password) = args.bitcoind_rpc_password {
         config.bitcoind_rpc_password = bitcoind_rpc_password
+    }
+    if let Some(port_range_min) = args.port_range_min {
+        config.port_range_min = port_range_min;
+    }
+    if let Some(port_range_max) = args.port_range_max {
+        config.port_range_max = port_range_max;
+    }
+    if let Some(api_port) = args.api_port {
+        config.api_port = api_port;
     }
 
     let sqlite_path = format!("{}/{}/admin.db", sensei_dir, config.network);
