@@ -1418,7 +1418,16 @@ pub(crate) async fn connect_peer_if_necessary(
             return Ok(());
         }
     }
-    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
+
+    let listen_addr = public_ip::addr().await.unwrap();
+
+    let connect_address = match listen_addr == peer_addr.ip() {
+        true => format!("127.0.0.1:{}", peer_addr.port()).parse().unwrap(),
+        false => peer_addr,
+    };
+
+    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, connect_address)
+        .await
     {
         Some(connection_closed_future) => {
             let mut connection_closed_future = Box::pin(connection_closed_future);
