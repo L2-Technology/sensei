@@ -426,8 +426,7 @@ impl AdminService {
                 let mut attempts_left = 1000;
 
                 while port_used_by_system || port_used_by_sensei {
-                    port =
-                        rng.gen_range(self.config.port_range_min, self.config.port_range_max);
+                    port = rng.gen_range(self.config.port_range_min, self.config.port_range_max);
                     port_used_by_system = portpicker::is_free(port);
                     port_used_by_sensei = database.port_in_use(port)?;
                     attempts_left -= 1;
