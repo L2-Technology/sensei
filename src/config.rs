@@ -11,6 +11,7 @@ use std::{fs, io};
 
 use bitcoin::Network;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SenseiConfig {
@@ -51,17 +52,16 @@ impl SenseiConfig {
 
         match fs::read_to_string(path.clone()) {
             Ok(config_str) => {
-                let config: SenseiConfig =
+                let mut merge_config_value = serde_json::to_value(merge_config).unwrap();
+                let merge_config_map = merge_config_value.as_object_mut().unwrap();
+                let mut config_value: Value =
                     serde_json::from_str(&config_str).expect("failed to parse configuration file");
-                // merge all of `config` properties into `merge_config`
-                // return `merge_config`
-                merge_config.bitcoind_rpc_host = config.bitcoind_rpc_host;
-                merge_config.bitcoind_rpc_port = config.bitcoind_rpc_port;
-                merge_config.bitcoind_rpc_username = config.bitcoind_rpc_username;
-                merge_config.bitcoind_rpc_password = config.bitcoind_rpc_password;
-                merge_config.port_range_min = config.port_range_min;
-                merge_config.port_range_max = config.port_range_max;
-                merge_config
+                let config_map = config_value
+                    .as_object_mut()
+                    .expect("failed to parse configuration file");
+
+                merge_config_map.append(config_map);
+                serde_json::from_value(merge_config_value).unwrap()
             }
             Err(e) => match e.kind() {
                 io::ErrorKind::NotFound => {
