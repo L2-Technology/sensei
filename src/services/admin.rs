@@ -22,6 +22,7 @@ use crate::{
     NodeDirectory, NodeHandle,
 };
 
+use rand::Rng;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
@@ -123,7 +124,7 @@ pub enum AdminResponse {
 #[derive(Clone)]
 pub struct AdminService {
     pub data_dir: String,
-    pub config: Arc<Mutex<SenseiConfig>>,
+    pub config: Arc<SenseiConfig>,
     pub node_directory: NodeDirectory,
     pub database: Arc<Mutex<AdminDatabase>>,
     pub chain_manager: Arc<SenseiChainManager>,
@@ -138,7 +139,7 @@ impl AdminService {
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
-            config: Arc::new(Mutex::new(config.clone())),
+            config: Arc::new(config.clone()),
             node_directory,
             database: Arc::new(Mutex::new(database)),
             chain_manager: Arc::new(SenseiChainManager::new(config).await.unwrap()),
@@ -410,19 +411,34 @@ impl AdminService {
         passphrase: String,
         role: Role,
     ) -> Result<(LightningNode, Node), crate::error::Error> {
-        let network = { self.config.lock().await.network };
+        let network = { self.config.network };
         let listen_addr = public_ip::addr().await.unwrap().to_string();
-        let listen_port = {
-            let mut database = self.database.lock().await;
-            let mut port = portpicker::pick_unused_port().expect("no ports left");
-            let mut port_in_use = database.port_in_use(port)?;
+        let listen_port = match role {
+            Role::Admin => 9735,
+            Role::User => {
+                // TODO: should this just be incremental starting at port_range_min?
+                let mut database = self.database.lock().await;
+                let mut rng = rand::thread_rng();
+                let mut port =
+                    rng.gen_range(self.config.port_range_min, self.config.port_range_max + 1);
+                let mut port_used_by_system = !portpicker::is_free(port);
+                let mut port_used_by_sensei = database.port_in_use(port)?;
+                let mut attempts_left = 1000;
 
-            while port_in_use {
-                port = portpicker::pick_unused_port().expect("no ports left");
-                port_in_use = database.port_in_use(port)?;
+                while port_used_by_system || port_used_by_sensei {
+                    port =
+                        rng.gen_range(self.config.port_range_min, self.config.port_range_max + 1);
+                    port_used_by_system = portpicker::is_free(port);
+                    port_used_by_sensei = database.port_in_use(port)?;
+                    attempts_left -= 1;
+
+                    if attempts_left == 0 {
+                        panic!("couldn't find an unused port")
+                    }
+                }
+
+                port
             }
-
-            port
         };
 
         let mut node = {
@@ -497,13 +513,15 @@ impl AdminService {
 
     async fn get_node_config(&self, node: Node, passphrase: String) -> LightningNodeConfig {
         let external_router = node.is_user();
-        let config = self.config.lock().await;
         LightningNodeConfig {
-            data_dir: format!("{}/{}/{}", self.data_dir, config.network, node.external_id),
+            data_dir: format!(
+                "{}/{}/{}",
+                self.data_dir, self.config.network, node.external_id
+            ),
             ldk_peer_listening_port: node.listen_port,
             ldk_announced_listen_addr: vec![],
             ldk_announced_node_name: Some(node.alias),
-            network: config.network,
+            network: self.config.network,
             passphrase,
             external_router,
         }
