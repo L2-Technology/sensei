@@ -26,7 +26,7 @@ export default function Dropdown({
   button,
 }: PropsWithChildren<DropdownProps>) {
   return (
-    <div className="relative">
+    <div className="">
       <Menu>
         <Menu.Button
           className={`${btnClassName} rounded-xl p-2 hover:bg-white hover:bg-opacity-20`}
@@ -34,7 +34,7 @@ export default function Dropdown({
           {button}
         </Menu.Button>
         <Menu.Items
-          className={`${bodyClassName} absolute right-0 z-10 min-w-[160px] overflow-hidden rounded-xl bg-gray-background shadow-lg md:p-3`}
+          className={`${bodyClassName} absolute right-5 z-10 border border-gray-700 min-w-[160px] overflow-hidden rounded-xl bg-gray-background shadow-xl md:p-3`}
         >
           {items.map((item, i) => (
             <Fragment key={item.label}>

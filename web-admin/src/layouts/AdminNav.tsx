@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { Dialog, Transition,Menu } from "@headlessui/react";
+import { Dialog, Transition, Menu } from "@headlessui/react";
 import {
   AdjustmentsIcon,
   MenuIcon,
@@ -12,15 +12,15 @@ import {
   QrcodeIcon,
   LinkIcon,
   KeyIcon,
-  UserIcon
+  UserIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/outline";
-import {UserCircleIcon} from '@heroicons/react/solid'
+import { UserCircleIcon } from "@heroicons/react/solid";
 import { useAuth } from "../contexts/auth";
-import { NavLink,Link } from "react-router-dom";
+import { NavLink, Link, useLocation } from "react-router-dom";
 import SenseiLogo from "../components/icons/Sensei";
 
 export default function AdminNav() {
-
   return (
     <>
       <div className="bottom-0 top-0 z-[2] hidden md:fixed md:flex md:w-52 md:flex-col lg:w-64">
@@ -38,7 +38,7 @@ export default function AdminNav() {
           </div>
 
           <div className="flex items-center space-x-4">
-            <UserDropdownMenu/>
+            <UserDropdownMenu />
           </div>
         </div>
       </header>
@@ -50,31 +50,26 @@ interface SidebarProps {
   setSidebarOpen?: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
+const adminNav = [
+  { name: "Nodes", href: "/admin/nodes", icon: CollectionIcon },
+  { name: "Access Tokens", href: "/admin/tokens", icon: KeyIcon },
+];
+
+const navigation = [
+  { name: "Fund Node", href: "/admin/fund", icon: QrcodeIcon },
+  { name: "Chain", href: "/admin/chain", icon: LinkIcon },
+  { name: "Channels", href: "/admin/channels", icon: AdjustmentsIcon },
+  { name: "Send Money", href: "/admin/send-money", icon: ShoppingCartIcon },
+  { name: "Receive Money", href: "/admin/receive-money", icon: CashIcon },
+  { name: "Logout", href: "/admin/logout", icon: LogoutIcon },
+];
+
 export const AdminSidebar = ({ setSidebarOpen }: SidebarProps) => {
+  const { pathname } = useLocation();
   const auth = useAuth();
 
-  const navigation = [
-    { name: "Fund Node", href: "/admin/fund", icon: QrcodeIcon },
-    { name: "Chain", href: "/admin/chain", icon: LinkIcon },
-    { name: "Channels", href: "/admin/channels", icon: AdjustmentsIcon },
-    { name: "Send Money", href: "/admin/send-money", icon: ShoppingCartIcon },
-    { name: "Receive Money", href: "/admin/receive-money", icon: CashIcon },
-    { name: "Logout", href: "/admin/logout", icon: LogoutIcon },
-  ];
-
-  if (auth.isAdmin()) {
-    navigation.unshift({ 
-      name: "Access Tokens", 
-      href: "/admin/tokens", 
-      icon: KeyIcon 
-    })
-    
-    navigation.unshift({
-      name: "Nodes",
-      href: "/admin/nodes",
-      icon: CollectionIcon,
-    });
-  }
+  const inAdmin = adminNav.some((vendor) => vendor.href === pathname);
+  const [openMenu, setOpenMenu] = useState(inAdmin);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-gray-senseihero">
@@ -84,6 +79,65 @@ export const AdminSidebar = ({ setSidebarOpen }: SidebarProps) => {
 
       <div className="flex flex-1 flex-col overflow-y-auto  pt-5 pb-4">
         <nav className="mt-2 flex flex-col flex-1 space-y-1 px-2">
+          {auth.isAdmin() && (
+            <div className="">
+              <button
+                onClick={() => setOpenMenu((e) => !e)}
+                className={`${
+                  inAdmin
+                    ? "text-orange hover:text-orange-hover"
+                    : "text-gray-300 hover:text-white"
+                }  group flex w-full  items-center rounded-xl px-3 py-2 text-sm font-medium  hover:bg-white hover:bg-opacity-5`}
+              >
+                <AdjustmentsIcon className="mr-3 h-6 w-6 flex-shrink-0" />
+                <span>Admin</span>
+                <span
+                  className={`${
+                    openMenu && "rotate-180"
+                  } ease ml-auto w-fit text-white transition duration-300`}
+                >
+                  <ChevronDownIcon className="h-5 w-5" />
+                </span>
+              </button>
+              <div
+                className={`${
+                  openMenu ? "h-auto" : "hidden h-0"
+                } mb-2 mt-1 space-y-1 overflow-hidden pl-4`}
+              >
+                {adminNav.map((item) => (
+                  <NavLink
+                    onClick={() => setSidebarOpen && setSidebarOpen(false)}
+                    key={item.name}
+                    to={item.href}
+                    className={({ isActive }) => {
+                      return `${
+                        isActive
+                          ? "bg-orange text-white hover:bg-orange-hover"
+                          : "text-gray-300 hover:bg-white hover:bg-opacity-5 hover:text-white"
+                      } group flex items-center rounded-xl px-3 py-2  text-sm font-medium`;
+                    }}
+                  >
+                    {({ isActive }) => {
+                      return (
+                        <>
+                          <item.icon
+                            className={`${
+                              isActive
+                                ? "text-white"
+                                : "text-gray-400 group-hover:text-gray-300"
+                            } mr-3 h-5 w-5 flex-shrink-0`}
+                            aria-hidden="true"
+                          />
+                          {item.name}
+                        </>
+                      );
+                    }}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
           {navigation.map((item) => (
             <NavLink
               onClick={() => setSidebarOpen && setSidebarOpen(false)}
@@ -195,11 +249,10 @@ export const SidebarDrawer = () => {
   );
 };
 
-
 export const UserDropdownMenu = () => {
   const auth = useAuth();
 
-    const actionItems = [
+  const actionItems = [
     { name: "Profile", href: "/admin/nodes", icon: UserIcon },
     { name: "Settings", href: "/admin/nodes", icon: CogIcon },
     { name: "Logout", href: "/admin/logout", icon: LogoutIcon },
@@ -217,7 +270,9 @@ export const UserDropdownMenu = () => {
             <UserCircleIcon className="h-9 w-9 text-white" />
 
             <div className="ml-2 flex flex-col space-y-1">
-              <p className="text-sm font-medium text-white">{auth.status.alias}</p>
+              <p className="text-sm font-medium text-white">
+                {auth.status.alias}
+              </p>
               <p className="w-32 truncate text-xs font-medium text-gray-300">
                 {auth.status.pubkey}
               </p>
@@ -226,16 +281,18 @@ export const UserDropdownMenu = () => {
 
           {actionItems.map((item, i) => (
             <Fragment key={item.name}>
-            {actionItems.length - 1 === i && <hr className="my-2 opacity-30" />}
-            <Menu.Item >
-              <Link
-                to={item.href}
-                className="flex w-full items-center space-x-2 rounded-xl px-3 py-2 hover:bg-white hover:bg-opacity-5"
-              >
-               <item.icon className="mr-2 h-6 w-6" />
-                <span className="capitalize">{item.name}</span>
-              </Link>
-            </Menu.Item>
+              {actionItems.length - 1 === i && (
+                <hr className="my-2 opacity-30" />
+              )}
+              <Menu.Item>
+                <Link
+                  to={item.href}
+                  className="flex w-full items-center space-x-2 rounded-xl px-3 py-2 hover:bg-white hover:bg-opacity-5"
+                >
+                  <item.icon className="mr-2 h-6 w-6" />
+                  <span className="capitalize">{item.name}</span>
+                </Link>
+              </Menu.Item>
             </Fragment>
           ))}
         </Menu.Items>
