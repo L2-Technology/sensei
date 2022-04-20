@@ -280,4 +280,14 @@ impl Node for NodeService {
             .map(Response::new)
             .map_err(|_e| Status::unknown("unknown error"))
     }
+    async fn verify_message(
+        &self,
+        request: tonic::Request<VerifyMessageRequest>,
+    ) -> Result<tonic::Response<VerifyMessageResponse>, tonic::Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
 }
