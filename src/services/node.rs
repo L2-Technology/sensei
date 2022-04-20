@@ -37,7 +37,7 @@ pub struct NodeInfo {
 }
 
 #[derive(Serialize)]
-pub struct VerifyResponse {
+pub struct VerifiedMessage {
     pub valid: bool,
     pub pubkey: String,
 }
