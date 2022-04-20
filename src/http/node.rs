@@ -166,6 +166,21 @@ impl From<SignMessageParams> for NodeRequest {
     }
 }
 
+#[derive(Deserialize)]
+pub struct VerifyMessageParams {
+    pub message: String,
+    pub signature: String,
+}
+
+impl From<VerifyMessageParams> for NodeRequest {
+    fn from(params: VerifyMessageParams) -> Self {
+        Self::VerifyMessage {
+            message: params.message,
+            signature: params.signature,
+        }
+    }
+}
+
 pub fn add_routes(router: Router) -> Router {
     router
         .route("/v1/node/payments", get(handle_get_payments))
@@ -186,6 +201,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/keysend", post(keysend))
         .route("/v1/node/peers/connect", post(connect_peer))
         .route("/v1/node/sign/message", post(sign_message))
+        .route("/v1/node/verify/message", post(verify_message))
 }
 
 pub async fn get_unused_address(
@@ -500,6 +516,22 @@ pub async fn sign_message(
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
         let params: Result<SignMessageParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+    handle_authenticated_request(request_context, request, macaroon, cookies).await
+}
+
+pub async fn verify_message(
+    Extension(request_context): Extension<Arc<RequestContext>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, StatusCode> {
+    let request = {
+        let params: Result<VerifyMessageParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),

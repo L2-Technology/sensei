@@ -36,6 +36,12 @@ pub struct NodeInfo {
     pub local_balance_msat: u64,
 }
 
+#[derive(Serialize)]
+pub struct VerifyResponse {
+    pub valid: bool,
+    pub pubkey: String,
+}
+
 // #[derive(Serialize)]
 // pub struct Payment {
 //     pub hash: String,
@@ -167,6 +173,10 @@ pub enum NodeRequest {
     SignMessage {
         message: String,
     },
+    VerifyMessage {
+        message: String,
+        signature: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -210,6 +220,10 @@ pub enum NodeResponse {
     },
     SignMessage {
         signature: String,
+    },
+    VerifyMessage {
+        valid: bool,
+        pubkey: String,
     },
     Error(NodeRequestError),
 }
