@@ -17,7 +17,9 @@ use crate::disk::{DataPersister, FilesystemLogger};
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
-use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer, VerifiedMessage};
+use crate::services::node::{
+    Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer, VerifiedMessage,
+};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
 use crate::{database, disk, hex_utils};
@@ -1211,14 +1213,15 @@ impl LightningNode {
         )?)
     }
 
-    pub fn verify_message(&self, message: String, signature: String) -> Result<VerifiedMessage, Error> {
+    pub fn verify_message(
+        &self,
+        message: String,
+        signature: String,
+    ) -> Result<VerifiedMessage, Error> {
         let pubkey = self.channel_manager.get_our_node_id();
 
-        let valid = lightning::util::message_signing::verify(
-            message.as_bytes(),
-            &signature,
-            &pubkey,
-        );
+        let valid =
+            lightning::util::message_signing::verify(message.as_bytes(), &signature, &pubkey);
 
         Ok((valid, pubkey.to_string()))
     }
@@ -1383,10 +1386,7 @@ impl LightningNode {
             }
             NodeRequest::VerifyMessage { message, signature } => {
                 let (valid, pubkey) = self.verify_message(message, signature)?;
-                Ok(NodeResponse::VerifyMessage {
-                    valid,
-                    pubkey,
-                })
+                Ok(NodeResponse::VerifyMessage { valid, pubkey })
             }
         }
     }

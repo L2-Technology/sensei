@@ -21,7 +21,7 @@ use super::sensei::{
     KeysendResponse, ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest,
     ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
     OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
-    SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse
+    SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse,
 };
 
 use crate::database::node::Payment;
