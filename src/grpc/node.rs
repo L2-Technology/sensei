@@ -21,7 +21,7 @@ use super::{
         ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
         OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
         SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-        StopNodeResponse,
+        StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse,
     },
     utils::raw_macaroon_from_metadata,
 };
