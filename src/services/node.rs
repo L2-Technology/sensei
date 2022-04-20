@@ -36,12 +36,6 @@ pub struct NodeInfo {
     pub local_balance_msat: u64,
 }
 
-#[derive(Serialize)]
-pub struct VerifiedMessage {
-    pub valid: bool,
-    pub pubkey: String,
-}
-
 // #[derive(Serialize)]
 // pub struct Payment {
 //     pub hash: String,
