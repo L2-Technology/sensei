@@ -57,10 +57,6 @@ impl TryInto<BlockchainInfo> for JsonResponse {
 }
 pub struct BitcoindClient {
     bitcoind_rpc_client: Arc<Mutex<RpcClient>>,
-    host: String,
-    port: u16,
-    rpc_user: String,
-    rpc_password: String,
     fees: Arc<HashMap<Target, AtomicU32>>,
     handle: tokio::runtime::Handle,
 }
@@ -127,10 +123,6 @@ impl BitcoindClient {
         fees.insert(Target::HighPriority, AtomicU32::new(5000));
         let client = Self {
             bitcoind_rpc_client: Arc::new(Mutex::new(bitcoind_rpc_client)),
-            host,
-            port,
-            rpc_user,
-            rpc_password,
             fees: Arc::new(fees),
             handle: handle.clone(),
         };
@@ -213,32 +205,6 @@ impl BitcoindClient {
                 tokio::time::sleep(Duration::from_secs(60)).await;
             }
         });
-    }
-
-    pub fn get_new_rpc_client(&self) -> std::io::Result<RpcClient> {
-        let http_endpoint = HttpEndpoint::for_host(self.host.clone()).with_port(self.port);
-        let rpc_credentials = base64::encode(format!(
-            "{}:{}",
-            self.rpc_user.clone(),
-            self.rpc_password.clone()
-        ));
-        RpcClient::new(&rpc_credentials, http_endpoint)
-    }
-
-    pub async fn send_raw_transaction(&self, raw_tx: String) {
-        let rpc = self.bitcoind_rpc_client.lock().await;
-
-        let raw_tx_json = serde_json::json!(raw_tx);
-        rpc.call_method::<Txid>("sendrawtransaction", &[raw_tx_json])
-            .await
-            .unwrap();
-    }
-
-    pub async fn get_blockchain_info(&self) -> BlockchainInfo {
-        let rpc = self.bitcoind_rpc_client.lock().await;
-        rpc.call_method::<BlockchainInfo>("getblockchaininfo", &[])
-            .await
-            .unwrap()
     }
 }
 
