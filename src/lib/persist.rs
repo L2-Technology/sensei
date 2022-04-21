@@ -218,11 +218,11 @@ impl SenseiPersister {
         self.store.persist("channel_peer_data", &peer_data)
     }
 
-    pub fn read_channel_peer_data(&self) -> Result<HashMap<PublicKey, SocketAddr>, std::io::Error> {
+    pub async fn read_channel_peer_data(&self) -> Result<HashMap<PublicKey, SocketAddr>, std::io::Error> {
         let mut peer_data = HashMap::new();
         let raw_peer_data = self.get_raw_channel_peer_data();
         for line in raw_peer_data.lines() {
-            match node::parse_peer_info(line.to_string()) {
+            match node::parse_peer_info(line.to_string()).await {
                 Ok((pubkey, socket_addr)) => {
                     peer_data.insert(pubkey, socket_addr);
                 }

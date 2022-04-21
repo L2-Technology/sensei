@@ -727,7 +727,7 @@ impl LightningNode {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
                 interval.tick().await;
-                match persister_peer.read_channel_peer_data() {
+                match persister_peer.read_channel_peer_data().await {
                     Ok(mut info) => {
                         for (pubkey, peer_addr) in info.drain() {
                             for chan_info in channel_manager_reconnect.list_channels() {
@@ -852,17 +852,10 @@ impl LightningNode {
     }
 
     pub async fn connect_to_peer(&self, pubkey: PublicKey, addr: SocketAddr) -> Result<(), Error> {
-        let listen_addr = public_ip::addr().await.unwrap();
-
-        let connect_address = match listen_addr == addr.ip() {
-            true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
-            false => addr,
-        };
-
         match lightning_net_tokio::connect_outbound(
             Arc::clone(&self.peer_manager),
             pubkey,
-            connect_address,
+            addr,
         )
         .await
         {
@@ -1261,7 +1254,7 @@ impl LightningNode {
                 amt_satoshis,
                 public,
             } => {
-                let (pubkey, addr) = parse_peer_info(node_connection_string.clone())?;
+                let (pubkey, addr) = parse_peer_info(node_connection_string.clone()).await?;
 
                 let found_peer = self
                     .peer_manager
@@ -1320,7 +1313,7 @@ impl LightningNode {
             NodeRequest::ConnectPeer {
                 node_connection_string,
             } => {
-                let (pubkey, addr) = parse_peer_info(node_connection_string)?;
+                let (pubkey, addr) = parse_peer_info(node_connection_string).await?;
 
                 let found_peer = self
                     .peer_manager
@@ -1384,7 +1377,7 @@ impl LightningNode {
     }
 }
 
-pub fn parse_peer_info(
+pub async fn parse_peer_info(
     peer_pubkey_and_ip_addr: String,
 ) -> Result<(PublicKey, SocketAddr), std::io::Error> {
     let mut pubkey_and_addr = peer_pubkey_and_ip_addr.split('@');
@@ -1416,7 +1409,16 @@ pub fn parse_peer_info(
         ));
     }
 
-    Ok((pubkey.unwrap(), peer_addr.unwrap().unwrap()))
+    let addr = peer_addr.unwrap().unwrap();
+
+    let listen_addr = public_ip::addr().await.unwrap();
+
+    let connect_address = match listen_addr == addr.ip() {
+        true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
+        false => addr,
+    };
+
+    Ok((pubkey.unwrap(), connect_address))
 }
 
 pub(crate) async fn connect_peer_if_necessary(
@@ -1430,14 +1432,7 @@ pub(crate) async fn connect_peer_if_necessary(
         }
     }
 
-    let listen_addr = public_ip::addr().await.unwrap();
-
-    let connect_address = match listen_addr == peer_addr.ip() {
-        true => format!("127.0.0.1:{}", peer_addr.port()).parse().unwrap(),
-        false => peer_addr,
-    };
-
-    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, connect_address)
+    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr)
         .await
     {
         Some(connection_closed_future) => {
