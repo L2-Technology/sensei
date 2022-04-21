@@ -852,12 +852,8 @@ impl LightningNode {
     }
 
     pub async fn connect_to_peer(&self, pubkey: PublicKey, addr: SocketAddr) -> Result<(), Error> {
-        match lightning_net_tokio::connect_outbound(
-            Arc::clone(&self.peer_manager),
-            pubkey,
-            addr,
-        )
-        .await
+        match lightning_net_tokio::connect_outbound(Arc::clone(&self.peer_manager), pubkey, addr)
+            .await
         {
             Some(connection_closed_future) => {
                 let mut connection_closed_future = Box::pin(connection_closed_future);
@@ -1432,8 +1428,7 @@ pub(crate) async fn connect_peer_if_necessary(
         }
     }
 
-    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr)
-        .await
+    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
     {
         Some(connection_closed_future) => {
             let mut connection_closed_future = Box::pin(connection_closed_future);
