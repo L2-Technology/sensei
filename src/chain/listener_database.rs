@@ -98,13 +98,17 @@ impl ListenerDatabase {
                 .get_path_from_script_pubkey(&output.script_pubkey)
                 .unwrap()
             {
-                database
-                    .set_utxo(&LocalUtxo {
-                        outpoint: OutPoint::new(tx.txid(), i as u32),
-                        txout: output.clone(),
-                        keychain,
-                    })
-                    .unwrap();
+                let outpoint = OutPoint::new(tx.txid(), i as u32);
+                let existing_utxo = database.get_utxo(&outpoint).unwrap();
+                if existing_utxo.is_none() {
+                    database
+                        .set_utxo(&LocalUtxo {
+                            outpoint: OutPoint::new(tx.txid(), i as u32),
+                            txout: output.clone(),
+                            keychain,
+                        })
+                        .unwrap();
+                }
                 incoming += output.value;
 
                 // TODO: implement this
