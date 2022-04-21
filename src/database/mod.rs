@@ -1,3 +1,5 @@
+use std::io::ErrorKind;
+
 // This file is Copyright its original authors, visible in version control
 // history.
 //
@@ -19,5 +21,15 @@ pub enum Error {
 impl From<bitcoin::consensus::encode::Error> for Error {
     fn from(e: bitcoin::consensus::encode::Error) -> Error {
         Error::Encode(e)
+    }
+}
+
+impl From<Error> for std::io::Error {
+    fn from(e: Error) -> std::io::Error {
+        let error_message = match e {
+            Error::Generic(str) => str,
+            Error::Encode(e) => e.to_string(),
+        };
+        std::io::Error::new(ErrorKind::Other, error_message)
     }
 }

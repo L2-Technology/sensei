@@ -22,10 +22,11 @@ mod node;
 mod services;
 mod utils;
 
-use crate::config::SenseiConfig;
+use crate::chain::bitcoind_client::BitcoindClient;
 use crate::database::admin::AdminDatabase;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
+use crate::{chain::manager::SenseiChainManager, config::SenseiConfig};
 use ::http::{
     header::{self, ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
     Method, Uri,
@@ -39,6 +40,7 @@ use axum::{
     AddExtensionLayer, Router,
 };
 use clap::Parser;
+use config::KVPersistence;
 use rust_embed::RustEmbed;
 
 use std::net::SocketAddr;
@@ -97,6 +99,8 @@ struct SenseiArgs {
     port_range_max: Option<u16>,
     #[clap(long, env = "API_PORT")]
     api_port: Option<u16>,
+    #[clap(long, env = "KV_PERSISTENCE")]
+    kv_persistence: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -151,6 +155,13 @@ async fn main() {
     if let Some(api_port) = args.api_port {
         config.api_port = api_port;
     }
+    if let Some(kv_persistence) = args.kv_persistence {
+        config.kv_persistence = match kv_persistence.as_str() {
+            "filesystem" => KVPersistence::Filesystem,
+            "database" => KVPersistence::Database,
+            _ => panic!("invalid kv_persistence value"),
+        };
+    }
 
     let sqlite_path = format!("{}/{}/admin.db", sensei_dir, config.network);
     let mut database = AdminDatabase::new(sqlite_path);
@@ -159,11 +170,35 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
     let node_directory = Arc::new(Mutex::new(HashMap::new()));
 
+    let bitcoind_client = Arc::new(
+        BitcoindClient::new(
+            config.bitcoind_rpc_host.clone(),
+            config.bitcoind_rpc_port,
+            config.bitcoind_rpc_username.clone(),
+            config.bitcoind_rpc_password.clone(),
+            tokio::runtime::Handle::current(),
+        )
+        .await
+        .expect("invalid bitcoind rpc config"),
+    );
+
+    let chain_manager = Arc::new(
+        SenseiChainManager::new(
+            config.clone(),
+            bitcoind_client.clone(),
+            bitcoind_client.clone(),
+            bitcoind_client,
+        )
+        .await
+        .unwrap(),
+    );
+
     let admin_service = AdminService::new(
         &sensei_dir,
         config.clone(),
         node_directory.clone(),
         database,
+        chain_manager,
     )
     .await;
 

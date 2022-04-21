@@ -136,13 +136,14 @@ impl AdminService {
         config: SenseiConfig,
         node_directory: NodeDirectory,
         database: AdminDatabase,
+        chain_manager: Arc<SenseiChainManager>,
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
-            config: Arc::new(config.clone()),
+            config: Arc::new(config),
             node_directory,
             database: Arc::new(Mutex::new(database)),
-            chain_manager: Arc::new(SenseiChainManager::new(config).await.unwrap()),
+            chain_manager,
         }
     }
 }
@@ -523,6 +524,7 @@ impl AdminService {
             network: self.config.network,
             passphrase,
             external_router,
+            kv_persistence: self.config.kv_persistence.clone(),
         }
     }
 

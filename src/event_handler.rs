@@ -19,10 +19,7 @@ use bdk::{FeeRate, SignOptions};
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use lightning::{
-    chain::{
-        chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator},
-        keysinterface::KeysManager,
-    },
+    chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
     util::events::{Event, EventHandler, PaymentPurpose},
 };
 use rand::{thread_rng, Rng};
@@ -73,7 +70,7 @@ impl EventHandler for LightningNodeEventHandler {
                 let mut tx_builder = wallet.build_tx();
                 let _fee_sats_per_1000_wu = self
                     .chain_manager
-                    .bitcoind_client
+                    .fee_estimator
                     .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 
                 // TODO: is this the correct conversion??
@@ -225,6 +222,7 @@ impl EventHandler for LightningNodeEventHandler {
             Event::PaymentForwarded {
                 fee_earned_msat,
                 claim_from_onchain_tx,
+                source_channel_id: _,
             } => {
                 let from_onchain_str = if *claim_from_onchain_tx {
                     "from onchain downstream claim"
@@ -273,7 +271,7 @@ impl EventHandler for LightningNodeEventHandler {
 
                 let tx_feerate = self
                     .chain_manager
-                    .bitcoind_client
+                    .fee_estimator
                     .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 
                 let spending_tx = self
@@ -288,7 +286,7 @@ impl EventHandler for LightningNodeEventHandler {
                     .unwrap();
 
                 self.chain_manager
-                    .bitcoind_client
+                    .broadcaster
                     .broadcast_transaction(&spending_tx);
             }
             Event::ChannelClosed {

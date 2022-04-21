@@ -11,16 +11,17 @@ use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::fee_estimator::SenseiFeeEstimator;
 use crate::chain::listener_database::ListenerDatabase;
 use crate::chain::manager::SenseiChainManager;
-use crate::config::LightningNodeConfig;
+use crate::config::{KVPersistence, LightningNodeConfig};
 use crate::database::node::NodeDatabase;
-use crate::disk::{DataPersister, FilesystemLogger};
+use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
+use crate::lib::persist::{AnyKVStore, DatabaseStore, FileStore, SenseiPersister};
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
-use crate::{database, disk, hex_utils};
+use crate::{database, hex_utils};
 use bdk::database::SqliteDatabase;
 use bdk::keys::ExtendedKey;
 use bdk::wallet::AddressIndex;
@@ -33,7 +34,6 @@ use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
 
 use bdk::template::DescriptorTemplateOut;
-use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
 use bitcoin::secp256k1::PublicKey;
@@ -57,16 +57,14 @@ use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice};
 use lightning_net_tokio::SocketDescriptor;
-use lightning_persister::FilesystemPersister;
 use macaroon::Macaroon;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::fs::File;
-use std::io::Read;
 use std::io::Write;
+use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
-use std::path::Path;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -145,7 +143,7 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
     Arc<SenseiBroadcaster>,
     Arc<SenseiFeeEstimator>,
     Arc<FilesystemLogger>,
-    Arc<FilesystemPersister>,
+    Arc<SenseiPersister>,
 >;
 
 trait MustSized: Sized {}
@@ -257,6 +255,7 @@ pub struct LightningNode {
     pub invoice_payer: Arc<InvoicePayer>,
     pub scorer: Arc<Mutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
     pub stop_listen: Arc<AtomicBool>,
+    pub persister: Arc<SenseiPersister>,
 }
 
 impl LightningNode {
@@ -290,8 +289,10 @@ impl LightningNode {
         seed: &[u8],
         pubkey: String,
         macaroon_path: String,
-        database: &mut NodeDatabase,
+        database: Arc<Mutex<NodeDatabase>>,
     ) -> Result<Macaroon, Error> {
+        let mut database = database.lock().unwrap();
+
         match File::open(macaroon_path.clone()) {
             Ok(mut file) => {
                 let mut bytes: Vec<u8> = Vec::new();
@@ -369,7 +370,6 @@ impl LightningNode {
         let mut node_database = NodeDatabase::new(config.node_database_path());
 
         let network = config.network;
-        let channel_manager_path = config.channel_manager_path();
         let admin_macaroon_path = config.admin_macaroon_path();
 
         let seed =
@@ -406,15 +406,22 @@ impl LightningNode {
         let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
 
         let fee_estimator = Arc::new(SenseiFeeEstimator {
-            fee_estimator: chain_manager.bitcoind_client.clone(),
+            fee_estimator: chain_manager.fee_estimator.clone(),
         });
 
         let broadcaster = Arc::new(SenseiBroadcaster {
-            broadcaster: chain_manager.bitcoind_client.clone(),
+            broadcaster: chain_manager.broadcaster.clone(),
             listener_database: listener_database.clone(),
         });
 
-        let persister = Arc::new(FilesystemPersister::new(data_dir));
+        let database = Arc::new(Mutex::new(node_database));
+
+        let persistence_store = match config.kv_persistence {
+            KVPersistence::Filesystem => AnyKVStore::File(FileStore::new(data_dir)),
+            KVPersistence::Database => AnyKVStore::Database(DatabaseStore::new(database.clone())),
+        };
+
+        let persister = Arc::new(SenseiPersister::new(persistence_store, config.network));
 
         let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
 
@@ -437,7 +444,7 @@ impl LightningNode {
         let best_block = chain_manager.get_best_block().await?;
 
         let (channel_manager_blockhash, channel_manager) = {
-            if let Ok(mut f) = fs::File::open(channel_manager_path) {
+            if let Ok(Some(contents)) = persister.read_channel_manager() {
                 let mut channel_monitor_mut_references = Vec::new();
                 for (_, channel_monitor) in channelmonitors.iter_mut() {
                     channel_monitor_mut_references.push(channel_monitor);
@@ -451,7 +458,8 @@ impl LightningNode {
                     user_config,
                     channel_monitor_mut_references,
                 );
-                <(BlockHash, ChannelManager)>::read(&mut f, read_args).unwrap()
+                let mut buffer = Cursor::new(&contents);
+                <(BlockHash, ChannelManager)>::read(&mut buffer, read_args).unwrap()
             } else {
                 // TODO: in reality we could error for other reasons when there's supposed to be
                 // an existing chanenl manager.  need to handle this the same way we do for seed file
@@ -504,8 +512,10 @@ impl LightningNode {
             chain_listeners.push((block_hash, monitor as &(dyn chain::Listen + Send + Sync)));
         }
 
-        let bdk_database_last_sync =
-            node_database.find_or_create_last_sync(best_block.block_hash())?;
+        let bdk_database_last_sync = {
+            let mut db = database.lock().unwrap();
+            db.find_or_create_last_sync(best_block.block_hash())?
+        };
 
         chain_listeners.push((
             bdk_database_last_sync,
@@ -546,14 +556,7 @@ impl LightningNode {
 
         let network_graph = match network_graph {
             Some(network_graph) => network_graph,
-            None => {
-                let genesis = genesis_block(config.network).header.block_hash();
-
-                Arc::new(disk::read_network(
-                    Path::new(&config.network_graph_path()),
-                    genesis,
-                ))
-            }
+            None => Arc::new(persister.read_network_graph()),
         };
 
         let network_graph_msg_handler: Arc<NetworkGraphMessageHandler> =
@@ -592,11 +595,9 @@ impl LightningNode {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
-        let scorer_path = config.scorer_path();
-        let scorer = Arc::new(Mutex::new(disk::read_scorer(
-            Path::new(&scorer_path),
-            Arc::clone(&network_graph),
-        )));
+        let scorer = Arc::new(Mutex::new(
+            persister.read_scorer(Arc::clone(&network_graph)),
+        ));
 
         let router = DefaultRouter::new(
             network_graph.clone(),
@@ -610,10 +611,8 @@ impl LightningNode {
             &seed,
             pubkey,
             admin_macaroon_path,
-            &mut node_database,
+            database.clone(),
         )?;
-
-        let database = Arc::new(Mutex::new(node_database));
 
         let event_handler = Arc::new(LightningNodeEventHandler {
             config: config.clone(),
@@ -653,6 +652,7 @@ impl LightningNode {
             scorer,
             invoice_payer,
             stop_listen,
+            persister,
         })
     }
 
@@ -686,14 +686,15 @@ impl LightningNode {
             }
         }));
 
-        let scorer_path = self.config.scorer_path();
+        let scorer_persister = Arc::clone(&self.persister);
         let scorer_persist = Arc::clone(&self.scorer);
 
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(600));
             loop {
                 interval.tick().await;
-                if disk::persist_scorer(Path::new(&scorer_path), &scorer_persist.lock().unwrap())
+                if scorer_persister
+                    .persist_scorer(&scorer_persist.lock().unwrap())
                     .is_err()
                 {
                     // Persistence errors here are non-fatal as channels will be re-scored as payments
@@ -703,15 +704,12 @@ impl LightningNode {
             }
         }));
 
-        let persister = DataPersister {
-            data_dir: self.config.data_dir(),
-            external_router: self.config.external_router,
-        };
+        let bg_persister = Arc::clone(&self.persister);
 
         // TODO: should we allow 'child' nodes to update NetworkGraph based on payment failures?
         //       feels like probably but depends on exactly what is updated
         let background_processor = BackgroundProcessor::start(
-            persister,
+            bg_persister,
             self.invoice_payer.clone(),
             self.chain_monitor.clone(),
             self.channel_manager.clone(),
@@ -722,15 +720,14 @@ impl LightningNode {
 
         // Reconnect to channel peers if possible.
 
-        let channel_peer_data_path = config.channel_peer_data_path();
         let channel_manager_reconnect = self.channel_manager.clone();
         let peer_manager_reconnect = self.peer_manager.clone();
-
+        let persister_peer = self.persister.clone();
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
                 interval.tick().await;
-                match disk::read_channel_peer_data(Path::new(&channel_peer_data_path)) {
+                match persister_peer.read_channel_peer_data().await {
                     Ok(mut info) => {
                         for (pubkey, peer_addr) in info.drain() {
                             for chan_info in channel_manager_reconnect.list_channels() {
@@ -855,19 +852,8 @@ impl LightningNode {
     }
 
     pub async fn connect_to_peer(&self, pubkey: PublicKey, addr: SocketAddr) -> Result<(), Error> {
-        let listen_addr = public_ip::addr().await.unwrap();
-
-        let connect_address = match listen_addr == addr.ip() {
-            true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
-            false => addr,
-        };
-
-        match lightning_net_tokio::connect_outbound(
-            Arc::clone(&self.peer_manager),
-            pubkey,
-            connect_address,
-        )
-        .await
+        match lightning_net_tokio::connect_outbound(Arc::clone(&self.peer_manager), pubkey, addr)
+            .await
         {
             Some(connection_closed_future) => {
                 let mut connection_closed_future = Box::pin(connection_closed_future);
@@ -1264,7 +1250,7 @@ impl LightningNode {
                 amt_satoshis,
                 public,
             } => {
-                let (pubkey, addr) = parse_peer_info(node_connection_string.clone())?;
+                let (pubkey, addr) = parse_peer_info(node_connection_string.clone()).await?;
 
                 let found_peer = self
                     .peer_manager
@@ -1279,10 +1265,7 @@ impl LightningNode {
                 let res = self.open_channel(pubkey, amt_satoshis, 0, 0, public);
 
                 if res.is_ok() {
-                    let _ = disk::persist_channel_peer(
-                        Path::new(&self.config.channel_peer_data_path()),
-                        &node_connection_string,
-                    );
+                    let _ = self.persister.persist_channel_peer(&node_connection_string);
                 }
 
                 Ok(NodeResponse::OpenChannel {})
@@ -1326,7 +1309,7 @@ impl LightningNode {
             NodeRequest::ConnectPeer {
                 node_connection_string,
             } => {
-                let (pubkey, addr) = parse_peer_info(node_connection_string)?;
+                let (pubkey, addr) = parse_peer_info(node_connection_string).await?;
 
                 let found_peer = self
                     .peer_manager
@@ -1390,7 +1373,7 @@ impl LightningNode {
     }
 }
 
-pub fn parse_peer_info(
+pub async fn parse_peer_info(
     peer_pubkey_and_ip_addr: String,
 ) -> Result<(PublicKey, SocketAddr), std::io::Error> {
     let mut pubkey_and_addr = peer_pubkey_and_ip_addr.split('@');
@@ -1422,7 +1405,16 @@ pub fn parse_peer_info(
         ));
     }
 
-    Ok((pubkey.unwrap(), peer_addr.unwrap().unwrap()))
+    let addr = peer_addr.unwrap().unwrap();
+
+    let listen_addr = public_ip::addr().await.unwrap();
+
+    let connect_address = match listen_addr == addr.ip() {
+        true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
+        false => addr,
+    };
+
+    Ok((pubkey.unwrap(), connect_address))
 }
 
 pub(crate) async fn connect_peer_if_necessary(
@@ -1436,15 +1428,7 @@ pub(crate) async fn connect_peer_if_necessary(
         }
     }
 
-    let listen_addr = public_ip::addr().await.unwrap();
-
-    let connect_address = match listen_addr == peer_addr.ip() {
-        true => format!("127.0.0.1:{}", peer_addr.port()).parse().unwrap(),
-        false => peer_addr,
-    };
-
-    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, connect_address)
-        .await
+    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
     {
         Some(connection_closed_future) => {
             let mut connection_closed_future = Box::pin(connection_closed_future);
