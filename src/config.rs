@@ -32,6 +32,7 @@ pub struct SenseiConfig {
     pub port_range_min: u16,
     pub port_range_max: u16,
     pub kv_persistence: KVPersistence,
+    pub database_url: String,
 }
 
 impl Default for SenseiConfig {
@@ -46,9 +47,10 @@ impl Default for SenseiConfig {
             bitcoind_rpc_password: String::from("bitcoin"),
             network: Network::Bitcoin,
             api_port: 5401,
-            port_range_min: 1024,
+            port_range_min: 10000,
             port_range_max: 65535,
-            kv_persistence: KVPersistence::Filesystem,
+            kv_persistence: KVPersistence::Database,
+            database_url: String::from("sensei.db"),
         }
     }
 }
@@ -99,49 +101,5 @@ impl SenseiConfig {
             serde_json::to_string(&self).expect("failed to serialize config"),
         )
         .expect("failed to write config");
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct LightningNodeConfig {
-    pub data_dir: String,
-    pub ldk_peer_listening_port: u16,
-    pub ldk_announced_listen_addr: Vec<String>,
-    pub ldk_announced_node_name: Option<String>,
-    pub network: Network,
-    pub passphrase: String,
-    pub external_router: bool,
-    pub kv_persistence: KVPersistence,
-}
-
-impl Default for LightningNodeConfig {
-    fn default() -> Self {
-        LightningNodeConfig {
-            data_dir: ".".into(),
-            ldk_peer_listening_port: 9735,
-            ldk_announced_listen_addr: vec![],
-            ldk_announced_node_name: None,
-            network: Network::Bitcoin,
-            passphrase: "satoshi".into(),
-            external_router: true,
-            kv_persistence: KVPersistence::Filesystem,
-        }
-    }
-}
-
-impl LightningNodeConfig {
-    pub fn data_dir(&self) -> String {
-        format!("{}/data", self.data_dir)
-    }
-    pub fn node_database_path(&self) -> String {
-        format!("{}/node.db", self.data_dir())
-    }
-
-    pub fn bdk_database_path(&self) -> String {
-        format!("{}/bdk.db", self.data_dir())
-    }
-
-    pub fn admin_macaroon_path(&self) -> String {
-        format!("{}/admin.macaroon", self.data_dir())
     }
 }

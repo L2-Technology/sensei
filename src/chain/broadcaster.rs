@@ -1,13 +1,12 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use super::database::WalletDatabase;
 use bitcoin::Transaction;
 use lightning::chain::chaininterface::BroadcasterInterface;
 
-use super::listener_database::ListenerDatabase;
-
 pub struct SenseiBroadcaster {
     pub broadcaster: Arc<dyn BroadcasterInterface + Send + Sync>,
-    pub listener_database: ListenerDatabase,
+    pub wallet_database: Arc<Mutex<WalletDatabase>>,
 }
 
 impl BroadcasterInterface for SenseiBroadcaster {
@@ -16,6 +15,7 @@ impl BroadcasterInterface for SenseiBroadcaster {
 
         // TODO: there's a bug here if the broadcast fails
         //       best solution is to probably setup a zmq listener
-        self.listener_database.process_mempool_tx(tx);
+        let mut database = self.wallet_database.lock().unwrap();
+        database.process_mempool_tx(tx);
     }
 }

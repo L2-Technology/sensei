@@ -37,30 +37,28 @@ service Node {
 }
 
 message ListNode {
-    int64 id = 1;
-    string external_id = 2;
-    string created_at = 3;
-    string updated_at = 4;
-    uint32 role = 5;
-    string username = 6;
-    string alias = 7;
-    string network = 8;
-    string listen_addr = 9;
-    uint32 listen_port = 10;
-    string pubkey = 11;
-    uint32 status = 12;
+    string id = 1;
+    int64 created_at = 2;
+    int64 updated_at = 3;
+    uint32 role = 4;
+    string username = 5;
+    string alias = 6;
+    string network = 7;
+    string listen_addr = 8;
+    uint32 listen_port = 9;
+    string pubkey = 10;
+    uint32 status = 11;
 }
 
 message Token {
-    uint64 id = 1;
-    string external_id = 2;
-    string created_at = 3;
-    string updated_at = 4;
-    uint64 expires_at = 5;
-    string name = 6;
-    string token = 7;
-    bool single_use = 8;
-    string scope = 9;
+    string id = 1;
+    int64 created_at = 2;
+    int64 updated_at = 3;
+    int64 expires_at = 4;
+    string name = 5;
+    string token = 6;
+    bool single_use = 7;
+    string scope = 8;
 }
 
 message PaginationRequest {
@@ -102,7 +100,7 @@ message CreateAdminRequest {
 message CreateAdminResponse {
     string pubkey = 1;
     string macaroon = 2;
-    string external_id = 3;
+    string id = 3;
     uint32 role = 4;
     string token = 5;
 }
@@ -131,7 +129,7 @@ message CreateTokenRequest {
 }
 
 message DeleteTokenRequest {
-    uint64 id = 1;
+    string id = 1;
 }
 message DeleteTokenResponse {}
 
@@ -263,10 +261,11 @@ message Payment {
     optional string preimage = 2;
     optional string secret = 3;
     string status = 4;
-    optional uint64 amt_msat = 5;
-    string origin = 6;
-    optional string label = 7;
-    optional string invoice = 8;
+    optional int64 amt_msat = 5;
+    optional int64 fee_paid_msat = 6;
+    string origin = 7;
+    optional string label = 8;
+    optional string invoice = 9;
 }
 
 message PaymentsFilter {

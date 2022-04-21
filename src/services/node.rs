@@ -6,8 +6,6 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
 // You may not use this file except in accordance with one or both of these
 // licenses.
-
-use crate::database::node::Payment;
 use crate::node::LightningNode;
 use bdk::TransactionDetails;
 use futures::Future;
@@ -199,7 +197,7 @@ pub enum NodeResponse {
         pagination: PaginationResponse,
     },
     ListPayments {
-        payments: Vec<Payment>,
+        payments: Vec<entity::payment::Model>,
         pagination: PaginationResponse,
     },
     ListTransactions {

@@ -8,25 +8,25 @@
 // licenses.
 
 use crate::chain::broadcaster::SenseiBroadcaster;
+use crate::chain::database::WalletDatabase;
 use crate::chain::fee_estimator::SenseiFeeEstimator;
-use crate::chain::listener_database::ListenerDatabase;
 use crate::chain::manager::SenseiChainManager;
-use crate::config::{KVPersistence, LightningNodeConfig};
-use crate::database::node::NodeDatabase;
+use crate::config::{KVPersistence, SenseiConfig};
 use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
+use crate::lib::database::SenseiDatabase;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
 use crate::lib::persist::{AnyKVStore, DatabaseStore, FileStore, SenseiPersister};
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
-use crate::{database, hex_utils, version};
-use bdk::database::SqliteDatabase;
+use crate::{hex_utils, version};
 use bdk::keys::ExtendedKey;
 use bdk::wallet::AddressIndex;
 use bdk::TransactionDetails;
 use bitcoin::hashes::Hash;
+use entity::sea_orm::{ActiveModelTrait, ActiveValue};
 use lightning::chain::channelmonitor::ChannelMonitor;
 
 use lightning::ln::msgs::NetAddress;
@@ -36,7 +36,7 @@ use tindercrypt::cryptors::RingCryptor;
 use bdk::template::DescriptorTemplateOut;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
-use bitcoin::secp256k1::PublicKey;
+use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
@@ -62,8 +62,8 @@ use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::fs::File;
+use std::io::Cursor;
 use std::io::Write;
-use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -225,7 +225,7 @@ fn get_wpkh_descriptors_for_extended_key(
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct MacaroonSession {
-    pub identifier: Vec<u8>,
+    pub id: String,
     pub pubkey: String,
 }
 
@@ -239,11 +239,15 @@ impl MacaroonSession {
 
 #[derive(Clone)]
 pub struct LightningNode {
-    pub config: LightningNodeConfig,
+    pub config: Arc<SenseiConfig>,
     pub macaroon: Macaroon,
+    pub id: String,
+    pub listen_addresses: Vec<String>,
+    pub listen_port: u16,
+    pub alias: String,
     pub seed: [u8; 32],
-    pub database: Arc<Mutex<NodeDatabase>>,
-    pub wallet: Arc<Mutex<bdk::Wallet<(), SqliteDatabase>>>,
+    pub database: Arc<SenseiDatabase>,
+    pub wallet: Arc<Mutex<bdk::Wallet<WalletDatabase>>>,
     pub channel_manager: Arc<ChannelManager>,
     pub chain_monitor: Arc<ChainMonitor>,
     pub chain_manager: Arc<SenseiChainManager>,
@@ -259,14 +263,15 @@ pub struct LightningNode {
 }
 
 impl LightningNode {
-    fn find_or_create_seed(
+    async fn find_or_create_seed(
+        node_id: String,
         passphrase: String,
-        database: &mut NodeDatabase,
+        database: Arc<SenseiDatabase>,
     ) -> Result<[u8; 32], Error> {
         let cryptor = RingCryptor::new();
 
         let mut seed: [u8; 32] = [0; 32];
-        match database.get_seed()? {
+        match database.get_seed(node_id.clone()).await? {
             Some(encrypted_seed) => {
                 let decrypted_seed =
                     cryptor.open(passphrase.as_bytes(), encrypted_seed.as_slice())?;
@@ -279,63 +284,74 @@ impl LightningNode {
             None => {
                 thread_rng().fill_bytes(&mut seed);
                 let encrypted_seed = cryptor.seal_with_passphrase(passphrase.as_bytes(), &seed)?;
-                database.create_seed(encrypted_seed)?;
+                database.set_seed(node_id.clone(), encrypted_seed).await?;
             }
         }
         Ok(seed)
     }
 
-    fn find_or_create_macaroon(
+    async fn find_or_create_macaroon(
+        node_id: String,
+        passphrase: String,
         seed: &[u8],
         pubkey: String,
-        macaroon_path: String,
-        database: Arc<Mutex<NodeDatabase>>,
+        database: Arc<SenseiDatabase>,
+        macaroon_path: Option<String>,
     ) -> Result<Macaroon, Error> {
-        let mut database = database.lock().unwrap();
+        let cryptor = RingCryptor::new();
 
-        match File::open(macaroon_path.clone()) {
-            Ok(mut file) => {
-                let mut bytes: Vec<u8> = Vec::new();
-                let _bytes_read = file.read_to_end(&mut bytes)?;
-                let macaroon = macaroon::Macaroon::deserialize(bytes.as_slice())?;
+        match database.get_macaroon(node_id.clone()).await? {
+            Some(macaroon) => {
+                let decrypted_macaroon = cryptor.open(
+                    passphrase.as_bytes(),
+                    macaroon.encrypted_macaroon.as_slice(),
+                )?;
+                let macaroon = macaroon::Macaroon::deserialize(decrypted_macaroon.as_slice())?;
                 Ok(macaroon)
             }
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::NotFound => {
-                    let macaroon_identifier = uuid::Uuid::new_v4().as_bytes().to_vec();
-                    database.create_macaroon(macaroon_identifier.clone())?;
-                    let macaroon_data = MacaroonSession {
-                        pubkey,
-                        identifier: macaroon_identifier,
-                    };
-                    let macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
+            None => {
+                let macaroon_data = MacaroonSession {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    pubkey,
+                };
 
-                    let macaroon_key = macaroon::MacaroonKey::from(seed);
-                    let macaroon_identifier = macaroon::ByteString::from(macaroon_data);
+                let serialized_macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
+                let macaroon_key = macaroon::MacaroonKey::from(seed);
+                let macaroon_identifier = macaroon::ByteString::from(serialized_macaroon_data);
+                let admin_macaroon = macaroon::Macaroon::create(
+                    Some("senseid".to_string()),
+                    &macaroon_key,
+                    macaroon_identifier,
+                )?;
+                let serialized_macaroon = admin_macaroon.serialize(macaroon::Format::V2)?;
+                let encrypted_macaroon =
+                    cryptor.seal_with_passphrase(passphrase.as_bytes(), &serialized_macaroon)?;
 
-                    let admin_macaroon = macaroon::Macaroon::create(
-                        Some("senseid".to_string()),
-                        &macaroon_key,
-                        macaroon_identifier,
-                    )?;
-                    let serialized_macaroon = admin_macaroon.serialize(macaroon::Format::V2)?;
+                let macaroon = entity::macaroon::ActiveModel {
+                    id: ActiveValue::Set(macaroon_data.id.clone()),
+                    node_id: ActiveValue::Set(node_id.clone()),
+                    encrypted_macaroon: ActiveValue::Set(encrypted_macaroon),
+                    ..Default::default()
+                };
+                macaroon.insert(database.get_connection()).await?;
+
+                if let Some(macaroon_path) = macaroon_path {
                     match File::create(macaroon_path.clone()) {
                         Ok(mut f) => {
                             f.write_all(serialized_macaroon.as_slice())?;
                             f.sync_all()?;
-                            Ok(admin_macaroon)
                         }
                         Err(e) => {
                             println!(
                                 "ERROR: Unable to create admin.macaroon file {}: {}",
                                 macaroon_path, e
                             );
-                            Err(Error::FailedToWriteSeed)
                         }
                     }
                 }
-                _ => Err(Error::Io(e)),
-            },
+
+                Ok(admin_macaroon)
+            }
         }
     }
 
@@ -344,11 +360,9 @@ impl LightningNode {
         macaroon: Macaroon,
         session: MacaroonSession,
     ) -> Result<(), Error> {
-        let mut database = self.database.lock().unwrap();
-        let exists = database
-            .macaroon_exists(session.identifier)
-            .map_err(Error::Db)?;
-        if !exists {
+        let existing_macaroon = self.database.find_macaroon_by_id(session.id).await?;
+
+        if existing_macaroon.is_none() {
             return Err(Error::InvalidMacaroon);
         }
 
@@ -359,25 +373,87 @@ impl LightningNode {
             .map_err(|_e| Error::InvalidMacaroon)
     }
 
-    pub async fn new(
-        config: LightningNodeConfig,
-        network_graph: Option<Arc<NetworkGraph>>,
-        network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
-        chain_manager: Arc<SenseiChainManager>,
-    ) -> Result<Self, Error> {
-        let data_dir = config.data_dir();
-        fs::create_dir_all(data_dir.clone())?;
-        let mut node_database = NodeDatabase::new(config.node_database_path());
-
-        let network = config.network;
-        let admin_macaroon_path = config.admin_macaroon_path();
-
+    pub async fn get_node_pubkey_and_macaroon(
+        id: String,
+        passphrase: String,
+        database: Arc<SenseiDatabase>,
+    ) -> Result<(String, Macaroon), Error> {
         let seed =
-            LightningNode::find_or_create_seed(config.passphrase.clone(), &mut node_database)?;
+            LightningNode::find_or_create_seed(id.clone(), passphrase.clone(), database.clone())
+                .await?;
 
         let cur = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
+
+        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
+
+        let mut secp_ctx = Secp256k1::new();
+        secp_ctx.seeded_randomize(&keys_manager.get_secure_random_bytes());
+
+        let node_pubkey = PublicKey::from_secret_key(
+            &secp_ctx,
+            &keys_manager.get_node_secret(Recipient::Node).unwrap(),
+        );
+
+        let macaroon = LightningNode::find_or_create_macaroon(
+            id.clone(),
+            passphrase.clone(),
+            &seed,
+            node_pubkey.to_string(),
+            database.clone(),
+            None,
+        )
+        .await?;
+
+        Ok((node_pubkey.to_string(), macaroon))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn new(
+        config: Arc<SenseiConfig>,
+        id: String,
+        listen_addresses: Vec<String>,
+        listen_port: u16,
+        alias: String,
+        data_dir: String,
+        passphrase: String,
+        external_router: bool,
+        network_graph: Option<Arc<NetworkGraph>>,
+        network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
+        chain_manager: Arc<SenseiChainManager>,
+        database: Arc<SenseiDatabase>,
+    ) -> Result<Self, Error> {
+        fs::create_dir_all(data_dir.clone())?;
+
+        let network = config.network;
+        let admin_macaroon_path = format!("{}/admin.macaroon", data_dir.clone());
+
+        let seed =
+            LightningNode::find_or_create_seed(id.clone(), passphrase.clone(), database.clone())
+                .await?;
+
+        let cur = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
+
+        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
+        let mut secp_ctx = Secp256k1::new();
+        secp_ctx.seeded_randomize(&keys_manager.get_secure_random_bytes());
+        let node_pubkey = PublicKey::from_secret_key(
+            &secp_ctx,
+            &keys_manager.get_node_secret(Recipient::Node).unwrap(),
+        );
+
+        let macaroon = LightningNode::find_or_create_macaroon(
+            id.clone(),
+            passphrase.clone(),
+            &seed,
+            node_pubkey.to_string(),
+            database.clone(),
+            Some(admin_macaroon_path),
+        )
+        .await?;
 
         let xprivkey = ExtendedPrivKey::new_master(network, &seed).unwrap();
         let xkey = ExtendedKey::from(xprivkey);
@@ -391,18 +467,19 @@ impl LightningNode {
                 account_number,
             );
 
-        let database = SqliteDatabase::new(config.bdk_database_path());
+        let bdk_database = WalletDatabase::new(id.clone(), database.clone(), database.get_handle());
+        let wallet_database = bdk_database.clone();
 
-        let bdk_wallet = Arc::new(Mutex::new(bdk::Wallet::new_offline(
+        let bdk_wallet = bdk::Wallet::new(
             receive_descriptor_template,
             Some(change_descriptor_template),
             network,
-            database,
-        )?));
+            bdk_database,
+        )?;
 
-        let listener_database =
-            ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
+        bdk_wallet.ensure_addresses_cached(100).unwrap();
 
+        let bdk_wallet = Arc::new(Mutex::new(bdk_wallet));
         let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
 
         let fee_estimator = Arc::new(SenseiFeeEstimator {
@@ -411,19 +488,17 @@ impl LightningNode {
 
         let broadcaster = Arc::new(SenseiBroadcaster {
             broadcaster: chain_manager.broadcaster.clone(),
-            listener_database: listener_database.clone(),
+            wallet_database: Arc::new(Mutex::new(wallet_database.clone())),
         });
-
-        let database = Arc::new(Mutex::new(node_database));
 
         let persistence_store = match config.kv_persistence {
             KVPersistence::Filesystem => AnyKVStore::File(FileStore::new(data_dir)),
-            KVPersistence::Database => AnyKVStore::Database(DatabaseStore::new(database.clone())),
+            KVPersistence::Database => {
+                AnyKVStore::Database(DatabaseStore::new(database.clone(), id.clone()))
+            }
         };
 
         let persister = Arc::new(SenseiPersister::new(persistence_store, config.network));
-
-        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
 
         let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
             None,
@@ -513,13 +588,14 @@ impl LightningNode {
         }
 
         let bdk_database_last_sync = {
-            let mut db = database.lock().unwrap();
-            db.find_or_create_last_sync(best_block.block_hash())?
+            database
+                .find_or_create_last_sync(id.clone(), best_block.block_hash())
+                .await?
         };
 
         chain_listeners.push((
             bdk_database_last_sync,
-            &listener_database as &(dyn chain::Listen + Send + Sync),
+            &wallet_database as &(dyn chain::Listen + Send + Sync),
         ));
 
         let tip = chain_manager
@@ -539,8 +615,6 @@ impl LightningNode {
 
         // is it safe to start this now instead of in `start`
         // need to better understand separation; will depend on actual creation and startup flows
-        let listener_database =
-            ListenerDatabase::new(config.bdk_database_path(), config.node_database_path());
         let channel_manager_sync = channel_manager.clone();
         let chain_monitor_sync = chain_monitor.clone();
 
@@ -549,7 +623,7 @@ impl LightningNode {
                 synced_hash,
                 channel_manager_sync,
                 chain_monitor_sync,
-                listener_database,
+                wallet_database.clone(),
             )
             .await
             .unwrap();
@@ -569,7 +643,7 @@ impl LightningNode {
                 )),
             };
 
-        let route_handler = match config.external_router {
+        let route_handler = match external_router {
             true => Arc::new(OptionalNetworkGraphMsgHandler {
                 network_graph_msg_handler: None,
             }),
@@ -605,16 +679,8 @@ impl LightningNode {
             keys_manager.get_secure_random_bytes(),
         );
 
-        let pubkey = channel_manager.get_our_node_id().to_string();
-
-        let macaroon = LightningNode::find_or_create_macaroon(
-            &seed,
-            pubkey,
-            admin_macaroon_path,
-            database.clone(),
-        )?;
-
         let event_handler = Arc::new(LightningNodeEventHandler {
+            node_id: id.clone(),
             config: config.clone(),
             wallet: bdk_wallet.clone(),
             channel_manager: channel_manager.clone(),
@@ -637,6 +703,10 @@ impl LightningNode {
 
         Ok(LightningNode {
             config,
+            id,
+            listen_addresses,
+            listen_port,
+            alias,
             database,
             seed,
             macaroon,
@@ -658,18 +728,16 @@ impl LightningNode {
 
     pub async fn start(self) -> (Vec<JoinHandle<()>>, BackgroundProcessor) {
         let mut handles = vec![];
-        let config = self.config.clone();
 
         let peer_manager_connection_handler = self.peer_manager.clone();
 
         let stop_listen_ref = Arc::clone(&self.stop_listen);
         handles.push(tokio::spawn(async move {
-            let listener = tokio::net::TcpListener::bind(format!(
-                "0.0.0.0:{}",
-                self.config.ldk_peer_listening_port
-            ))
-            .await
-            .expect("Failed to bind to listen port - is something else already listening on it?");
+            let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.listen_port))
+                .await
+                .expect(
+                    "Failed to bind to listen port - is something else already listening on it?",
+                );
             loop {
                 let peer_mgr = peer_manager_connection_handler.clone();
                 let tcp_stream = listener.accept().await.unwrap().0;
@@ -755,17 +823,17 @@ impl LightningNode {
         // In a production environment, this should occur only after the announcement of new channels
         // to avoid churn in the global network graph.
         let chan_manager = Arc::clone(&self.channel_manager);
-        let listen_addresses = config
-            .ldk_announced_listen_addr
+        let listen_addresses = self
+            .listen_addresses
             .iter()
             .filter_map(|addr| match IpAddr::from_str(addr) {
                 Ok(IpAddr::V4(a)) => Some(NetAddress::IPv4 {
                     addr: a.octets(),
-                    port: config.ldk_peer_listening_port,
+                    port: self.listen_port,
                 }),
                 Ok(IpAddr::V6(a)) => Some(NetAddress::IPv6 {
                     addr: a.octets(),
-                    port: config.ldk_peer_listening_port,
+                    port: self.listen_port,
                 }),
                 Err(_) => {
                     println!("Failed to parse announced-listen-addr into an IP address");
@@ -774,18 +842,8 @@ impl LightningNode {
             })
             .collect::<Vec<NetAddress>>();
 
-        let node_alias: [u8; 32] = match config.ldk_announced_node_name {
-            Some(alias) => {
-                if alias.len() > 32 {
-                    // TODO: probably don't panic here, this shouldn't have gotten to this state
-                    panic!("alias must be less than 32 bytes");
-                }
-                let mut bytes = [0; 32];
-                bytes[..alias.len()].copy_from_slice(alias.as_bytes());
-                bytes
-            }
-            None => [0; 32],
-        };
+        let mut alias_bytes = [0; 32];
+        alias_bytes[..self.alias.len()].copy_from_slice(self.alias.as_bytes());
 
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
@@ -795,7 +853,7 @@ impl LightningNode {
                 if !listen_addresses.is_empty() {
                     chan_manager.broadcast_node_announcement(
                         [0; 3],
-                        node_alias,
+                        alias_bytes,
                         listen_addresses.clone(),
                     );
                 }
@@ -803,10 +861,6 @@ impl LightningNode {
         }));
 
         (handles, background_processor)
-    }
-
-    pub fn get_config(&self) -> &LightningNodeConfig {
-        &self.config
     }
 
     // `custom_id` will be user_channel_id in FundingGenerated event
@@ -893,7 +947,7 @@ impl LightningNode {
         Ok(())
     }
 
-    fn keysend<K: KeysInterface>(
+    async fn keysend<K: KeysInterface>(
         &self,
         invoice_payer: &InvoicePayer,
         payee_pubkey: PublicKey,
@@ -933,28 +987,24 @@ impl LightningNode {
             }
         };
 
-        let payment_hash = PaymentHash(Sha256::hash(&payment_preimage).into_inner());
+        let payment_hash = hex_utils::hex_str(&Sha256::hash(&payment_preimage).into_inner());
+        let preimage = Some(hex_utils::hex_str(&payment_preimage));
 
-        let mut database = self.database.lock().unwrap();
-
-        database.create_or_update_payment(
-            PaymentInfo {
-                hash: payment_hash,
-                preimage: None,
-                secret: None,
-                status,
-                amt_msat: MillisatAmount(Some(amt_msat)),
-                origin: PaymentOrigin::SpontaneousOutgoing,
-                label: None,
-                invoice: None,
-            }
-            .into(),
-        )?;
+        let payment = entity::payment::ActiveModel {
+            node_id: ActiveValue::Set(self.id.clone()),
+            preimage: ActiveValue::Set(preimage),
+            payment_hash: ActiveValue::Set(payment_hash),
+            status: ActiveValue::Set(status.to_string()),
+            amt_msat: ActiveValue::Set(Some(amt_msat.try_into().unwrap())),
+            origin: ActiveValue::Set(PaymentOrigin::SpontaneousOutgoing.to_string()),
+            ..Default::default()
+        };
+        payment.insert(self.database.get_connection()).await?;
 
         Ok(())
     }
 
-    pub fn send_payment(&self, invoice: &Invoice) -> Result<(), Error> {
+    pub async fn send_payment(&self, invoice: &Invoice) -> Result<(), Error> {
         let status = match self.invoice_payer.pay_invoice(invoice) {
             Ok(_payment_id) => {
                 let payee_pubkey = invoice.recover_payee_pub_key();
@@ -978,29 +1028,30 @@ impl LightningNode {
                 HTLCStatus::Failed
             }
         };
-        let payment_hash = PaymentHash((*invoice.payment_hash()).into_inner());
-        let payment_secret = Some(*invoice.payment_secret());
 
-        let mut database = self.database.lock().unwrap();
-        database.create_or_update_payment(
-            PaymentInfo {
-                hash: payment_hash,
-                preimage: None,
-                secret: payment_secret,
-                status,
-                amt_msat: MillisatAmount(invoice.amount_milli_satoshis()),
-                origin: PaymentOrigin::InvoiceOutgoing,
-                label: None,
-                invoice: Some(invoice.to_string()),
-            }
-            .into(),
-        )?;
+        let payment_hash = hex_utils::hex_str(&(*invoice.payment_hash()).into_inner());
+        let payment_secret = Some(hex_utils::hex_str(&(*invoice.payment_secret()).0));
+        let amt_msat: Option<i64> = invoice
+            .amount_milli_satoshis()
+            .map(|amt| amt.try_into().unwrap());
+
+        let payment = entity::payment::ActiveModel {
+            node_id: ActiveValue::Set(self.id.clone()),
+            payment_hash: ActiveValue::Set(payment_hash),
+            secret: ActiveValue::Set(payment_secret),
+            status: ActiveValue::Set(status.to_string()),
+            amt_msat: ActiveValue::Set(amt_msat),
+            origin: ActiveValue::Set(PaymentOrigin::InvoiceOutgoing.to_string()),
+            invoice: ActiveValue::Set(Some(invoice.to_string())),
+            ..Default::default()
+        };
+
+        payment.insert(self.database.get_connection()).await?;
 
         Ok(())
     }
 
-    pub fn get_invoice(&self, amt_msat: u64, description: String) -> Result<Invoice, Error> {
-        let mut database = self.database.lock().unwrap();
+    pub async fn get_invoice(&self, amt_msat: u64, description: String) -> Result<Invoice, Error> {
         let currency = match self.config.network {
             Network::Bitcoin => Currency::Bitcoin,
             Network::Testnet => Currency::BitcoinTestnet,
@@ -1016,20 +1067,25 @@ impl LightningNode {
             description.clone(),
         )?;
 
-        let payment_hash = PaymentHash((*invoice.payment_hash()).into_inner());
-        database.create_or_update_payment(
-            PaymentInfo {
-                hash: payment_hash,
-                preimage: None,
-                secret: Some(*invoice.payment_secret()),
-                status: HTLCStatus::Pending,
-                amt_msat: MillisatAmount(Some(amt_msat)),
-                origin: PaymentOrigin::InvoiceIncoming,
-                label: Some(description),
-                invoice: Some(invoice.to_string()),
-            }
-            .into(),
-        )?;
+        let payment_hash = hex_utils::hex_str(&(*invoice.payment_hash()).into_inner());
+        let payment_secret = Some(hex_utils::hex_str(&(*invoice.payment_secret()).0));
+
+        let payment = entity::payment::ActiveModel {
+            node_id: ActiveValue::Set(self.id.clone()),
+            payment_hash: ActiveValue::Set(payment_hash),
+            secret: ActiveValue::Set(payment_secret),
+            status: ActiveValue::Set(HTLCStatus::Pending.to_string()),
+            amt_msat: ActiveValue::Set(Some(amt_msat.try_into().unwrap())),
+            origin: ActiveValue::Set(PaymentOrigin::InvoiceIncoming.to_string()),
+            invoice: ActiveValue::Set(Some(invoice.to_string())),
+            label: ActiveValue::Set(Some(description)),
+            ..Default::default()
+        };
+
+        payment
+            .insert(self.database.get_connection())
+            .await
+            .unwrap();
 
         Ok(invoice)
     }
@@ -1144,13 +1200,14 @@ impl LightningNode {
         alias
     }
 
-    pub fn list_payments(
+    pub async fn list_payments(
         &self,
         pagination: PaginationRequest,
         filter: PaymentsFilter,
-    ) -> Result<(Vec<database::node::Payment>, PaginationResponse), Error> {
-        let database = self.database.lock().unwrap();
-        database.get_payments(pagination, filter).map_err(Error::Db)
+    ) -> Result<(Vec<entity::payment::Model>, PaginationResponse), Error> {
+        self.database
+            .list_payments(self.id.clone(), pagination, filter)
+            .await
     }
 
     pub fn close_channel(&self, channel_id: [u8; 32], force: bool) -> Result<(), Error> {
@@ -1167,12 +1224,16 @@ impl LightningNode {
 
         Ok(NodeInfo {
             version: version::get_version(),
-            node_pubkey: self.channel_manager.get_our_node_id().to_string(),
+            node_pubkey: self.get_pubkey(),
             num_channels: chans.len() as u32,
             num_usable_channels: chans.iter().filter(|c| c.is_usable).count() as u32,
             num_peers: self.peer_manager.get_peer_node_ids().len() as u32,
             local_balance_msat,
         })
+    }
+
+    pub fn get_pubkey(&self) -> String {
+        self.channel_manager.get_our_node_id().to_string()
     }
 
     pub fn get_invoice_from_str(&self, invoice: &str) -> Result<Invoice, Error> {
@@ -1212,20 +1273,15 @@ impl LightningNode {
     }
 
     pub async fn delete_payment(&self, payment_hash: String) -> Result<(), Error> {
-        let database = self.database.lock().unwrap();
-        database.delete_payment(payment_hash)?;
-        Ok(())
+        self.database
+            .delete_payment(self.id.clone(), payment_hash)
+            .await
     }
 
     pub async fn label_payment(&self, label: String, payment_hash: String) -> Result<(), Error> {
-        let mut database = self.database.lock().unwrap();
-        let payment = database.get_payment(payment_hash)?;
-        if let Some(mut payment) = payment {
-            payment.label = Some(label);
-            database.create_or_update_payment(payment)?;
-        }
-
-        Ok(())
+        self.database
+            .label_payment(self.id.clone(), payment_hash, label)
+            .await
     }
 
     pub async fn call(&self, request: NodeRequest) -> Result<NodeResponse, NodeRequestError> {
@@ -1273,7 +1329,7 @@ impl LightningNode {
             }
             NodeRequest::SendPayment { invoice } => {
                 let invoice = self.get_invoice_from_str(&invoice)?;
-                self.send_payment(&invoice)?;
+                self.send_payment(&invoice).await?;
                 Ok(NodeResponse::SendPayment {})
             }
             NodeRequest::Keysend {
@@ -1281,7 +1337,8 @@ impl LightningNode {
                 amt_msat,
             } => match hex_utils::to_compressed_pubkey(&dest_pubkey) {
                 Some(pubkey) => {
-                    self.keysend(&*self.invoice_payer, pubkey, amt_msat, &*self.keys_manager)?;
+                    self.keysend(&*self.invoice_payer, pubkey, amt_msat, &*self.keys_manager)
+                        .await?;
                     Ok(NodeResponse::Keysend {})
                 }
                 None => Err(NodeRequestError::Sensei("invalid dest_pubkey".into())),
@@ -1290,7 +1347,7 @@ impl LightningNode {
                 amt_msat,
                 description,
             } => {
-                let invoice = self.get_invoice(amt_msat, description)?;
+                let invoice = self.get_invoice(amt_msat, description).await?;
                 let invoice_str = format!("{}", invoice);
                 Ok(NodeResponse::GetInvoice {
                     invoice: invoice_str,
@@ -1339,7 +1396,7 @@ impl LightningNode {
                 })
             }
             NodeRequest::ListPayments { pagination, filter } => {
-                let (payments, pagination) = self.list_payments(pagination, filter)?;
+                let (payments, pagination) = self.list_payments(pagination, filter).await?;
                 Ok(NodeResponse::ListPayments {
                     payments,
                     pagination,

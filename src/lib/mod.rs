@@ -7,5 +7,6 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+pub mod database;
 pub mod network_graph;
 pub mod persist;

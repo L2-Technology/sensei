@@ -5,7 +5,7 @@ use std::{
     net::SocketAddr,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
 use bitcoin::secp256k1::key::PublicKey;
@@ -29,7 +29,9 @@ use lightning::{
 };
 use lightning_persister::FilesystemPersister;
 
-use crate::{database::node::NodeDatabase, node};
+use crate::node;
+
+use super::database::SenseiDatabase;
 
 pub trait KVStoreReader {
     fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>>;
@@ -37,29 +39,31 @@ pub trait KVStoreReader {
 }
 
 pub struct DatabaseStore {
-    database: Arc<Mutex<NodeDatabase>>,
+    database: Arc<SenseiDatabase>,
+    node_id: String,
 }
 
 impl KVStorePersister for DatabaseStore {
     fn persist<W: Writeable>(&self, key: &str, object: &W) -> std::io::Result<()> {
-        let database = self.database.lock().unwrap();
-        database
-            .set_value(key.to_string(), object.encode())
-            .map_err(|e| e.into())
+        let _entry =
+            self.database
+                .set_value_sync(self.node_id.clone(), key.to_string(), object.encode())?;
+
+        Ok(())
     }
 }
 
 impl KVStoreReader for DatabaseStore {
     fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>> {
-        let database = self.database.lock().unwrap();
-        database.get_value(key.to_string()).map_err(|e| e.into())
+        Ok(self
+            .database
+            .get_value_sync(self.node_id.clone(), key.to_string())?
+            .map(|entry| entry.v))
     }
 
     fn list(&self, key: &str) -> std::io::Result<Vec<String>> {
-        let pattern = format!("{}%", key);
-        let database = self.database.lock().unwrap();
-        database
-            .get_keys(pattern)
+        self.database
+            .list_keys_sync(self.node_id.clone(), key)
             .map(|full_keys| {
                 let replace_str = format!("{}/", key);
                 full_keys
@@ -72,8 +76,8 @@ impl KVStoreReader for DatabaseStore {
 }
 
 impl DatabaseStore {
-    pub fn new(database: Arc<Mutex<NodeDatabase>>) -> Self {
-        Self { database }
+    pub fn new(database: Arc<SenseiDatabase>, node_id: String) -> Self {
+        Self { database, node_id }
     }
 }
 

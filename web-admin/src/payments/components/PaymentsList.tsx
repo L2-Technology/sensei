@@ -217,6 +217,8 @@ const PaymentsList = ({ origin = "", status = "" }) => {
     return payments.map((payment) => {
       return {
         ...payment,
+        createdAt: payment.createdAt * 1000,
+        updatedAt: payment.updatedAt * 1000,
         displayPaymentHash: truncateMiddle(payment.paymentHash || "", 10),
         displayInvoice: truncateMiddle(payment.invoice || "", 10),
       };
