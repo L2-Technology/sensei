@@ -1211,6 +1211,19 @@ impl LightningNode {
         )?)
     }
 
+    pub fn verify_message(
+        &self,
+        message: String,
+        signature: String,
+    ) -> Result<(bool, String), Error> {
+        let pubkey = self.channel_manager.get_our_node_id();
+
+        let valid =
+            lightning::util::message_signing::verify(message.as_bytes(), &signature, &pubkey);
+
+        Ok((valid, pubkey.to_string()))
+    }
+
     pub async fn delete_payment(&self, payment_hash: String) -> Result<(), Error> {
         let database = self.database.lock().unwrap();
         database.delete_payment(payment_hash)?;
@@ -1368,6 +1381,10 @@ impl LightningNode {
             NodeRequest::SignMessage { message } => {
                 let signature = self.sign_message(message)?;
                 Ok(NodeResponse::SignMessage { signature })
+            }
+            NodeRequest::VerifyMessage { message, signature } => {
+                let (valid, pubkey) = self.verify_message(message, signature)?;
+                Ok(NodeResponse::VerifyMessage { valid, pubkey })
             }
         }
     }

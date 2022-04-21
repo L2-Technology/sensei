@@ -167,6 +167,10 @@ pub enum NodeRequest {
     SignMessage {
         message: String,
     },
+    VerifyMessage {
+        message: String,
+        signature: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -210,6 +214,10 @@ pub enum NodeResponse {
     },
     SignMessage {
         signature: String,
+    },
+    VerifyMessage {
+        valid: bool,
+        pubkey: String,
     },
     Error(NodeRequestError),
 }

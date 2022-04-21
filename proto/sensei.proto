@@ -33,6 +33,7 @@ service Node {
     rpc Info (InfoRequest) returns (InfoResponse);
     rpc ListPeers (ListPeersRequest) returns (ListPeersResponse);
     rpc SignMessage (SignMessageRequest) returns (SignMessageResponse);
+    rpc VerifyMessage (VerifyMessageRequest) returns (VerifyMessageResponse);
 }
 
 message ListNode {
@@ -314,4 +315,13 @@ message SignMessageRequest {
 }
 message SignMessageResponse {
     string signature = 1;
+}
+
+message VerifyMessageRequest {
+    string message = 1;
+    string signature = 2;
+}
+message VerifyMessageResponse {
+    bool valid = 1;
+    string pubkey = 2;
 }

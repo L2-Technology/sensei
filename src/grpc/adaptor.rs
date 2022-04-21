@@ -21,7 +21,7 @@ use super::sensei::{
     KeysendResponse, ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest,
     ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
     OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
-    SignMessageResponse,
+    SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse,
 };
 
 use crate::database::node::Payment;
@@ -469,6 +469,26 @@ impl TryFrom<NodeResponse> for SignMessageResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::SignMessage { signature } => Ok(Self { signature }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<VerifyMessageRequest> for NodeRequest {
+    fn from(req: VerifyMessageRequest) -> Self {
+        NodeRequest::VerifyMessage {
+            message: req.message,
+            signature: req.signature,
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for VerifyMessageResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::VerifyMessage { valid, pubkey } => Ok(Self { valid, pubkey }),
             _ => Err("impossible".to_string()),
         }
     }

@@ -21,7 +21,7 @@ use super::{
         ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
         OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
         SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-        StopNodeResponse,
+        StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse,
     },
     utils::raw_macaroon_from_metadata,
 };
@@ -274,6 +274,16 @@ impl Node for NodeService {
         &self,
         request: tonic::Request<SignMessageRequest>,
     ) -> Result<tonic::Response<SignMessageResponse>, tonic::Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn verify_message(
+        &self,
+        request: tonic::Request<VerifyMessageRequest>,
+    ) -> Result<tonic::Response<VerifyMessageResponse>, tonic::Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
