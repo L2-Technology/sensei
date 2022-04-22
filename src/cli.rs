@@ -51,6 +51,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Sets the node to issue commands to")
                 .takes_value(true),
         )
+        .arg(
+            Arg::new("dev")
+                .long("dev")
+                .value_name("DEVELOPMENT_MODE")
+                .help("Sets the development mode endpoint")
+                .takes_value(false),
+        )
         .subcommand(
             App::new("init")
                 .about("initialize your Sensei node")
@@ -192,10 +199,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subcommand(App::new("nodeinfo").about("see information about your node"))
         .get_matches();
 
+    let endpoint = if matches.is_present("dev") {
+         "http://0.0.0.0:5401"
+    } else {
+        "http://0.0.0.0:3000"
+    };
+
     let (command, command_args) = matches.subcommand().unwrap();
 
     if command == "init" {
-        let channel = Channel::from_static("http://0.0.0.0:3000")
+        let channel = Channel::from_static(endpoint)
             .connect()
             .await?;
         let mut admin_client = AdminClient::new(channel);
@@ -227,7 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _bytes = macaroon_file.read_to_end(&mut macaroon_raw)?;
         let macaroon_hex_str = hex_utils::hex_str(&macaroon_raw);
 
-        let channel = Channel::from_static("http://0.0.0.0:3000")
+        let channel = Channel::from_static(endpoint)
             .connect()
             .await?;
         let macaroon = MetadataValue::from_str(&macaroon_hex_str)?;
