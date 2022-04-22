@@ -183,7 +183,6 @@ static MIGRATIONS: &[&str] = &[
     "INSERT INTO version VALUES (1)",
     "CREATE TABLE nodes (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, external_id TEXT NOT NULL, role INTEGER, username TEXT, alias TEXT, network TEXT, listen_addr TEXT, listen_port INTEGER, pubkey TEXT, status INTEGER DEFAULT 0, created_at INTEGER NOT NULL DEFAULT current_timestamp, updated_at INTEGER NOT NULL DEFAULT current_timestamp)",
     "CREATE TRIGGER tg_nodes_updated_at AFTER UPDATE ON nodes FOR EACH ROW BEGIN UPDATE nodes SET updated_at = current_timestamp WHERE id=old.id; END;",
-    "CREATE UNIQUE INDEX idx_addr_port ON nodes(listen_port, listen_addr)",
     "CREATE UNIQUE INDEX idx_external_id ON nodes(external_id)",
     "CREATE UNIQUE INDEX idx_pubkey ON nodes(pubkey)",
     "CREATE INDEX idx_role ON nodes(role)",

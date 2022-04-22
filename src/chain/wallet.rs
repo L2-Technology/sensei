@@ -3,12 +3,13 @@ use bdk::blockchain::{noop_progress, Blockchain};
 use bdk::database::BatchDatabase;
 use bdk::wallet::{AddressIndex, Wallet};
 use bdk::SignOptions;
+use tokio::runtime::Handle;
+use tokio::task;
 
 use crate::error::Error;
 use lightning::chain::chaininterface::BroadcasterInterface;
 use lightning::chain::chaininterface::{ConfirmationTarget, FeeEstimator};
-use std::sync::{Mutex, MutexGuard};
-
+use tokio::sync::{Mutex, MutexGuard};
 /// Lightning Wallet
 ///
 /// A wrapper around a bdk::Wallet to fulfill many of the requirements
@@ -30,20 +31,20 @@ where
     }
 
     #[allow(dead_code)]
-    pub fn get_unused_address(&self) -> Result<Address, Error> {
-        let wallet = self.inner.lock().unwrap();
+    pub async fn get_unused_address(&self) -> Result<Address, Error> {
+        let wallet = self.inner.lock().await;
         let address_info = wallet.get_address(AddressIndex::LastUnused)?;
         Ok(address_info.address)
     }
 
     #[allow(dead_code)]
-    pub fn construct_funding_transaction(
+    pub async fn construct_funding_transaction(
         &self,
         output_script: &Script,
         value: u64,
         target_blocks: usize,
     ) -> Result<Transaction, Error> {
-        let wallet = self.inner.lock().unwrap();
+        let wallet = self.inner.lock().await;
 
         let mut tx_builder = wallet.build_tx();
         let fee_rate = wallet.client().estimate_fee(target_blocks)?;
@@ -61,19 +62,21 @@ where
     }
 
     #[allow(dead_code)]
-    pub fn get_balance(&self) -> Result<u64, Error> {
-        let wallet = self.inner.lock().unwrap();
+    pub async fn get_balance(&self) -> Result<u64, Error> {
+        let wallet = self.inner.lock().await;
         wallet.get_balance().map_err(Error::Bdk)
     }
 
     #[allow(dead_code)]
     pub fn get_wallet(&self) -> MutexGuard<Wallet<B, D>> {
-        self.inner.lock().unwrap()
+        task::block_in_place(move || {
+            Handle::current().block_on(async move { self.inner.lock().await })
+        })
     }
 
     #[allow(dead_code)]
-    fn sync(&self) -> Result<(), Error> {
-        let wallet = self.inner.lock().unwrap();
+    async fn sync(&self) -> Result<(), Error> {
+        let wallet = self.inner.lock().await;
         wallet.sync(noop_progress(), None)?;
         Ok(())
     }
@@ -95,7 +98,7 @@ where
     D: BatchDatabase,
 {
     fn get_est_sat_per_1000_weight(&self, confirmation_target: ConfirmationTarget) -> u32 {
-        let wallet = self.inner.lock().unwrap();
+        let wallet = self.get_wallet();
 
         let target_blocks = match confirmation_target {
             ConfirmationTarget::Background => 6,
@@ -118,7 +121,7 @@ where
     D: BatchDatabase,
 {
     fn broadcast_transaction(&self, tx: &Transaction) {
-        let wallet = self.inner.lock().unwrap();
+        let wallet = self.get_wallet();
         let _result = wallet.client().broadcast(tx);
     }
 }

@@ -7,6 +7,9 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+#[macro_use]
+extern crate log;
+
 mod chain;
 mod config;
 mod database;
@@ -93,6 +96,8 @@ struct SenseiArgs {
     bitcoind_rpc_password: Option<String>,
     #[clap(long, env = "DEVELOPMENT_MODE")]
     development_mode: Option<bool>,
+    #[clap(long, env = "ROOT_P2P_PORT")]
+    root_p2p_port: Option<u16>,
     #[clap(long, env = "PORT_RANGE_MIN")]
     port_range_min: Option<u16>,
     #[clap(long, env = "PORT_RANGE_MAX")]

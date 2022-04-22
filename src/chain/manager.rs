@@ -111,7 +111,8 @@ impl SenseiChainManager {
         // could skip this if synced_hash === current_tip
         let _new_tip = self.synchronize_to_tip(listeners).await.unwrap();
         self.listener
-            .add_listener((chain_monitor, channel_manager, listener_database));
+            .add_listener((chain_monitor, channel_manager, listener_database))
+            .await;
         self.poller_paused.store(false, Ordering::Relaxed);
         Ok(())
     }

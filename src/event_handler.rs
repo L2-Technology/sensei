@@ -23,9 +23,11 @@ use lightning::{
     util::events::{Event, EventHandler, PaymentPurpose},
 };
 use rand::{thread_rng, Rng};
-use std::sync::Mutex;
 use std::{sync::Arc, time::Duration};
 use tokio::runtime::Handle;
+use tokio::task;
+
+use tokio::sync::{Mutex, MutexGuard};
 
 pub struct LightningNodeEventHandler {
     pub config: LightningNodeConfig,
@@ -35,6 +37,20 @@ pub struct LightningNodeEventHandler {
     pub database: Arc<Mutex<NodeDatabase>>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,
+}
+
+impl LightningNodeEventHandler {
+    fn get_wallet(&self) -> MutexGuard<bdk::Wallet<(), SqliteDatabase>> {
+        task::block_in_place(move || {
+            self.tokio_handle.block_on(async move { self.wallet.lock().await })
+        })
+    }
+
+    fn get_database(&self) -> MutexGuard<NodeDatabase> {
+        task::block_in_place(move || {
+            self.tokio_handle.block_on(async move { self.database.lock().await })
+        })
+    }
 }
 
 impl EventHandler for LightningNodeEventHandler {
@@ -65,7 +81,7 @@ impl EventHandler for LightningNodeEventHandler {
 
                 // Have wallet put the inputs into the transaction such that the output
                 // is satisfied and then sign the funding transaction
-                let wallet = self.wallet.lock().unwrap();
+                let wallet = self.get_wallet();
 
                 let mut tx_builder = wallet.build_tx();
                 let _fee_sats_per_1000_wu = self
@@ -104,7 +120,7 @@ impl EventHandler for LightningNodeEventHandler {
                 ..
             } => {
                 // inbound...
-                let mut database = self.database.lock().unwrap();
+                let mut database = self.get_database();
 
                 let (payment_preimage, payment_secret) = match purpose {
                     PaymentPurpose::InvoicePayment {
@@ -171,7 +187,7 @@ impl EventHandler for LightningNodeEventHandler {
                 ..
             } => {
                 // outbound
-                let mut database = self.database.lock().unwrap();
+                let mut database = self.get_database();
                 let payment = database.get_payment(hex_utils::hex_str(&payment_hash.0));
 
                 if let Ok(Some(mut payment)) = payment {
@@ -204,7 +220,7 @@ impl EventHandler for LightningNodeEventHandler {
 				    hex_utils::hex_str(&payment_hash.0)
                 );
 
-                let mut database = self.database.lock().unwrap();
+                let mut database = self.get_database();
                 let payment = database.get_payment(hex_utils::hex_str(&payment_hash.0));
 
                 if let Ok(Some(mut payment)) = payment {
@@ -243,7 +259,7 @@ impl EventHandler for LightningNodeEventHandler {
                         total_payments: 1,
                     };
 
-                    let mut database = self.database.lock().unwrap();
+                    let mut database = self.get_database();
                     database
                         .record_forwarded_payment(forwarded_payment)
                         .unwrap();
@@ -264,7 +280,7 @@ impl EventHandler for LightningNodeEventHandler {
                 });
             }
             Event::SpendableOutputs { outputs } => {
-                let wallet = self.wallet.lock().unwrap();
+                let wallet = self.get_wallet();
                 let address_info = wallet.get_address(AddressIndex::LastUnused).unwrap();
                 let destination_address = address_info.address;
                 let output_descriptors = &outputs.iter().collect::<Vec<_>>();
@@ -300,7 +316,7 @@ impl EventHandler for LightningNodeEventHandler {
                     reason
                 );
             }
-            Event::DiscardFunding { .. } => {
+            Event::DiscardFunding { channel_id, transaction} => {
                 // A "real" node should probably "lock" the UTXOs spent in funding transactions until
                 // the funding transaction either confirms, or this event is generated.
             }

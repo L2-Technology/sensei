@@ -7,5 +7,10 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+pub mod chacha20;
+pub mod chachapoly1305rfc;
+pub mod connection_manager;
 pub mod network_graph;
+pub mod noise;
 pub mod persist;
+pub mod poly1305;

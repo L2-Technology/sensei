@@ -15,6 +15,7 @@ use crate::database::{
     admin::{AdminDatabase, Node, Role, Status},
 };
 use crate::error::Error as SenseiError;
+use crate::lib::connection_manager::SenseiConnectionManager;
 use crate::{
     config::{LightningNodeConfig, SenseiConfig},
     hex_utils,
@@ -128,6 +129,7 @@ pub struct AdminService {
     pub node_directory: NodeDirectory,
     pub database: Arc<Mutex<AdminDatabase>>,
     pub chain_manager: Arc<SenseiChainManager>,
+    pub connection_manager: Arc<SenseiConnectionManager>,
 }
 
 impl AdminService {
@@ -144,6 +146,7 @@ impl AdminService {
             node_directory,
             database: Arc::new(Mutex::new(database)),
             chain_manager,
+            connection_manager: Arc::new(SenseiConnectionManager::new()),
         }
     }
 }
@@ -436,7 +439,7 @@ impl AdminService {
                         panic!("couldn't find an unused port")
                     }
                 }
-
+                // let port = 9735;
                 port
             }
         };
@@ -498,6 +501,7 @@ impl AdminService {
                                 Some(network_graph),
                                 Some(network_graph_message_handler),
                                 self.chain_manager.clone(),
+                                self.connection_manager.clone(),
                             )
                             .await
                         }
@@ -507,7 +511,14 @@ impl AdminService {
                 None => Err(crate::error::Error::AdminNodeNotCreated),
             }
         } else {
-            LightningNode::new(node_config, None, None, self.chain_manager.clone()).await
+            LightningNode::new(
+                node_config,
+                None,
+                None,
+                self.chain_manager.clone(),
+                self.connection_manager.clone(),
+            )
+            .await
         }
     }
 

@@ -16,6 +16,7 @@ use crate::database::node::NodeDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
+use crate::lib::connection_manager::SenseiConnectionManager;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
 use crate::lib::persist::{AnyKVStore, DatabaseStore, FileStore, SenseiPersister};
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
@@ -50,7 +51,9 @@ use lightning::ln::peer_handler::{
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId};
-use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScorerUsingTime};
+use lightning::routing::scoring::{
+    LockableScore, ProbabilisticScorer, ProbabilisticScorerUsingTime, Score,
+};
 use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
@@ -67,11 +70,13 @@ use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex as SyncMutex;
 use std::time::{Duration, Instant, SystemTime};
 use std::{fmt, fs};
 use tokio::runtime::Handle;
-use tokio::task::JoinHandle;
+use tokio::sync::{Mutex, MutexGuard};
+use tokio::task::{self, JoinHandle};
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum HTLCStatus {
@@ -172,7 +177,7 @@ pub type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 pub type InvoicePayer = payment::InvoicePayer<
     Arc<ChannelManager>,
     Router,
-    Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph>>>>,
+    Arc<SyncMutex<ProbabilisticScorer<Arc<NetworkGraph>>>>,
     Arc<FilesystemLogger>,
     Arc<LightningNodeEventHandler>,
 >;
@@ -253,7 +258,7 @@ pub struct LightningNode {
     pub keys_manager: Arc<KeysManager>,
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
-    pub scorer: Arc<Mutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
+    pub scorer: Arc<SyncMutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
     pub stop_listen: Arc<AtomicBool>,
     pub persister: Arc<SenseiPersister>,
 }
@@ -285,13 +290,13 @@ impl LightningNode {
         Ok(seed)
     }
 
-    fn find_or_create_macaroon(
+    async fn find_or_create_macaroon(
         seed: &[u8],
         pubkey: String,
         macaroon_path: String,
         database: Arc<Mutex<NodeDatabase>>,
     ) -> Result<Macaroon, Error> {
-        let mut database = database.lock().unwrap();
+        let mut database = database.lock().await;
 
         match File::open(macaroon_path.clone()) {
             Ok(mut file) => {
@@ -344,7 +349,7 @@ impl LightningNode {
         macaroon: Macaroon,
         session: MacaroonSession,
     ) -> Result<(), Error> {
-        let mut database = self.database.lock().unwrap();
+        let mut database = self.database.lock().await;
         let exists = database
             .macaroon_exists(session.identifier)
             .map_err(Error::Db)?;
@@ -364,6 +369,7 @@ impl LightningNode {
         network_graph: Option<Arc<NetworkGraph>>,
         network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
         chain_manager: Arc<SenseiChainManager>,
+        connection_manager: Arc<SenseiConnectionManager>,
     ) -> Result<Self, Error> {
         let data_dir = config.data_dir();
         fs::create_dir_all(data_dir.clone())?;
@@ -513,7 +519,7 @@ impl LightningNode {
         }
 
         let bdk_database_last_sync = {
-            let mut db = database.lock().unwrap();
+            let mut db = database.lock().await;
             db.find_or_create_last_sync(best_block.block_hash())?
         };
 
@@ -595,7 +601,15 @@ impl LightningNode {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
-        let scorer = Arc::new(Mutex::new(
+        connection_manager
+            .register(
+                config.ldk_peer_listening_port,
+                keys_manager.get_node_secret(Recipient::Node).unwrap(),
+                peer_manager.clone(),
+            )
+            .await;
+
+        let scorer = Arc::new(SyncMutex::new(
             persister.read_scorer(Arc::clone(&network_graph)),
         ));
 
@@ -612,7 +626,8 @@ impl LightningNode {
             pubkey,
             admin_macaroon_path,
             database.clone(),
-        )?;
+        )
+        .await?;
 
         let event_handler = Arc::new(LightningNodeEventHandler {
             config: config.clone(),
@@ -660,31 +675,31 @@ impl LightningNode {
         let mut handles = vec![];
         let config = self.config.clone();
 
-        let peer_manager_connection_handler = self.peer_manager.clone();
+        // let peer_manager_connection_handler = self.peer_manager.clone();
 
-        let stop_listen_ref = Arc::clone(&self.stop_listen);
-        handles.push(tokio::spawn(async move {
-            let listener = tokio::net::TcpListener::bind(format!(
-                "0.0.0.0:{}",
-                self.config.ldk_peer_listening_port
-            ))
-            .await
-            .expect("Failed to bind to listen port - is something else already listening on it?");
-            loop {
-                let peer_mgr = peer_manager_connection_handler.clone();
-                let tcp_stream = listener.accept().await.unwrap().0;
-                if stop_listen_ref.load(Ordering::Acquire) {
-                    return;
-                }
-                tokio::spawn(async move {
-                    lightning_net_tokio::setup_inbound(
-                        peer_mgr.clone(),
-                        tcp_stream.into_std().unwrap(),
-                    )
-                    .await;
-                });
-            }
-        }));
+        // let stop_listen_ref = Arc::clone(&self.stop_listen);
+        // handles.push(tokio::spawn(async move {
+        //     let listener = tokio::net::TcpListener::bind(format!(
+        //         "0.0.0.0:{}",
+        //         self.config.ldk_peer_listening_port
+        //     ))
+        //     .await
+        //     .expect("Failed to bind to listen port - is something else already listening on it?");
+        //     loop {
+        //         let peer_mgr = peer_manager_connection_handler.clone();
+        //         let tcp_stream = listener.accept().await.unwrap().0;
+        //         if stop_listen_ref.load(Ordering::Acquire) {
+        //             return;
+        //         }
+        //         tokio::spawn(async move {
+        //             lightning_net_tokio::setup_inbound(
+        //                 peer_mgr.clone(),
+        //                 tcp_stream.into_std().unwrap(),
+        //             )
+        //             .await;
+        //         });
+        //     }
+        // }));
 
         let scorer_persister = Arc::clone(&self.persister);
         let scorer_persist = Arc::clone(&self.scorer);
@@ -893,7 +908,7 @@ impl LightningNode {
         Ok(())
     }
 
-    fn keysend<K: KeysInterface>(
+    async fn keysend<K: KeysInterface>(
         &self,
         invoice_payer: &InvoicePayer,
         payee_pubkey: PublicKey,
@@ -935,7 +950,7 @@ impl LightningNode {
 
         let payment_hash = PaymentHash(Sha256::hash(&payment_preimage).into_inner());
 
-        let mut database = self.database.lock().unwrap();
+        let mut database = self.database.lock().await;
 
         database.create_or_update_payment(
             PaymentInfo {
@@ -954,7 +969,7 @@ impl LightningNode {
         Ok(())
     }
 
-    pub fn send_payment(&self, invoice: &Invoice) -> Result<(), Error> {
+    pub async fn send_payment(&self, invoice: &Invoice) -> Result<(), Error> {
         let status = match self.invoice_payer.pay_invoice(invoice) {
             Ok(_payment_id) => {
                 let payee_pubkey = invoice.recover_payee_pub_key();
@@ -981,7 +996,7 @@ impl LightningNode {
         let payment_hash = PaymentHash((*invoice.payment_hash()).into_inner());
         let payment_secret = Some(*invoice.payment_secret());
 
-        let mut database = self.database.lock().unwrap();
+        let mut database = self.database.lock().await;
         database.create_or_update_payment(
             PaymentInfo {
                 hash: payment_hash,
@@ -999,8 +1014,8 @@ impl LightningNode {
         Ok(())
     }
 
-    pub fn get_invoice(&self, amt_msat: u64, description: String) -> Result<Invoice, Error> {
-        let mut database = self.database.lock().unwrap();
+    pub async fn get_invoice(&self, amt_msat: u64, description: String) -> Result<Invoice, Error> {
+        let mut database = self.database.lock().await;
         let currency = match self.config.network {
             Network::Bitcoin => Currency::Bitcoin,
             Network::Testnet => Currency::BitcoinTestnet,
@@ -1089,7 +1104,7 @@ impl LightningNode {
         Ok((current_page, pagination_response))
     }
 
-    pub fn list_transactions(
+    pub async fn list_transactions(
         &self,
         pagination: PaginationRequest,
     ) -> Result<(Vec<TransactionDetails>, PaginationResponse), Error> {
@@ -1098,7 +1113,7 @@ impl LightningNode {
         let page: usize = pagination.page.try_into().unwrap();
         let index = page * per_page;
 
-        let bdk_wallet = self.wallet.lock().unwrap();
+        let bdk_wallet = self.wallet.lock().await;
 
         let transaction_details = bdk_wallet
             .list_transactions(false)?
@@ -1144,12 +1159,12 @@ impl LightningNode {
         alias
     }
 
-    pub fn list_payments(
+    pub async fn list_payments(
         &self,
         pagination: PaginationRequest,
         filter: PaymentsFilter,
     ) -> Result<(Vec<database::node::Payment>, PaginationResponse), Error> {
-        let database = self.database.lock().unwrap();
+        let database = self.database.lock().await;
         database.get_payments(pagination, filter).map_err(Error::Db)
     }
 
@@ -1211,13 +1226,13 @@ impl LightningNode {
     }
 
     pub async fn delete_payment(&self, payment_hash: String) -> Result<(), Error> {
-        let database = self.database.lock().unwrap();
+        let database = self.database.lock().await;
         database.delete_payment(payment_hash)?;
         Ok(())
     }
 
     pub async fn label_payment(&self, label: String, payment_hash: String) -> Result<(), Error> {
-        let mut database = self.database.lock().unwrap();
+        let mut database = self.database.lock().await;
         let payment = database.get_payment(payment_hash)?;
         if let Some(mut payment) = payment {
             payment.label = Some(label);
@@ -1232,14 +1247,14 @@ impl LightningNode {
             NodeRequest::StartNode { passphrase: _ } => Ok(NodeResponse::StartNode {}),
             NodeRequest::StopNode {} => Ok(NodeResponse::StopNode {}),
             NodeRequest::GetUnusedAddress {} => {
-                let wallet = self.wallet.lock().unwrap();
+                let wallet = self.wallet.lock().await;
                 let address_info = wallet.get_address(AddressIndex::LastUnused)?;
                 Ok(NodeResponse::GetUnusedAddress {
                     address: address_info.address.to_string(),
                 })
             }
             NodeRequest::GetBalance {} => {
-                let wallet = self.wallet.lock().unwrap();
+                let wallet = self.wallet.lock().await;
                 let balance = wallet.get_balance().map_err(Error::Bdk)?;
                 Ok(NodeResponse::GetBalance {
                     balance_satoshis: balance,
@@ -1272,7 +1287,7 @@ impl LightningNode {
             }
             NodeRequest::SendPayment { invoice } => {
                 let invoice = self.get_invoice_from_str(&invoice)?;
-                self.send_payment(&invoice)?;
+                self.send_payment(&invoice).await?;
                 Ok(NodeResponse::SendPayment {})
             }
             NodeRequest::Keysend {
@@ -1280,7 +1295,8 @@ impl LightningNode {
                 amt_msat,
             } => match hex_utils::to_compressed_pubkey(&dest_pubkey) {
                 Some(pubkey) => {
-                    self.keysend(&*self.invoice_payer, pubkey, amt_msat, &*self.keys_manager)?;
+                    self.keysend(&*self.invoice_payer, pubkey, amt_msat, &*self.keys_manager)
+                        .await?;
                     Ok(NodeResponse::Keysend {})
                 }
                 None => Err(NodeRequestError::Sensei("invalid dest_pubkey".into())),
@@ -1289,7 +1305,7 @@ impl LightningNode {
                 amt_msat,
                 description,
             } => {
-                let invoice = self.get_invoice(amt_msat, description)?;
+                let invoice = self.get_invoice(amt_msat, description).await?;
                 let invoice_str = format!("{}", invoice);
                 Ok(NodeResponse::GetInvoice {
                     invoice: invoice_str,
@@ -1331,14 +1347,14 @@ impl LightningNode {
                 })
             }
             NodeRequest::ListTransactions { pagination } => {
-                let (transactions, pagination) = self.list_transactions(pagination)?;
+                let (transactions, pagination) = self.list_transactions(pagination).await?;
                 Ok(NodeResponse::ListTransactions {
                     transactions,
                     pagination,
                 })
             }
             NodeRequest::ListPayments { pagination, filter } => {
-                let (payments, pagination) = self.list_payments(pagination, filter)?;
+                let (payments, pagination) = self.list_payments(pagination, filter).await?;
                 Ok(NodeResponse::ListPayments {
                     payments,
                     pagination,

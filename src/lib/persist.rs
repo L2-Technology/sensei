@@ -5,7 +5,13 @@ use std::{
     net::SocketAddr,
     ops::Deref,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
+};
+
+use tokio::{
+    runtime::Handle,
+    sync::{Mutex, MutexGuard},
+    task,
 };
 
 use bitcoin::secp256k1::key::PublicKey;
@@ -42,7 +48,7 @@ pub struct DatabaseStore {
 
 impl KVStorePersister for DatabaseStore {
     fn persist<W: Writeable>(&self, key: &str, object: &W) -> std::io::Result<()> {
-        let database = self.database.lock().unwrap();
+        let database = self.get_database();
         database
             .set_value(key.to_string(), object.encode())
             .map_err(|e| e.into())
@@ -51,13 +57,13 @@ impl KVStorePersister for DatabaseStore {
 
 impl KVStoreReader for DatabaseStore {
     fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>> {
-        let database = self.database.lock().unwrap();
+        let database = self.get_database();
         database.get_value(key.to_string()).map_err(|e| e.into())
     }
 
     fn list(&self, key: &str) -> std::io::Result<Vec<String>> {
         let pattern = format!("{}%", key);
-        let database = self.database.lock().unwrap();
+        let database = self.get_database();
         database
             .get_keys(pattern)
             .map(|full_keys| {
@@ -74,6 +80,12 @@ impl KVStoreReader for DatabaseStore {
 impl DatabaseStore {
     pub fn new(database: Arc<Mutex<NodeDatabase>>) -> Self {
         Self { database }
+    }
+
+    pub fn get_database(&self) -> MutexGuard<NodeDatabase> {
+        task::block_in_place(move || {
+            Handle::current().block_on(async move { self.database.lock().await })
+        })
     }
 }
 
