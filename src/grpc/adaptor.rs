@@ -107,6 +107,7 @@ impl From<Payment> for PaymentMessage {
 impl From<NodeInfo> for InfoMessage {
     fn from(info: NodeInfo) -> Self {
         Self {
+            version: info.version,
             node_pubkey: info.node_pubkey,
             num_channels: info.num_channels,
             num_usable_channels: info.num_usable_channels,

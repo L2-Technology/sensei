@@ -29,6 +29,7 @@ pub struct Peer {
 
 #[derive(Serialize)]
 pub struct NodeInfo {
+    pub version: String,
     pub node_pubkey: String,
     pub num_channels: u32,
     pub num_usable_channels: u32,

@@ -146,13 +146,14 @@ message StartAdminResponse {
 
 message GetStatusRequest {}
 message GetStatusResponse {
-    optional string alias = 1;
-    optional string pubkey = 2;
-    optional string username = 3;
-    optional uint32 role = 4;
-    bool created = 5;
-    bool running = 6;
-    bool authenticated = 7;
+    string version = 1;
+    optional string alias = 2;
+    optional string pubkey = 3;
+    optional string username = 4;
+    optional uint32 role = 5;
+    bool created = 6;
+    bool running = 7;
+    bool authenticated = 8;
 }
 
 message StartNodeRequest {
@@ -289,10 +290,11 @@ message CloseChannelRequest {
 message CloseChannelResponse {}
 
 message Info {
-    string node_pubkey = 1;
-    uint32 num_channels = 2;
-    uint32 num_usable_channels = 3;
-    uint32 num_peers = 4;
+    string version = 1;
+    string node_pubkey = 2;
+    uint32 num_channels = 3;
+    uint32 num_usable_channels = 4;
+    uint32 num_peers = 5;
 }
 
 message InfoRequest {}
