@@ -212,6 +212,7 @@ pub async fn authenticate_request(
 
 pub fn add_routes(router: Router) -> Router {
     router
+        .route("/health", post(health_check))
         .route("/v1/init", post(init_sensei))
         .route("/v1/nodes", get(list_nodes))
         .route("/v1/nodes", post(create_node))
@@ -395,6 +396,10 @@ pub async fn logout(cookies: Cookies) -> Result<Json<Value>, StatusCode> {
     cookies.remove(Cookie::new("macaroon", ""));
     cookies.remove(Cookie::new("token", ""));
     Ok(Json::default())
+}
+
+pub async fn health_check() -> Result<String, StatusCode> {
+    Ok("Up!".to_string())
 }
 
 pub async fn init_sensei(
