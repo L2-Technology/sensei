@@ -200,7 +200,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .get_matches();
 
     let endpoint = if matches.is_present("dev") {
-         "http://0.0.0.0:5401"
+        "http://0.0.0.0:5401"
     } else {
         "http://0.0.0.0:3000"
     };
