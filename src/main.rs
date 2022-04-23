@@ -21,6 +21,7 @@ mod lib;
 mod node;
 mod services;
 mod utils;
+mod version;
 
 use crate::chain::bitcoind_client::BitcoindClient;
 use crate::database::admin::AdminDatabase;

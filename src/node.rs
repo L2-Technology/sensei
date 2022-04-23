@@ -21,7 +21,7 @@ use crate::lib::persist::{AnyKVStore, DatabaseStore, FileStore, SenseiPersister}
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
-use crate::{database, hex_utils};
+use crate::{database, hex_utils, version};
 use bdk::database::SqliteDatabase;
 use bdk::keys::ExtendedKey;
 use bdk::wallet::AddressIndex;
@@ -1166,6 +1166,7 @@ impl LightningNode {
         let local_balance_msat = chans.iter().map(|c| c.balance_msat).sum::<u64>();
 
         Ok(NodeInfo {
+            version: version::get_version(),
             node_pubkey: self.channel_manager.get_our_node_id().to_string(),
             num_channels: chans.len() as u32,
             num_usable_channels: chans.iter().filter(|c| c.is_usable).count() as u32,

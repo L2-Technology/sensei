@@ -191,6 +191,7 @@ impl TryFrom<AdminResponse> for GetStatusResponse {
     fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
         match res {
             AdminResponse::GetStatus {
+                version,
                 alias,
                 running,
                 created,
@@ -199,6 +200,7 @@ impl TryFrom<AdminResponse> for GetStatusResponse {
                 username,
                 role,
             } => Ok(Self {
+                version,
                 alias,
                 running,
                 created,

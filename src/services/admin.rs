@@ -19,7 +19,7 @@ use crate::{
     config::{LightningNodeConfig, SenseiConfig},
     hex_utils,
     node::LightningNode,
-    NodeDirectory, NodeHandle,
+    version, NodeDirectory, NodeHandle,
 };
 
 use rand::Rng;
@@ -77,6 +77,7 @@ pub enum AdminRequest {
 #[serde(untagged)]
 pub enum AdminResponse {
     GetStatus {
+        version: String,
         alias: Option<String>,
         created: bool,
         running: bool,
@@ -195,6 +196,7 @@ impl AdminService {
                                 let node_running = directory.contains_key(&pubkey);
 
                                 Ok(AdminResponse::GetStatus {
+                                    version: version::get_version(),
                                     alias: Some(pubkey_node.alias),
                                     created: true,
                                     running: node_running,
@@ -205,6 +207,7 @@ impl AdminService {
                                 })
                             }
                             None => Ok(AdminResponse::GetStatus {
+                                version: version::get_version(),
                                 alias: None,
                                 created: true,
                                 running: false,
@@ -216,6 +219,7 @@ impl AdminService {
                         }
                     }
                     None => Ok(AdminResponse::GetStatus {
+                        version: version::get_version(),
                         alias: None,
                         pubkey: None,
                         created: false,
