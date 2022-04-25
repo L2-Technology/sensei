@@ -52,11 +52,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .takes_value(true),
         )
         .arg(
-            Arg::new("dev")
-                .long("dev")
-                .value_name("DEVELOPMENT_MODE")
-                .help("Sets the development mode endpoint")
-                .takes_value(false),
+            Arg::new("token")
+                .short('t')
+                .long("token")
+                .value_name("TOKEN")
+                .help("Sets the admin token that will be used for admin requests")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("host")
+                .short('h')
+                .long("host")
+                .value_name("HOST")
+                .help("Sets the host of the senseid instance")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("port")
+                .short('p')
+                .long("port")
+                .value_name("PORT")
+                .help("Sets the port of the senseid instance")
+                .takes_value(true),
+
         )
         .subcommand(
             App::new("init")
@@ -207,8 +225,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (command, command_args) = matches.subcommand().unwrap();
 
+    let host = matches.value_of("host").unwrap_or("http://127.0.0.1");
+    let port = matches.value_of("port").unwrap_or("5401");
+    let endpoint = format!("{}:{}", host, port);
+
     if command == "init" {
-        let channel = Channel::from_static(endpoint)
+        let channel = Channel::from_shared(endpoint.to_string())?
             .connect()
             .await?;
         let mut admin_client = AdminClient::new(channel);
@@ -217,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let alias = command_args.value_of("alias").unwrap();
 
         let mut passphrase = String::new();
-        print!("set a passphrase: ");
+        println!("set a passphrase: ");
         io::stdin().read_line(&mut passphrase)?;
 
         let request = tonic::Request::new(CreateAdminRequest {
@@ -231,7 +253,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         let data_dir = matches.value_of("datadir").unwrap_or("./.sensei");
         let node = matches.value_of("node").unwrap_or("admin");
-        let macaroon_path = format!("{}/{}/.ldk/admin.macaroon", data_dir, node);
+        let macaroon_path = format!("{}/regtest/{}/data/admin.macaroon", data_dir, node);
+        let token_str = matches.value_of("token").unwrap();
 
         println!("macaroon path: {:?}", macaroon_path);
 
@@ -240,18 +263,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _bytes = macaroon_file.read_to_end(&mut macaroon_raw)?;
         let macaroon_hex_str = hex_utils::hex_str(&macaroon_raw);
 
-        let channel = Channel::from_static(endpoint)
+        let channel = Channel::from_shared(endpoint.to_string())?
+
             .connect()
             .await?;
         let macaroon = MetadataValue::from_str(&macaroon_hex_str)?;
         let admin_macaroon = macaroon.clone();
+        let token = MetadataValue::from_str(&token_str)?;
 
         let mut client = NodeClient::with_interceptor(channel, move |mut req: Request<()>| {
             req.metadata_mut().insert("macaroon", macaroon.clone());
             Ok(req)
         });
 
-        let admin_channel = Channel::from_static("http://0.0.0.0:3000")
+        let admin_channel = Channel::from_shared(endpoint.to_string())?
             .connect()
             .await?;
 
@@ -259,6 +284,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             AdminClient::with_interceptor(admin_channel, move |mut req: Request<()>| {
                 req.metadata_mut()
                     .insert("macaroon", admin_macaroon.clone());
+                req.metadata_mut()
+                    .insert("token", token.clone());
                 Ok(req)
             });
 
