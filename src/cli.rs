@@ -264,7 +264,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let macaroon_hex_str = hex_utils::hex_str(&macaroon_raw);
 
         let channel = Channel::from_shared(endpoint.to_string())?
+<<<<<<< HEAD
 
+=======
+>>>>>>> 90c26b3 (Host, port, and token can be set at runtime (#1))
             .connect()
             .await?;
         let macaroon = MetadataValue::from_str(&macaroon_hex_str)?;
