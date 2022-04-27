@@ -36,14 +36,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .author("John Cantrell <john@l2.technology>")
         .about("Control your sensei node from a cli")
         .arg(
-            Arg::new("datadir")
-                .short('d')
-                .long("datadir")
-                .value_name("DATADIR")
-                .help("Sets a custom Sensei data directory")
-                .takes_value(true),
-        )
-        .arg(
             Arg::new("node")
                 .short('n')
                 .long("node")
@@ -74,7 +66,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .value_name("PORT")
                 .help("Sets the port of the senseid instance")
                 .takes_value(true),
-
+        )
+        .arg(
+            Arg::new("macaroon")
+                .long("macaroon")
+                .value_name("MACAROON")
+                .help("The macaroon for use communicating with your instance")
+                .takes_value(true),
         )
         .subcommand(
             App::new("init")
@@ -108,6 +106,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .required(true)
                         .index(2)
                         .help("alias to use for this lightning node"),
+                )
+                .arg(
+                    Arg::new("start")
+                        .required(true)
+                        .index(3)
+                        .possible_values(&["true", "false"])
+                        .help("Whether or not to start the node"),
                 ),
         )
         .subcommand(App::new("startnode").about("start a child lightning node"))
@@ -229,10 +234,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let port = matches.value_of("port").unwrap_or("5401");
     let endpoint = format!("{}:{}", host, port);
 
-    if command == "init" {
-        let channel = Channel::from_shared(endpoint.to_string())?
+    let channel = Channel::from_shared(endpoint.to_string())?
             .connect()
             .await?;
+
+    if command == "init" {
+        // senseicli init username <node-alias> <start?>
         let mut admin_client = AdminClient::new(channel);
 
         let username = command_args.value_of("username").unwrap();
@@ -251,13 +258,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let response = admin_client.create_admin(request).await?;
         println!("{:?}", response.into_inner());
     } else {
-        let data_dir = matches.value_of("datadir").unwrap_or("./.sensei");
         let node = matches.value_of("node").unwrap_or("admin");
-        let macaroon_path = format!("{}/regtest/{}/data/admin.macaroon", data_dir, node);
-        let token_str = matches.value_of("token").unwrap();
+        let macaroon_hex_str = matches.value_of("macaroon").unwrap_or("");
 
-        println!("macaroon path: {:?}", macaroon_path);
+        let token_str = matches.value_of("token").unwrap_or("");
 
+<<<<<<< HEAD
         let mut macaroon_file = File::open(macaroon_path)?;
         let mut macaroon_raw = Vec::new();
         let _bytes = macaroon_file.read_to_end(&mut macaroon_raw)?;
@@ -270,21 +276,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 >>>>>>> 90c26b3 (Host, port, and token can be set at runtime (#1))
             .connect()
             .await?;
+=======
+>>>>>>> 949d46a (The macaroon is passed in on the command line, rather than looked up on local disk)
         let macaroon = MetadataValue::from_str(&macaroon_hex_str)?;
         let admin_macaroon = macaroon.clone();
+        
         let token = MetadataValue::from_str(&token_str)?;
 
-        let mut client = NodeClient::with_interceptor(channel, move |mut req: Request<()>| {
+        let mut client = NodeClient::with_interceptor(channel.clone(), move |mut req: Request<()>| {
             req.metadata_mut().insert("macaroon", macaroon.clone());
             Ok(req)
         });
 
-        let admin_channel = Channel::from_shared(endpoint.to_string())?
-            .connect()
-            .await?;
-
         let mut admin_client =
-            AdminClient::with_interceptor(admin_channel, move |mut req: Request<()>| {
+            AdminClient::with_interceptor(channel.clone(), move |mut req: Request<()>| {
                 req.metadata_mut()
                     .insert("macaroon", admin_macaroon.clone());
                 req.metadata_mut()
@@ -293,7 +298,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
         match command {
+            // senseicli --token <> start
             "start" => {
+                
                 let mut passphrase = String::new();
                 println!("enter your passphrase: ");
                 io::stdin().read_line(&mut passphrase)?;
@@ -302,14 +309,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let response = admin_client.start_admin(request).await?;
                 println!("{:?}", response.into_inner());
             }
+            
+            // senseicli --token <> listnodes 
             "listnodes" => {
                 let request = tonic::Request::new(ListNodesRequest { pagination: None });
                 let response = admin_client.list_nodes(request).await?;
                 println!("{:?}", response.into_inner());
             }
+            
+            // senseicli --token <> createnode <username> <alias>
             "createnode" => {
                 let username = command_args.value_of("username").unwrap();
                 let alias = command_args.value_of("alias").unwrap();
+
+                let start: bool = command_args
+                    .value_of("start")
+                    .expect("start field required")
+                    .parse()
+                    .expect("start must be true or false");
+
 
                 let mut passphrase = String::new();
                 println!("set a passphrase: ");
@@ -319,11 +337,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     username: username.to_string(),
                     alias: alias.to_string(),
                     passphrase,
-                    start: false,
+                    start: start,
                 });
                 let response = admin_client.create_node(request).await?;
                 println!("{:?}", response.into_inner());
             }
+            
+
+            // End Admin Commands
+
             "startnode" => {
                 let mut passphrase = String::new();
                 println!("enter your passphrase: ");
