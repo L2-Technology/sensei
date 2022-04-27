@@ -9,8 +9,7 @@
 
 mod hex_utils;
 use std::{
-    fs::File,
-    io::{self, Read},
+    io::{self}
 };
 
 use clap::{App, Arg};
@@ -22,7 +21,7 @@ use crate::sensei::{
     CloseChannelRequest, ConnectPeerRequest, CreateAdminRequest, CreateInvoiceRequest,
     CreateNodeRequest, GetUnusedAddressRequest, InfoRequest, KeysendRequest, ListChannelsRequest,
     ListNodesRequest, ListPaymentsRequest, ListPeersRequest, OpenChannelRequest, PayInvoiceRequest,
-    SignMessageRequest, StartAdminRequest, StartNodeRequest,
+    SignMessageRequest, StartAdminRequest, StartNodeRequest, PaginationRequest
 };
 
 pub mod sensei {
@@ -258,7 +257,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let response = admin_client.create_admin(request).await?;
         println!("{:?}", response.into_inner());
     } else {
-        let node = matches.value_of("node").unwrap_or("admin");
         let macaroon_hex_str = matches.value_of("macaroon").unwrap_or("");
 
         let token_str = matches.value_of("token").unwrap_or("");
@@ -288,6 +286,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(req)
         });
 
+        // This is only needed for a couple of queries.  Disabling pagination effectively by large get
+        let pagination = PaginationRequest {
+            page: 0,
+            take: 1000,
+            query: None,
+        };
+
         let mut admin_client =
             AdminClient::with_interceptor(channel.clone(), move |mut req: Request<()>| {
                 req.metadata_mut()
@@ -312,7 +317,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             // senseicli --token <> listnodes 
             "listnodes" => {
-                let request = tonic::Request::new(ListNodesRequest { pagination: None });
+                let request = tonic::Request::new(ListNodesRequest { pagination: pagination.into() });
                 let response = admin_client.list_nodes(request).await?;
                 println!("{:?}", response.into_inner());
             }
@@ -491,20 +496,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{:?}", response.into_inner());
             }
             "listchannels" => {
-                let request = tonic::Request::new(ListChannelsRequest { pagination: None });
+                let request = tonic::Request::new(ListChannelsRequest { pagination: pagination.into() });
                 let response = client.list_channels(request).await?;
                 println!("{:?}", response.into_inner());
             }
             "listpayments" => {
                 let request = tonic::Request::new(ListPaymentsRequest {
-                    pagination: None,
+                    pagination: pagination.into(),
                     filter: None,
                 });
                 let response = client.list_payments(request).await?;
                 println!("{:?}", response.into_inner());
             }
             "listpeers" => {
-                let request = tonic::Request::new(ListPeersRequest {});
+                let request = tonic::Request::new(ListPeersRequest { pagination: pagination.into()});
                 let response = client.list_peers(request).await?;
                 println!("{:?}", response.into_inner());
             }
