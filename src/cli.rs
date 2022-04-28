@@ -509,7 +509,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{:?}", response.into_inner());
             }
             "listpeers" => {
-                let request = tonic::Request::new(ListPeersRequest { pagination: pagination.into()});
+                let request = tonic::Request::new(ListPeersRequest {});
                 let response = client.list_peers(request).await?;
                 println!("{:?}", response.into_inner());
             }
