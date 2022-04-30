@@ -8,6 +8,7 @@
 // licenses.
 
 use std::sync::Arc;
+use tracing::{instrument, info, error, debug};
 
 pub use super::sensei::admin_server::{Admin, AdminServer};
 use super::{
@@ -413,6 +414,7 @@ impl Admin for AdminService {
             Err(_err) => Err(tonic::Status::unknown("error")),
         }
     }
+    #[instrument(skip(self, request), fields())]
     async fn create_admin(
         &self,
         request: tonic::Request<CreateAdminRequest>,
@@ -420,14 +422,19 @@ impl Admin for AdminService {
         let request: AdminRequest = request.into_inner().into();
         match self.request_context.admin_service.call(request).await {
             Ok(response) => {
+                debug!("Admin creation successful");
                 let response: Result<CreateAdminResponse, String> = response.try_into();
                 response
                     .map(Response::new)
                     .map_err(|_err| tonic::Status::unknown("err"))
             }
-            Err(_err) => Err(tonic::Status::unknown("error")),
+            Err(_err) => {
+                error!("Admin creation failed {:?}", _err);
+                Err(tonic::Status::unknown("error"))
+            }
         }
     }
+    #[instrument(skip(self, request), fields())]
     async fn start_admin(
         &self,
         request: tonic::Request<StartAdminRequest>,

@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use tracing::{error};
 use super::{PaginationRequest, PaginationResponse};
 use crate::chain::manager::SenseiChainManager;
 use crate::error::Error as SenseiError;
@@ -310,9 +311,12 @@ impl AdminService {
 
                 let macaroon = macaroon.serialize(macaroon::Format::V2)?;
 
+                let macaroon = lightning_node.macaroon.serialize(macaroon::Format::V2)?;
+                
                 if start {
                     self.start_node(node.clone(), passphrase).await?;
                 }
+                
                 Ok(AdminResponse::CreateNode {
                     pubkey: node.pubkey,
                     macaroon: hex_utils::hex_str(macaroon.as_slice()),
@@ -429,6 +433,7 @@ impl AdminService {
             status: ActiveValue::Set(node::NodeStatus::Stopped.into()),
             ..Default::default()
         };
+        dbg!("Node is created in the database");
 
         let node = node.insert(self.database.get_connection()).await.unwrap();
 

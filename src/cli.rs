@@ -12,10 +12,15 @@ use std::{
     io::{self}
 };
 
+use std::{fs};
+
+use serde::{Deserialize, Serialize};
+
 use clap::{App, Arg};
 use sensei::GetBalanceRequest;
 use sensei::{admin_client::AdminClient, node_client::NodeClient};
 use tonic::{metadata::MetadataValue, transport::Channel, Request};
+
 
 use crate::sensei::{
     CloseChannelRequest, ConnectPeerRequest, CreateAdminRequest, CreateInvoiceRequest,
@@ -261,21 +266,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let token_str = matches.value_of("token").unwrap_or("");
 
-<<<<<<< HEAD
-        let mut macaroon_file = File::open(macaroon_path)?;
-        let mut macaroon_raw = Vec::new();
-        let _bytes = macaroon_file.read_to_end(&mut macaroon_raw)?;
-        let macaroon_hex_str = hex_utils::hex_str(&macaroon_raw);
-
-        let channel = Channel::from_shared(endpoint.to_string())?
-<<<<<<< HEAD
-
-=======
->>>>>>> 90c26b3 (Host, port, and token can be set at runtime (#1))
-            .connect()
-            .await?;
-=======
->>>>>>> 949d46a (The macaroon is passed in on the command line, rather than looked up on local disk)
         let macaroon = MetadataValue::from_str(&macaroon_hex_str)?;
         let admin_macaroon = macaroon.clone();
         
@@ -337,7 +327,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut passphrase = String::new();
                 println!("set a passphrase: ");
                 io::stdin().read_line(&mut passphrase)?;
-
+                
                 let request = tonic::Request::new(CreateNodeRequest {
                     username: username.to_string(),
                     alias: alias.to_string(),
@@ -345,7 +335,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     start: start,
                 });
                 let response = admin_client.create_node(request).await?;
-                println!("{:?}", response.into_inner());
+                
+                let message = response.into_inner();
+                
+                let mut config = NodeConfig {
+                    data_dir: ".".into(),
+                    pubkey: message.pubkey.clone(),
+                    macaroon: message.macaroon.clone(),
+                    token: "".into(),
+                    role: Role::User.to_integer(),
+                };
+                config.save();
+
+                println!("{:?}", message);
             }
             
 
@@ -525,4 +527,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct NodeConfig {
+    pub data_dir: String,
+    pub pubkey: String,
+    pub macaroon: String,
+    pub role: u8,
+    pub token: String,
+}
+
+impl Default for NodeConfig {
+    fn default() -> Self {
+        
+        NodeConfig {
+            data_dir: ".".into(),
+            pubkey: "".into(),
+            macaroon: "".into(),
+            role: Role::Admin.to_integer(),
+            token: "satoshi".into(),
+        }
+    }
+}
+
+impl NodeConfig {
+    pub fn path(&self) -> String {
+        dbg!("Looking up a path");
+        format!("{}/data/{}", self.data_dir, self.pubkey)
+    }
+
+    pub fn save(&mut self) {
+        dbg!("Trying to save");
+        fs::write(
+            self.path().clone(),
+            serde_json::to_string(&self).expect("failed to serialize config"),
+        )
+        .expect("failed to write config");
+        dbg!("Saved");
+    }
+}
+
+// I could not figure out how to improt this from the database/admin
+pub enum Role {
+    Admin,
+    User,
+}
+
+impl Role {
+    pub fn to_integer(&self) -> u8 {
+        match self {
+            Role::Admin => 0,
+            Role::User => 1,
+        }
+    }
 }
