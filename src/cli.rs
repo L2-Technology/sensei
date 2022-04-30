@@ -553,18 +553,15 @@ impl Default for NodeConfig {
 
 impl NodeConfig {
     pub fn path(&self) -> String {
-        dbg!("Looking up a path");
         format!("{}/data/{}", self.data_dir, self.pubkey)
     }
 
     pub fn save(&mut self) {
-        dbg!("Trying to save");
         fs::write(
             self.path().clone(),
             serde_json::to_string(&self).expect("failed to serialize config"),
         )
         .expect("failed to write config");
-        dbg!("Saved");
     }
 }
 

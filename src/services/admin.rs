@@ -433,7 +433,6 @@ impl AdminService {
             status: ActiveValue::Set(node::NodeStatus::Stopped.into()),
             ..Default::default()
         };
-        dbg!("Node is created in the database");
 
         let node = node.insert(self.database.get_connection()).await.unwrap();
 

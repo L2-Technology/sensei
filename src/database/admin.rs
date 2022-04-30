@@ -349,7 +349,7 @@ impl AdminDatabase {
 
     pub fn create_node(&mut self, node: Node) -> Result<i64, Error> {
         let mut statement = self.connection.prepare_cached("INSERT INTO nodes (external_id, username, alias, role, network, listen_addr, listen_port, pubkey, status) VALUES (:external_id, :username, :alias, :role, :network, :listen_addr, :listen_port, :pubkey, :status)")?;
-
+        
         statement.execute(named_params! {
             ":external_id": node.external_id,
             ":username": node.username,
@@ -361,7 +361,6 @@ impl AdminDatabase {
             ":pubkey": node.pubkey,
             ":status": node.status
         })?;
-        dbg!("Wrote node to the database");
         
         Ok(self.connection.last_insert_rowid())
     }
@@ -372,7 +371,7 @@ impl AdminDatabase {
         statement.execute(named_params! {
             ":blank": "",
         })?;
-        dbg!("I deleted the node with no pubkey because it sucks!");
+
         Ok(())
     }
 
@@ -388,7 +387,7 @@ impl AdminDatabase {
             ":pubkey": node.pubkey,
             ":status": node.status
         })?;
-        dbg!("Ok now I just wrote a node update.  It probably has a pubkey");
+        
         Ok(())
     }
 
