@@ -55,7 +55,7 @@ use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig}
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
-use lightning_invoice::{payment, utils, Currency, Invoice};
+use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
 use lightning_net_tokio::SocketDescriptor;
 use macaroon::Macaroon;
 use rand::{thread_rng, Rng};
@@ -72,6 +72,30 @@ use std::time::{Duration, Instant, SystemTime};
 use std::{fmt, fs};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
+
+#[derive(Serialize, Debug)]
+pub struct LocalInvoice {
+    hash: String,
+    currency: String,
+    amount: u64,
+    description: String,
+    expiry: u64,
+}
+
+impl std::convert::From<Invoice> for LocalInvoice {
+    fn from(invoice: Invoice) -> Self {
+        Self {
+            hash: invoice.payment_hash().to_string(),
+            currency: invoice.currency().to_string(),
+            amount: invoice.amount_milli_satoshis().unwrap_or_default(),
+            description: match invoice.description() {
+                InvoiceDescription::Direct(description) => description.into_inner(),
+                _ => String::from(""),
+            },
+            expiry: invoice.expiry_time().as_secs(),
+        }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum HTLCStatus {
@@ -1326,6 +1350,12 @@ impl LightningNode {
                 let invoice = self.get_invoice_from_str(&invoice)?;
                 self.send_payment(&invoice).await?;
                 Ok(NodeResponse::SendPayment {})
+            }
+            NodeRequest::DecodeInvoice { invoice } => {
+                let invoice = self.get_invoice_from_str(&invoice)?;
+                Ok(NodeResponse::DecodeInvoice {
+                    invoice: invoice.into(),
+                })
             }
             NodeRequest::Keysend {
                 dest_pubkey,

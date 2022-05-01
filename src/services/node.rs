@@ -6,7 +6,8 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
 // You may not use this file except in accordance with one or both of these
 // licenses.
-use crate::node::LightningNode;
+
+use crate::node::{LightningNode, LocalInvoice};
 use bdk::TransactionDetails;
 use futures::Future;
 use std::pin::Pin;
@@ -133,6 +134,9 @@ pub enum NodeRequest {
         dest_pubkey: String,
         amt_msat: u64,
     },
+    DecodeInvoice {
+        invoice: String,
+    },
     GetInvoice {
         amt_msat: u64,
         description: String,
@@ -185,6 +189,9 @@ pub enum NodeResponse {
     },
     OpenChannel {},
     SendPayment {},
+    DecodeInvoice {
+        invoice: LocalInvoice,
+    },
     Keysend {},
     GetInvoice {
         invoice: String,

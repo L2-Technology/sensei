@@ -98,6 +98,19 @@ impl From<SendPaymentParams> for NodeRequest {
 }
 
 #[derive(Deserialize)]
+pub struct DecodeInvoiceParams {
+    pub invoice: String,
+}
+
+impl From<DecodeInvoiceParams> for NodeRequest {
+    fn from(params: DecodeInvoiceParams) -> Self {
+        Self::DecodeInvoice {
+            invoice: params.invoice,
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct KeysendParams {
     pub dest_pubkey: String,
     pub amt_msat: u64,
@@ -194,6 +207,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/start", post(start_node))
         .route("/v1/node/invoices", post(create_invoice))
         .route("/v1/node/invoices/pay", post(pay_invoice))
+        .route("/v1/node/invoices/decode", post(decode_invoice))
         .route("/v1/node/payments/label", post(label_payment))
         .route("/v1/node/payments/delete", post(delete_payment))
         .route("/v1/node/channels/open", post(open_channel))
@@ -436,6 +450,22 @@ pub async fn pay_invoice(
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
         let params: Result<SendPaymentParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+    handle_authenticated_request(request_context, request, macaroon, cookies).await
+}
+
+pub async fn decode_invoice(
+    Extension(request_context): Extension<Arc<RequestContext>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, StatusCode> {
+    let request = {
+        let params: Result<DecodeInvoiceParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
