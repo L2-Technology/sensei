@@ -119,7 +119,7 @@ impl From<Invoice> for LocalInvoice {
                 .unwrap()
                 .as_secs(),
             min_final_cltv_expiry: invoice.min_final_cltv_expiry(),
-            route_hints: invoice.route_hints().clone(),
+            route_hints: invoice.route_hints(),
             features: invoice.features().map(|f| f.into()),
             payee_pub_key: invoice.recover_payee_pub_key(),
         }
