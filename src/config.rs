@@ -13,12 +13,6 @@ use bitcoin::Network;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum KVPersistence {
-    Filesystem,
-    Database,
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SenseiConfig {
     #[serde(skip)]
@@ -31,7 +25,6 @@ pub struct SenseiConfig {
     pub api_port: u16,
     pub port_range_min: u16,
     pub port_range_max: u16,
-    pub kv_persistence: KVPersistence,
     pub database_url: String,
 }
 
@@ -49,7 +42,6 @@ impl Default for SenseiConfig {
             api_port: 5401,
             port_range_min: 10000,
             port_range_max: 65535,
-            kv_persistence: KVPersistence::Database,
             database_url: String::from("sensei.db"),
         }
     }

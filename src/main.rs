@@ -42,7 +42,6 @@ use axum::{
     AddExtensionLayer, Router,
 };
 use clap::Parser;
-use config::KVPersistence;
 use migration::{Migrator, MigratorTrait};
 use rust_embed::RustEmbed;
 use sea_orm::Database;
@@ -103,8 +102,6 @@ struct SenseiArgs {
     port_range_max: Option<u16>,
     #[clap(long, env = "API_PORT")]
     api_port: Option<u16>,
-    #[clap(long, env = "KV_PERSISTENCE")]
-    kv_persistence: Option<String>,
     #[clap(long, env = "DATABASE_URL")]
     database_url: Option<String>,
 }
@@ -161,13 +158,6 @@ async fn main() {
     }
     if let Some(api_port) = args.api_port {
         config.api_port = api_port;
-    }
-    if let Some(kv_persistence) = args.kv_persistence {
-        config.kv_persistence = match kv_persistence.as_str() {
-            "filesystem" => KVPersistence::Filesystem,
-            "database" => KVPersistence::Database,
-            _ => panic!("invalid kv_persistence value"),
-        };
     }
     if let Some(database_url) = args.database_url {
         config.database_url = database_url;

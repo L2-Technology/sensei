@@ -11,13 +11,13 @@ use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::database::WalletDatabase;
 use crate::chain::fee_estimator::SenseiFeeEstimator;
 use crate::chain::manager::SenseiChainManager;
-use crate::config::{KVPersistence, SenseiConfig};
+use crate::config::SenseiConfig;
 use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::lib::database::SenseiDatabase;
 use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
-use crate::lib::persist::{AnyKVStore, DatabaseStore, FileStore, SenseiPersister};
+use crate::lib::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
@@ -491,13 +491,8 @@ impl LightningNode {
             wallet_database: Arc::new(Mutex::new(wallet_database.clone())),
         });
 
-        let persistence_store = match config.kv_persistence {
-            KVPersistence::Filesystem => AnyKVStore::File(FileStore::new(data_dir)),
-            KVPersistence::Database => {
-                AnyKVStore::Database(DatabaseStore::new(database.clone(), id.clone()))
-            }
-        };
-
+        let persistence_store =
+            AnyKVStore::Database(DatabaseStore::new(database.clone(), id.clone()));
         let persister = Arc::new(SenseiPersister::new(persistence_store, config.network));
 
         let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
