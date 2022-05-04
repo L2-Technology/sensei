@@ -1,0 +1,28 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_USER: sensei
+      POSTGRES_PASSWORD: sensei
+      POSTGRES_DB: sensei
+    ports:
+      - "5432:5432"
+    volumes:
+      - sensei-pgdb:/var/lib/postgresql/data
+  mysql:
+    image: jamielsharief/mysql:latest
+    restart: always
+    environment:
+      MYSQL_DATABASE: 'sensei'
+      MYSQL_USER: 'sensei'
+      MYSQL_PASSWORD: 'sensei'
+    ports:
+      - '3306:3306'
+    expose:
+      - '3306'
+    volumes:
+      - sensei-mysqldb:/var/lib/mysql
+volumes:
+  sensei-pgdb:
+  sensei-mysqldb:

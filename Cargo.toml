@@ -3,6 +3,9 @@ name = "sensei"
 version = "0.2.1"
 edition = "2021"
 
+[workspace]
+members = [".", "entity", "migration"]
+
 [[bin]] # Bin to run sensei cli
 name = "senseicli"
 path = "src/cli.rs"
@@ -18,7 +21,6 @@ lightning-invoice = { version = "0.14.0", git = "https://github.com/lightningdev
 lightning-net-tokio = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
 lightning-persister = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
 lightning-background-processor = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
-
 base64 = "0.13.0"
 bitcoin = "0.27"
 bitcoin-bech32 = "0.12"
@@ -32,9 +34,10 @@ tower = { version = "0.4", features = ["full"] }
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 tokio = { version = "1", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
-log = "^0.4"
+log = "0.4.16"
+env_logger = "0.9.0"
 bitcoincore-rpc = "0.14"
-bdk = { version = "0.16.0", default-features=false, features = ["sqlite"] }
+bdk = { version = "0.18.0" }
 tonic = "0.6"
 prost = "0.9"
 pin-project = "1.0"
@@ -52,6 +55,8 @@ dirs = "4.0"
 public-ip = "0.2"
 rust-embed="6.3.0"
 mime_guess = { version = "2" }
+entity = { path = "entity" }
+migration = { path = "migration" }
 
 [build-dependencies]
 tonic-build = "0.6"

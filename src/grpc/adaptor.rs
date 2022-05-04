@@ -24,7 +24,6 @@ use super::sensei::{
     SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse,
 };
 
-use crate::database::node::Payment;
 use crate::services::{
     self,
     node::{Channel, NodeInfo, NodeRequest, NodeResponse, Peer},
@@ -89,14 +88,15 @@ impl From<Channel> for ChannelMessage {
     }
 }
 
-impl From<Payment> for PaymentMessage {
-    fn from(payment: Payment) -> Self {
+impl From<entity::payment::Model> for PaymentMessage {
+    fn from(payment: entity::payment::Model) -> Self {
         Self {
             hash: payment.payment_hash,
             preimage: payment.preimage,
             secret: payment.secret,
             status: payment.status,
             amt_msat: payment.amt_msat,
+            fee_paid_msat: payment.fee_paid_msat,
             origin: payment.origin,
             label: payment.label,
             invoice: payment.invoice,

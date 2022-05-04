@@ -7,13 +7,14 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::fmt::{self, Display};
-
-use crate::database;
+use std::{
+    fmt::{self, Display},
+    io::ErrorKind,
+};
 
 #[derive(Debug)]
 pub enum Error {
-    Db(database::Error),
+    Db(migration::DbErr),
     TinderCrypt(tindercrypt::errors::Error),
     Macaroon(macaroon::MacaroonError),
     Io(std::io::Error),
@@ -36,10 +37,7 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            Error::Db(e) => match e {
-                database::Error::Generic(str) => str.clone(),
-                database::Error::Encode(e) => e.to_string(),
-            },
+            Error::Db(e) => e.to_string(),
             Error::Macaroon(_e) => "macaroon error".to_string(),
             Error::TinderCrypt(e) => e.to_string(),
             Error::Io(e) => e.to_string(),
@@ -59,6 +57,12 @@ impl Display for Error {
             Error::AdminNodeNotStarted => String::from("admin node not started"),
         };
         write!(f, "{}", str)
+    }
+}
+
+impl From<migration::DbErr> for Error {
+    fn from(e: migration::DbErr) -> Error {
+        Error::Db(e)
     }
 }
 
@@ -116,12 +120,6 @@ impl From<lightning::ln::msgs::LightningError> for Error {
     }
 }
 
-impl From<database::Error> for Error {
-    fn from(e: database::Error) -> Self {
-        Error::Db(e)
-    }
-}
-
 impl From<tindercrypt::errors::Error> for Error {
     fn from(e: tindercrypt::errors::Error) -> Self {
         Error::TinderCrypt(e)
@@ -131,5 +129,11 @@ impl From<tindercrypt::errors::Error> for Error {
 impl From<macaroon::MacaroonError> for Error {
     fn from(e: macaroon::MacaroonError) -> Self {
         Error::Macaroon(e)
+    }
+}
+
+impl From<Error> for std::io::Error {
+    fn from(e: Error) -> std::io::Error {
+        std::io::Error::new(ErrorKind::Other, e.to_string())
     }
 }

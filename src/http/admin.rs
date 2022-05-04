@@ -117,7 +117,7 @@ impl From<CreateTokenParams> for AdminRequest {
 
 #[derive(Deserialize)]
 pub struct DeleteTokenParams {
-    pub id: u64,
+    pub id: String,
 }
 
 impl From<DeleteTokenParams> for AdminRequest {
@@ -188,18 +188,23 @@ pub async fn authenticate_request(
 ) -> Result<bool, StatusCode> {
     let token = get_token_from_cookies_or_header(cookies, token)?;
 
-    let access_token = {
-        let mut database = request_context.admin_service.database.lock().await;
-        database.get_access_token(token)
-    }
-    .map_err(|_e| StatusCode::UNAUTHORIZED)?;
+    let access_token = request_context
+        .admin_service
+        .database
+        .get_access_token_by_token(token)
+        .await
+        .map_err(|_e| StatusCode::UNAUTHORIZED)?;
 
     match access_token {
         Some(access_token) => {
             if access_token.is_valid(Some(scope)) {
                 if access_token.single_use {
-                    let mut database = request_context.admin_service.database.lock().await;
-                    database.delete_access_token(access_token.id).unwrap();
+                    request_context
+                        .admin_service
+                        .database
+                        .delete_access_token(access_token.id)
+                        .await
+                        .unwrap();
                 }
                 Ok(true)
             } else {
@@ -331,16 +336,16 @@ pub async fn login(
     let params: LoginNodeParams =
         serde_json::from_value(payload).map_err(|_e| StatusCode::UNPROCESSABLE_ENTITY)?;
 
-    let node = {
-        let mut database = request_context.admin_service.database.lock().await;
-        database
-            .get_node_by_username(params.username)
-            .map_err(|_e| StatusCode::UNPROCESSABLE_ENTITY)?
-    };
+    let node = request_context
+        .admin_service
+        .database
+        .get_node_by_username(&params.username)
+        .await
+        .map_err(|_e| StatusCode::UNPROCESSABLE_ENTITY)?;
 
     match node {
         Some(node) => {
-            let request = match node.is_admin() {
+            let request = match node.is_root() {
                 true => AdminRequest::StartAdmin {
                     passphrase: params.passphrase,
                 },
@@ -361,7 +366,7 @@ pub async fn login(
                             "pubkey": node.pubkey,
                             "alias": node.alias,
                             "macaroon": macaroon,
-                            "role": node.role
+                            "role": node.role as u16
                         })))
                     }
                     AdminResponse::StartAdmin {
@@ -379,7 +384,7 @@ pub async fn login(
                             "pubkey": node.pubkey,
                             "alias": node.alias,
                             "macaroon": macaroon,
-                            "role": node.role,
+                            "role": node.role as u16,
                         })))
                     }
                     _ => Err(StatusCode::UNPROCESSABLE_ENTITY),
@@ -413,7 +418,7 @@ pub async fn init_sensei(
             AdminResponse::CreateAdmin {
                 pubkey,
                 macaroon,
-                external_id,
+                id,
                 role,
                 token,
             } => {
@@ -430,7 +435,7 @@ pub async fn init_sensei(
                 Ok(Json(AdminResponse::CreateAdmin {
                     pubkey,
                     macaroon,
-                    external_id,
+                    id,
                     role,
                     token,
                 }))

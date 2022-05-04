@@ -7,17 +7,18 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use crate::chain::database::WalletDatabase;
 use crate::chain::manager::SenseiChainManager;
-use crate::database::node::{ForwardedPayment, NodeDatabase};
-use crate::node::{ChannelManager, HTLCStatus, MillisatAmount, PaymentInfo, PaymentOrigin};
-use crate::utils;
-use crate::{config::LightningNodeConfig, hex_utils};
+use crate::config::SenseiConfig;
+use crate::hex_utils;
+use crate::lib::database::SenseiDatabase;
+use crate::node::{ChannelManager, HTLCStatus, PaymentOrigin};
 
-use bdk::database::SqliteDatabase;
 use bdk::wallet::AddressIndex;
 use bdk::{FeeRate, SignOptions};
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
+use entity::sea_orm::ActiveValue;
 use lightning::{
     chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
     util::events::{Event, EventHandler, PaymentPurpose},
@@ -28,11 +29,12 @@ use std::{sync::Arc, time::Duration};
 use tokio::runtime::Handle;
 
 pub struct LightningNodeEventHandler {
-    pub config: LightningNodeConfig,
-    pub wallet: Arc<Mutex<bdk::Wallet<(), SqliteDatabase>>>,
+    pub node_id: String,
+    pub config: Arc<SenseiConfig>,
+    pub wallet: Arc<Mutex<bdk::Wallet<WalletDatabase>>>,
     pub channel_manager: Arc<ChannelManager>,
     pub keys_manager: Arc<KeysManager>,
-    pub database: Arc<Mutex<NodeDatabase>>,
+    pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,
 }
@@ -103,9 +105,6 @@ impl EventHandler for LightningNodeEventHandler {
                 amt,
                 ..
             } => {
-                // inbound...
-                let mut database = self.database.lock().unwrap();
-
                 let (payment_preimage, payment_secret) = match purpose {
                     PaymentPurpose::InvoicePayment {
                         payment_preimage,
@@ -132,37 +131,43 @@ impl EventHandler for LightningNodeEventHandler {
                     _ => HTLCStatus::Failed,
                 };
 
-                // TODO: handle error reading here in a better way?
-                let existing_payment = database
-                    .get_payment(hex_utils::hex_str(&payment_hash.0))
+                let payment_hash = hex_utils::hex_str(&payment_hash.0);
+
+                let existing_payment = self
+                    .database
+                    .find_payment_sync(self.node_id.clone(), payment_hash.clone())
                     .unwrap_or(None);
 
-                let (label, invoice) = match existing_payment {
-                    Some(payment) => (payment.label, payment.invoice),
-                    None => (None, None),
-                };
+                let preimage = payment_preimage.map(|preimage| hex_utils::hex_str(&preimage.0));
+                let secret = payment_secret.map(|secret| hex_utils::hex_str(&secret.0));
+                let amt_msat: Option<i64> = Some((*amt).try_into().unwrap());
 
-                let payment = PaymentInfo {
-                    hash: *payment_hash,
-                    preimage: payment_preimage,
-                    secret: payment_secret,
-                    status,
-                    amt_msat: MillisatAmount(Some(*amt)),
-                    origin: PaymentOrigin::InvoiceIncoming,
-                    label,
-                    invoice,
-                };
+                match existing_payment {
+                    Some(payment) => {
+                        let mut payment: entity::payment::ActiveModel = payment.into();
+                        payment.status = ActiveValue::Set(status.to_string());
+                        payment.preimage = ActiveValue::Set(preimage);
+                        payment.secret = ActiveValue::Set(secret);
+                        payment.amt_msat = ActiveValue::Set(amt_msat);
 
-                // TODO: in this case we probably already set the label so we shouldn't be
-                // overriding it -- maybe need to find first and then update.
-                let res = database.create_or_update_payment(payment.into());
-
-                match res {
-                    Ok(()) => {}
-                    Err(_e) => {
-                        println!("failed to update payment");
+                        self.database.update_payment_sync(payment).unwrap();
                     }
-                }
+                    None => {
+                        let payment = entity::payment::ActiveModel {
+                            payment_hash: ActiveValue::Set(payment_hash),
+                            status: ActiveValue::Set(status.to_string()),
+                            preimage: ActiveValue::Set(preimage),
+                            secret: ActiveValue::Set(secret),
+                            amt_msat: ActiveValue::Set(amt_msat),
+                            origin: ActiveValue::Set(
+                                PaymentOrigin::SpontaneousIncoming.to_string(),
+                            ),
+                            ..Default::default()
+                        };
+
+                        self.database.insert_payment_sync(payment).unwrap();
+                    }
+                };
             }
             Event::PaymentSent {
                 payment_preimage,
@@ -170,17 +175,21 @@ impl EventHandler for LightningNodeEventHandler {
                 fee_paid_msat,
                 ..
             } => {
-                // outbound
-                let mut database = self.database.lock().unwrap();
-                let payment = database.get_payment(hex_utils::hex_str(&payment_hash.0));
+                let hex_payment_hash = hex_utils::hex_str(&payment_hash.0);
 
-                if let Ok(Some(mut payment)) = payment {
-                    // update payment
-                    payment.preimage = Some(hex_utils::hex_str(&payment_preimage.0));
-                    payment.status = HTLCStatus::Succeeded.to_string();
+                let payment = self
+                    .database
+                    .find_payment_sync(self.node_id.clone(), hex_payment_hash);
 
+                if let Ok(Some(payment)) = payment {
                     let amt_msat = payment.amt_msat;
-                    let _res = database.create_or_update_payment(payment);
+
+                    let mut payment: entity::payment::ActiveModel = payment.into();
+                    payment.preimage =
+                        ActiveValue::Set(Some(hex_utils::hex_str(&payment_preimage.0)));
+                    payment.status = ActiveValue::Set(HTLCStatus::Succeeded.to_string());
+
+                    let _res = self.database.update_payment_sync(payment);
 
                     println!(
                         "\nEVENT: successfully sent payment of {:?} millisatoshis{} from \
@@ -204,13 +213,18 @@ impl EventHandler for LightningNodeEventHandler {
 				    hex_utils::hex_str(&payment_hash.0)
                 );
 
-                let mut database = self.database.lock().unwrap();
-                let payment = database.get_payment(hex_utils::hex_str(&payment_hash.0));
+                let hex_payment_hash = hex_utils::hex_str(&payment_hash.0);
 
-                if let Ok(Some(mut payment)) = payment {
-                    // update payment
-                    payment.status = HTLCStatus::Failed.to_string();
-                    let res = database.create_or_update_payment(payment);
+                let payment = self
+                    .database
+                    .find_payment_sync(self.node_id.clone(), hex_payment_hash);
+
+                if let Ok(Some(payment)) = payment {
+                    let mut payment: entity::payment::ActiveModel = payment.into();
+                    payment.status = ActiveValue::Set(HTLCStatus::Failed.to_string());
+
+                    let res = self.database.update_payment_sync(payment);
+
                     match res {
                         Ok(()) => {}
                         Err(_e) => {
@@ -235,18 +249,18 @@ impl EventHandler for LightningNodeEventHandler {
                         fee_earned, from_onchain_str
                     );
 
-                    let forwarded_payment = ForwardedPayment {
-                        hours_since_epoch: utils::hours_since_epoch().unwrap(),
-                        from_channel_id: None,
-                        to_channel_id: None,
-                        fees_earned_msat: *fee_earned,
-                        total_payments: 1,
-                    };
+                    // let forwarded_payment = ForwardedPayment {
+                    //     hours_since_epoch: utils::hours_since_epoch().unwrap(),
+                    //     from_channel_id: None,
+                    //     to_channel_id: None,
+                    //     fees_earned_msat: *fee_earned,
+                    //     total_payments: 1,
+                    // };
 
-                    let mut database = self.database.lock().unwrap();
-                    database
-                        .record_forwarded_payment(forwarded_payment)
-                        .unwrap();
+                    // let mut database = self.database.lock().unwrap();
+                    // database
+                    //     .record_forwarded_payment(forwarded_payment)
+                    //     .unwrap();
                 } else {
                     println!(
                         "\nEVENT: Forwarded payment, claiming onchain {}",

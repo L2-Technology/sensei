@@ -9,7 +9,6 @@
 
 mod chain;
 mod config;
-mod database;
 mod disk;
 mod error;
 mod event_handler;
@@ -24,10 +23,12 @@ mod utils;
 mod version;
 
 use crate::chain::bitcoind_client::BitcoindClient;
-use crate::database::admin::AdminDatabase;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
+use crate::lib::database::SenseiDatabase;
 use crate::{chain::manager::SenseiChainManager, config::SenseiConfig};
+use entity::sea_orm;
+
 use ::http::{
     header::{self, ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
     Method, Uri,
@@ -41,8 +42,9 @@ use axum::{
     AddExtensionLayer, Router,
 };
 use clap::Parser;
-use config::KVPersistence;
+use migration::{Migrator, MigratorTrait};
 use rust_embed::RustEmbed;
+use sea_orm::Database;
 
 use std::net::SocketAddr;
 use tower_cookies::CookieManagerLayer;
@@ -100,14 +102,15 @@ struct SenseiArgs {
     port_range_max: Option<u16>,
     #[clap(long, env = "API_PORT")]
     api_port: Option<u16>,
-    #[clap(long, env = "KV_PERSISTENCE")]
-    kv_persistence: Option<String>,
+    #[clap(long, env = "DATABASE_URL")]
+    database_url: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     macaroon::initialize().expect("failed to initialize macaroons");
     let args = SenseiArgs::parse();
 
@@ -156,17 +159,24 @@ async fn main() {
     if let Some(api_port) = args.api_port {
         config.api_port = api_port;
     }
-    if let Some(kv_persistence) = args.kv_persistence {
-        config.kv_persistence = match kv_persistence.as_str() {
-            "filesystem" => KVPersistence::Filesystem,
-            "database" => KVPersistence::Database,
-            _ => panic!("invalid kv_persistence value"),
-        };
+    if let Some(database_url) = args.database_url {
+        config.database_url = database_url;
     }
 
-    let sqlite_path = format!("{}/{}/admin.db", sensei_dir, config.network);
-    let mut database = AdminDatabase::new(sqlite_path);
-    database.mark_all_nodes_stopped().unwrap();
+    if !config.database_url.starts_with("postgres:") && !config.database_url.starts_with("mysql:") {
+        let sqlite_path = format!("{}/{}/{}", sensei_dir, config.network, config.database_url);
+        config.database_url = format!("sqlite://{}?mode=rwc", sqlite_path);
+    }
+
+    let db_connection = Database::connect(config.database_url.clone())
+        .await
+        .unwrap();
+    Migrator::up(&db_connection, None)
+        .await
+        .expect("failed to run migrations");
+
+    let database = SenseiDatabase::new(db_connection, tokio::runtime::Handle::current());
+    database.mark_all_nodes_stopped().await.unwrap();
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
     let node_directory = Arc::new(Mutex::new(HashMap::new()));

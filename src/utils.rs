@@ -9,23 +9,7 @@
 
 use crate::{error::Error, hex_utils, node::MacaroonSession};
 use macaroon::Macaroon;
-use std::{
-    cmp::min,
-    marker::PhantomData,
-    time::{SystemTime, SystemTimeError},
-};
-
-pub fn hours_since_epoch() -> Result<u64, SystemTimeError> {
-    let _time_since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
-    let hours_since_epoch = seconds_since_epoch()? / 3600;
-    Ok(hours_since_epoch)
-}
-
-pub fn seconds_since_epoch() -> Result<u64, SystemTimeError> {
-    Ok(SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)?
-        .as_secs())
-}
+use std::{cmp::min, marker::PhantomData};
 
 pub fn macaroon_from_hex_str(hex_str: &str) -> Result<Macaroon, Error> {
     let macaroon_byte_vec = hex_utils::to_vec(hex_str).unwrap();
