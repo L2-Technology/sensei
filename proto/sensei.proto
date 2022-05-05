@@ -22,6 +22,7 @@ service Node {
     rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
     rpc OpenChannel (OpenChannelRequest) returns (OpenChannelResponse);
     rpc PayInvoice (PayInvoiceRequest) returns (PayInvoiceResponse);
+    rpc DecodeInvoice (DecodeInvoiceRequest) returns (DecodeInvoiceResponse);
     rpc Keysend (KeysendRequest) returns (KeysendResponse);
     rpc CreateInvoice (CreateInvoiceRequest) returns (CreateInvoiceResponse);
     rpc LabelPayment (LabelPaymentRequest) returns (LabelPaymentResponse);
@@ -196,6 +197,45 @@ message PayInvoiceRequest {
     string invoice = 1;
 }
 message PayInvoiceResponse {}
+
+message DecodeInvoiceRequest {
+    string invoice = 1;
+}
+message DecodeInvoiceResponse {
+    Invoice invoice = 1;
+}
+message Invoice {
+    string payment_hash = 1;
+    string currency = 2;
+    uint64 amount = 3;
+    string description = 4;
+    uint64 expiry = 5;
+    uint64 timestamp = 6;
+    uint64 min_final_cltv_expiry = 7;
+    repeated RouteHint route_hints = 8;
+    Features features = 9;
+    string payee_pub_key = 10;
+}
+message RouteHint {
+    repeated RouteHintHop hops = 1;
+}
+message RouteHintHop {
+    string src_node_id = 1;
+    uint64 short_channel_id = 2;
+    RoutingFees fees = 3;
+    uint32 cltv_expiry_delta = 4;
+    optional uint64 htlc_minimum_msat = 5;
+    optional uint64 htlc_maximum_msat = 6;
+}
+message RoutingFees {
+    uint32 base_msat = 1;
+    uint32 proportional_millionths = 2;
+}
+message Features {
+    bool variable_length_onion = 1;
+    bool payment_secret = 2;
+    bool basic_mpp = 3;
+}
 
 message LabelPaymentRequest {
     string label = 1;

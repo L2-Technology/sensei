@@ -77,17 +77,17 @@ use tokio::task::JoinHandle;
 
 #[derive(Serialize, Debug)]
 pub struct LocalInvoice {
-    payment_hash: String,
-    currency: String,
-    amount: u64,
-    description: String,
-    expiry: u64,
-    timestamp: u64,
-    min_final_cltv_expiry: u64,
+    pub payment_hash: String,
+    pub currency: String,
+    pub amount: u64,
+    pub description: String,
+    pub expiry: u64,
+    pub timestamp: u64,
+    pub min_final_cltv_expiry: u64,
     #[serde(serialize_with = "serialize_route_hints")]
-    route_hints: Vec<RouteHint>,
-    features: Option<LocalInvoiceFeatures>,
-    payee_pub_key: PublicKey,
+    pub route_hints: Vec<RouteHint>,
+    pub features: Option<LocalInvoiceFeatures>,
+    pub payee_pub_key: PublicKey,
 }
 
 fn serialize_route_hints<S>(vector: &Vec<RouteHint>, serializer: S) -> Result<S::Ok, S::Error>
@@ -184,6 +184,15 @@ impl From<&RouteHintHop> for LocalRouteHintHop {
 pub struct LocalRoutingFees {
     pub base_msat: u32,
     pub proportional_millionths: u32,
+}
+
+impl From<RoutingFees> for LocalRoutingFees {
+    fn from(fees: RoutingFees) -> Self {
+        Self {
+            base_msat: fees.base_msat,
+            proportional_millionths: fees.proportional_millionths,
+        }
+    }
 }
 
 #[derive(Serialize, Debug)]
