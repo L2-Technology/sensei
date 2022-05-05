@@ -17,7 +17,7 @@ const NodesPage = () => {
           </div>
         </div>
       </div>
-      <div className="py-4">
+      <div className="py-4 relative">
         <div className="bg-gray-accent2 -mx-4 sm:mx-0 sm:rounded-xl overflow-x-auto">
           <NodesListCard />
         </div>

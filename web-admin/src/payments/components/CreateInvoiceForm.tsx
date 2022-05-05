@@ -73,7 +73,7 @@ const CreateInvoiceForm = () => {
       }}
     >
       <Input autoFocus label="Description" name="description" />
-      <Input label="Amount Millisats" name="amountMillisats" type="number" />
+      <Input min={1} label="Amount Millisats" name="amountMillisats" type="number" />
     </Form>
   );
 };
