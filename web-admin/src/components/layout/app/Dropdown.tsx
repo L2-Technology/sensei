@@ -1,4 +1,4 @@
-import { Menu } from "@headlessui/react";
+import { Menu, Transition } from "@headlessui/react";
 import { Fragment, PropsWithChildren, MouseEventHandler } from "react";
 import { Link } from "react-router-dom";
 
@@ -33,6 +33,15 @@ export default function Dropdown({
         >
           {button}
         </Menu.Button>
+         <Transition
+          as={Fragment}
+          enter="transition ease-out duration-200"
+          enterFrom="transform opacity-0 scale-95 translate-x-10"
+          enterTo="transform opacity-100 scale-100 translate-x-0"
+          leave="transition ease-in duration-100"
+          leaveFrom="transform opacity-100 scale-100 translate-x-0"
+          leaveTo="transform opacity-0 scale-95 translate-x-10"
+        >
         <Menu.Items
           className={`${bodyClassName} absolute right-5 z-10 border border-gray-700 min-w-[160px] overflow-hidden rounded-xl bg-gray-background shadow-xl md:p-3`}
         >
@@ -59,6 +68,7 @@ export default function Dropdown({
           ))}
           {children}
         </Menu.Items>
+        </Transition>
       </Menu>
     </div>
   );

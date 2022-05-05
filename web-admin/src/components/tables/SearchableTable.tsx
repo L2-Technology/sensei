@@ -5,6 +5,8 @@ import format from "date-fns/format";
 import { ReactNode, useEffect, useState } from "react";
 import { FormattedMessage } from "react-intl";
 import { SearchIcon } from "@heroicons/react/outline";
+import Spinner from "src/components/Spinner";
+
 
 export const SearchBar = ({ query = "", setQuery, placeholder, title }) => {
   return (
@@ -250,7 +252,7 @@ const SimpleSearchableTable = <T extends object>({
   );
 
   if (isLoading) {
-    return <div>loading</div>;
+    return <div className="flex items-center justify-center p-4"><Spinner /></div>;
   }
 
   if (isError) {
