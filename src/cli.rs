@@ -188,7 +188,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .subcommand(App::new("listchannels").about("list channels"))
         .subcommand(App::new("listpayments").about("list payments"))
-        .subcommand(App::new("listpeers").about("list payments"))
+        .subcommand(App::new("listpeers").about("list peers"))
         .subcommand(App::new("nodeinfo").about("see information about your node"))
         .get_matches();
 
