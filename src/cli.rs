@@ -272,7 +272,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             start: false,
         });
         let response = admin_client.create_admin(request).await?;
-        println!("{:?}", response.into_inner());
+        let message = response.into_inner();
+        let my_object = CreateAdminResponse {
+            pubkey: message.pubkey,
+            token: message.token,
+            role: message.role,
+            macaroon: message.macaroon,
+            external_id: message.external_id
+        };
+        println!("{}", serde_json::to_string(&my_object).unwrap());
     } else {
         let macaroon_hex_str = matches.value_of("macaroon").unwrap_or("");
 
@@ -597,4 +605,15 @@ impl Role {
             Role::User => 1,
         }
     }
+}
+
+
+// Messages
+#[derive(Clone, Serialize, Deserialize, Debug)]
+struct CreateAdminResponse {
+    pubkey: String,
+    macaroon: String,
+    external_id: String,
+    role: u32,
+    token: String,
 }
