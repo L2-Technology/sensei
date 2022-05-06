@@ -7,6 +7,10 @@ export const capitalizeAllWords = (sentence) => {
 };
 
 export const truncateMiddle = (word, maxLength) => {
-    let halfLength = maxLength / 2;
-    return word.substr(0,halfLength) + "..." + word.substring(word.length-halfLength)
-}
+  let halfLength = maxLength / 2;
+  return (
+    word.substr(0, halfLength) +
+    "..." +
+    word.substring(word.length - halfLength)
+  );
+};

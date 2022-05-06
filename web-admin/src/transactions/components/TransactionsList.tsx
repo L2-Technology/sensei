@@ -1,17 +1,7 @@
 import getTransactions from "../queries/getTransactions";
-import { useQueryClient } from "react-query";
-import {
-  EyeOffIcon,
-  PlusIcon,
-  SpeakerphoneIcon,
-  StopIcon,
-  TrashIcon,
-} from "@heroicons/react/outline";
-import { Link } from "react-router-dom";
 import SearchableTable from "../../components/tables/SearchableTable";
 import { truncateMiddle } from "../../utils/capitalize";
 import { TransactionDetails } from "@l2-technology/sensei-client";
-
 
 const StatusColumn = ({ value, className }) => {
   return (
@@ -23,7 +13,7 @@ const StatusColumn = ({ value, className }) => {
           Unconfirmed
         </span>
       )}
-      
+
       {value === "confirmed" && (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
           Confirmed
@@ -33,7 +23,7 @@ const StatusColumn = ({ value, className }) => {
   );
 };
 
-const SimpleColumn = ({ transaction, value, className }) => {
+const SimpleColumn = ({ value, className }) => {
   return (
     <td
       className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
@@ -43,7 +33,7 @@ const SimpleColumn = ({ transaction, value, className }) => {
   );
 };
 
-const AmountColumn = ({ transaction, value, className }) => {
+const AmountColumn = ({ value, className }) => {
   return (
     <td
       className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
@@ -53,17 +43,16 @@ const AmountColumn = ({ transaction, value, className }) => {
   );
 };
 
-
 const TransactionRow = ({ result, extraClass, attributes }) => {
   let columnKeyComponentMap = {
     amount: AmountColumn,
     fee: AmountColumn,
-    status: StatusColumn
+    status: StatusColumn,
   };
 
   return (
     <tr className={`border-b border-plum-200 ${extraClass}`}>
-      {attributes.map(({ key, label, className }) => {
+      {attributes.map(({ key, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
           ? columnKeyComponentMap[key]
@@ -81,8 +70,7 @@ const TransactionRow = ({ result, extraClass, attributes }) => {
   );
 };
 
-
-const TransactionsList = ({}) => {
+const TransactionsList = () => {
   const emptyTableHeadline = "No transactions found";
   const emptyTableSubtext = "Try changing the search term";
   const searchBarPlaceholder = "Search";
@@ -102,8 +90,8 @@ const TransactionsList = ({}) => {
     },
     {
       key: "status",
-      label: "Status"
-    }
+      label: "Status",
+    },
   ];
 
   const transformResults = (transactions: TransactionDetails[]) => {
@@ -115,14 +103,14 @@ const TransactionsList = ({}) => {
         id: transaction.txid,
         amount: transaction.received - transaction.sent,
         status,
-        displayTransactionId: truncateMiddle(transaction.txid, 10)
+        displayTransactionId: truncateMiddle(transaction.txid, 10),
       };
     });
   };
 
   const queryFunction = async ({ queryKey }) => {
     const [_key, { page, searchTerm, take }] = queryKey;
-    const {transactions, pagination } = await getTransactions({
+    const { transactions, pagination } = await getTransactions({
       page,
       searchTerm,
       take,
@@ -130,7 +118,7 @@ const TransactionsList = ({}) => {
     return {
       results: transformResults(transactions),
       hasMore: pagination.hasMore,
-      total: pagination.total
+      total: pagination.total,
     };
   };
 

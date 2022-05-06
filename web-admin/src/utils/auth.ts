@@ -8,19 +8,19 @@ const authProvider = {
     authProvider.macaroon = "secure";
     authProvider.alias = alias;
     setTimeout(() => {
-      callback(authProvider.getStatus())
+      callback(authProvider.getStatus());
     }, 100);
   },
   start(passphrase: string, callback: (any) => void) {
     authProvider.running = true;
     setTimeout(() => {
-      callback(authProvider.getStatus())
+      callback(authProvider.getStatus());
     }, 100); // fake async
   },
   stop(callback: (any) => void) {
     authProvider.running = false;
     setTimeout(() => {
-      callback(authProvider.getStatus())
+      callback(authProvider.getStatus());
     }, 100);
   },
   getStatus() {
@@ -28,9 +28,9 @@ const authProvider = {
       created: authProvider.created,
       running: authProvider.running,
       macaroon: authProvider.macaroon,
-      alias: authProvider.alias
-    }
-  }
+      alias: authProvider.alias,
+    };
+  },
 };
 
 export { authProvider };

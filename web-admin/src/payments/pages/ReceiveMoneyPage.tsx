@@ -4,7 +4,9 @@ const ReceiveMoneyPage = () => {
   return (
     <div className="py-6">
       <div className="">
-        <h1 className="text-2xl font-semibold text-light-plum">Receive Money</h1>
+        <h1 className="text-2xl font-semibold text-light-plum">
+          Receive Money
+        </h1>
       </div>
       <div className="">
         <div className="py-4">

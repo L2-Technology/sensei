@@ -2,52 +2,15 @@ import getChannels from "../queries/getChannels";
 import { useQueryClient } from "react-query";
 import {
   EyeOffIcon,
-  PlusIcon,
   SpeakerphoneIcon,
   StopIcon,
   TrashIcon,
 } from "@heroicons/react/outline";
-import { Link } from "react-router-dom";
 import SearchableTable from "../../components/tables/SearchableTable";
 import { truncateMiddle } from "../../utils/capitalize";
 import { useConfirm } from "../../contexts/confirm";
 import closeChannel from "../mutations/closeChannel";
 import { Channel } from "@l2-technology/sensei-client";
-
-const NoChannels = () => {
-  return (
-    <div className="text-center">
-      <svg
-        className="mx-auto h-12 w-12 text-gray-400"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        aria-hidden="true"
-      >
-        <path
-          vectorEffect="non-scaling-stroke"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
-        />
-      </svg>
-      <h3 className="mt-2 text-sm font-medium text-light-plum">No channels</h3>
-      <p className="mt-1 text-sm text-gray-500">
-        Open a channel to start sending and receiving over lightning.
-      </p>
-      <div className="mt-6">
-        <Link
-          to="/admin/channels/open"
-          className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-        >
-          <PlusIcon className="-ml-1 mr-2 h-5 w-5" aria-hidden="true" />
-          Open a Channel
-        </Link>
-      </div>
-    </div>
-  );
-};
 
 const StatusColumn = ({ value, className }) => {
   return (
@@ -73,7 +36,7 @@ const StatusColumn = ({ value, className }) => {
   );
 };
 
-const SimpleColumn = ({ channel, value, className }) => {
+const SimpleColumn = ({ value, className }) => {
   return (
     <td
       className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
@@ -83,7 +46,7 @@ const SimpleColumn = ({ channel, value, className }) => {
   );
 };
 
-const AmountColumn = ({ channel, value, className }) => {
+const AmountColumn = ({ value, className }) => {
   return (
     <td
       className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
@@ -93,7 +56,7 @@ const AmountColumn = ({ channel, value, className }) => {
   );
 };
 
-const VisibilityColumn = ({ channel, value, className }) => {
+const VisibilityColumn = ({ value, className }) => {
   let Icon = value ? SpeakerphoneIcon : EyeOffIcon;
   let displayValue = value ? "Public" : "Private";
   return (
@@ -105,7 +68,7 @@ const VisibilityColumn = ({ channel, value, className }) => {
   );
 };
 
-const ActionsColumn = ({ value, channel, className }) => {
+const ActionsColumn = ({ channel, className }) => {
   const { showConfirm } = useConfirm();
   const queryClient = useQueryClient();
 
@@ -151,7 +114,7 @@ const ActionsColumn = ({ value, channel, className }) => {
   );
 };
 
-const AliasColumn = ({ channel, value, className }) => {
+const AliasColumn = ({ value, className }) => {
   let displayValue = value || "Unknown";
   return (
     <td
@@ -174,7 +137,7 @@ const ChannelRow = ({ result, extraClass, attributes }) => {
 
   return (
     <tr className={`${extraClass}`}>
-      {attributes.map(({ key, label, className }) => {
+      {attributes.map(({ key, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
           ? columnKeyComponentMap[key]
@@ -250,7 +213,7 @@ const ChannelsList = () => {
 
   const queryFunction = async ({ queryKey }) => {
     const [_key, { page, searchTerm, take }] = queryKey;
-    const {channels, pagination } = await getChannels({
+    const { channels, pagination } = await getChannels({
       page,
       searchTerm,
       take,
@@ -258,7 +221,7 @@ const ChannelsList = () => {
     return {
       results: transformResults(channels),
       hasMore: pagination.hasMore,
-      total: pagination.total
+      total: pagination.total,
     };
   };
 

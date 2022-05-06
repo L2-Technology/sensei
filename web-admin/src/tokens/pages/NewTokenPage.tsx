@@ -11,10 +11,7 @@ const NewTokenPage = () => {
           </h3>
 
           <div className="mt-3 sm:mt-0 sm:ml-4">
-            <Link
-              to="/admin/tokens"
-              className="btn-ghost"
-            >
+            <Link to="/admin/tokens" className="btn-ghost">
               Cancel
             </Link>
           </div>

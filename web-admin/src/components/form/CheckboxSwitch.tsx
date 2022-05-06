@@ -1,15 +1,13 @@
 import { Switch } from "@headlessui/react";
-import { useState } from "react";
-import { useField } from "react-final-form";
 
 function classNames(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-const CheckboxSwitch = ({ input: { onChange, value }, ...rest }) => {
+const CheckboxSwitch = ({ input: { onChange, value } }) => {
   const isChecked = value as boolean;
 
-  const handleToggle = (e) => {
+  const handleToggle = () => {
     onChange(!isChecked);
   };
 

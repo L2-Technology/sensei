@@ -2,18 +2,15 @@ import { truncateMiddle } from "../../utils/capitalize";
 import SearchableTable from "../../components/tables/SearchableTable";
 import getAccessTokens from "../queries/getAccessTokens";
 import deleteAccessToken from "../mutations/deleteAccessToken";
-import { ClipboardCopyIcon, PlusCircleIcon } from "@heroicons/react/outline";
+import { ClipboardCopyIcon } from "@heroicons/react/outline";
 import copy from "copy-to-clipboard";
 import { useState } from "react";
-import { useModal } from "../../contexts/modal";
-import { TrashIcon,DotsHorizontalIcon } from "@heroicons/react/outline";
+import { TrashIcon, DotsHorizontalIcon } from "@heroicons/react/outline";
 import { useConfirm } from "../../contexts/confirm";
 import { useQueryClient } from "react-query";
-import { Link } from "react-router-dom";
 import { AccessToken } from "@l2-technology/sensei-client";
 import formatDistanceToNow from "date-fns/formatDistanceToNow";
 import Dropdown from "src/components/layout/app/Dropdown";
-
 
 const SimpleColumn = ({ value, className }) => {
   return (
@@ -25,7 +22,7 @@ const SimpleColumn = ({ value, className }) => {
   );
 };
 
-const ActionsColumn = ({ value, token, className }) => {
+const ActionsColumn = ({ token, className }) => {
   const { showConfirm } = useConfirm();
   const queryClient = useQueryClient();
 
@@ -42,14 +39,14 @@ const ActionsColumn = ({ value, token, className }) => {
     });
   };
 
-   const actionItems = [
+  const actionItems = [
     {
-      label:  "delete",
-      icon:  <TrashIcon className="w-6" /> ,
-      onClick:  deleteTokenClicked ,
-      className:  "text-pink-500",
-    }
-  ]
+      label: "delete",
+      icon: <TrashIcon className="w-6" />,
+      onClick: deleteTokenClicked,
+      className: "text-pink-500",
+    },
+  ];
 
   return (
     <td
@@ -63,7 +60,7 @@ const ActionsColumn = ({ value, token, className }) => {
   );
 };
 
-const StatusColumn = ({ token, value, className }) => {
+const StatusColumn = ({ token, className }) => {
   const expiresAt = parseInt(token.expiresAt, 10);
   const now = new Date().getTime();
   const expired = expiresAt > 0 && expiresAt < now;
@@ -148,7 +145,7 @@ const TokenRow = ({ result, extraClass, attributes }) => {
 
   return (
     <tr className={`${extraClass}`}>
-      {attributes.map(({ key, label, className }) => {
+      {attributes.map(({ key, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
           ? columnKeyComponentMap[key]
@@ -196,7 +193,7 @@ const TokensListCard = () => {
     {
       key: "actions",
       label: "Actions",
-      className:"text-center"
+      className: "text-center",
     },
   ];
 

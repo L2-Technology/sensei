@@ -57,7 +57,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
     const {
       input,
-      meta: { touched, dirty, error, submitFailed, submitError, submitting },
+      meta: { touched, error, submitting },
     } = useField(name, config);
 
     // const hasError = (dirty || submitFailed) && (error || submitError)

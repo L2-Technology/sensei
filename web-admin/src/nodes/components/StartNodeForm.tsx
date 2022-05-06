@@ -1,6 +1,6 @@
 import adminStartNode from "../mutations/adminStartNode";
 import { Form, FORM_ERROR, Input } from "../../components/form";
-import * as z from "zod";
+import { z } from "zod";
 import { PlayIcon } from "@heroicons/react/outline";
 export const StartNodeInput = z.object({
   pubkey: z.string(),

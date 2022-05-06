@@ -1,8 +1,7 @@
-import { useNavigate } from "react-router";
 import createInvoice from "../mutations/createInvoice";
 import { Form, Input } from "../../components/form";
 import { useQueryClient } from "react-query";
-import * as z from "zod";
+import { z } from "zod";
 import { useNotification } from "../../contexts/notification";
 import copy from "copy-to-clipboard";
 
@@ -73,7 +72,12 @@ const CreateInvoiceForm = () => {
       }}
     >
       <Input autoFocus label="Description" name="description" />
-      <Input min={1} label="Amount Millisats" name="amountMillisats" type="number" />
+      <Input
+        min={1}
+        label="Amount Millisats"
+        name="amountMillisats"
+        type="number"
+      />
     </Form>
   );
 };

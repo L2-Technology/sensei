@@ -10,7 +10,7 @@ import {
   Form as FinalForm,
   FormProps as FinalFormProps,
 } from "react-final-form";
-import * as z from "zod";
+import { z } from "zod";
 import ErrorAlert from "../ErrorAlert";
 import FooterSubmitButton from "./FooterSubmitButton";
 import SubmitButton from "./SubmitButton";

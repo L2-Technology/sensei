@@ -1,8 +1,7 @@
 import { useNavigate } from "react-router";
-import { Form, FORM_ERROR, Input, Select } from "../../components/form";
-import * as z from "zod";
+import { Form, Input, Select } from "../../components/form";
+import { z } from "zod";
 import openChannel from "../mutations/openChannel";
-import { Field } from "react-final-form";
 import { useSearchParams } from "react-router-dom";
 
 export const OpenChannelInput = z.object({
@@ -13,7 +12,7 @@ export const OpenChannelInput = z.object({
 
 const OpenChannelForm = () => {
   let navigate = useNavigate();
-  let [searchParams, setSearchParams] = useSearchParams();
+  let [searchParams, _setSearchParams] = useSearchParams();
   let initialConnectionString = searchParams.get("connection") || "";
 
   let visibilityOptions = [
