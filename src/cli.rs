@@ -78,6 +78,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("The macaroon for use communicating with your instance")
                 .takes_value(true),
         )
+        .arg(
+            Arg::new("dev")
+                .long("dev")
+                .value_name("DEV")
+                .help("Whether to connect in development mode")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("passphrase")
+                .long("passphrase")
+                .value_name("PASSPHRASE")
+                .help("Passphrase (for testing, this is pretty insecure)")
+                .takes_value(true),
+        )
         .subcommand(
             App::new("init")
                 .about("initialize your Sensei node")
@@ -249,9 +263,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let username = command_args.value_of("username").unwrap();
         let alias = command_args.value_of("alias").unwrap();
 
-        let mut passphrase = String::new();
-        println!("set a passphrase: ");
-        io::stdin().read_line(&mut passphrase)?;
+        let passphrase_arg = matches.value_of("passphrase");
+        let passphrase = match passphrase_arg  {
+            Some(p) => p.to_string(),
+            None => {
+                println!("set a passphrase: ");
+                let mut read = String::new();
+                io::stdin().read_line(&mut read)?;
+                read
+            },
+        };
+        
 
         let request = tonic::Request::new(CreateAdminRequest {
             username: username.to_string(),
@@ -296,9 +318,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // senseicli --token <> start
             "start" => {
                 
-                let mut passphrase = String::new();
-                println!("enter your passphrase: ");
-                io::stdin().read_line(&mut passphrase)?;
+                let passphrase_arg = matches.value_of("passphrase");
+                let passphrase = match passphrase_arg  {
+                    Some(p) => p.to_string(),
+                    None => {
+                        println!("set a passphrase: ");
+                        let mut read = String::new();
+                        io::stdin().read_line(&mut read)?;
+                        read
+                    },
+                };
 
                 let request = tonic::Request::new(StartAdminRequest { passphrase });
                 let response = admin_client.start_admin(request).await?;
@@ -324,10 +353,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .expect("start must be true or false");
 
 
-                let mut passphrase = String::new();
-                println!("set a passphrase: ");
-                io::stdin().read_line(&mut passphrase)?;
-                
+                let passphrase_arg = matches.value_of("passphrase");
+                let passphrase = match passphrase_arg  {
+                    Some(p) => p.to_string(),
+                    None => {
+                        println!("set a passphrase: ");
+                        let mut read = String::new();
+                        io::stdin().read_line(&mut read)?;
+                        read
+                    },
+                };
+                                
                 let request = tonic::Request::new(CreateNodeRequest {
                     username: username.to_string(),
                     alias: alias.to_string(),
@@ -354,9 +390,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // End Admin Commands
 
             "startnode" => {
-                let mut passphrase = String::new();
-                println!("enter your passphrase: ");
-                io::stdin().read_line(&mut passphrase)?;
+                let passphrase_arg = matches.value_of("passphrase");
+                let passphrase = match passphrase_arg  {
+                    Some(p) => p.to_string(),
+                    None => {
+                        println!("set a passphrase: ");
+                        let mut read = String::new();
+                        io::stdin().read_line(&mut read)?;
+                        read
+                    },
+                };
 
                 let request = tonic::Request::new(StartNodeRequest { passphrase });
                 let response = client.start_node(request).await?;
