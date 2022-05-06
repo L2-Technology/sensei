@@ -16,12 +16,13 @@ use super::sensei::{
 
 use super::sensei::{
     CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-    CreateInvoiceRequest, CreateInvoiceResponse, GetBalanceRequest, GetBalanceResponse,
-    GetUnusedAddressRequest, GetUnusedAddressResponse, InfoRequest, InfoResponse, KeysendRequest,
-    KeysendResponse, ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest,
-    ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
-    OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
-    SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse,
+    CreateInvoiceRequest, CreateInvoiceResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
+    GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
+    InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, ListChannelsRequest,
+    ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
+    ListPeersResponse, OpenChannelRequest, OpenChannelResponse, PayInvoiceRequest,
+    PayInvoiceResponse, SignMessageRequest, SignMessageResponse, VerifyMessageRequest,
+    VerifyMessageResponse,
 };
 
 use crate::services::{
@@ -229,6 +230,27 @@ impl TryFrom<NodeResponse> for PayInvoiceResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::SendPayment {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<DecodeInvoiceRequest> for NodeRequest {
+    fn from(req: DecodeInvoiceRequest) -> Self {
+        NodeRequest::DecodeInvoice {
+            invoice: req.invoice,
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for DecodeInvoiceResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::DecodeInvoice { invoice } => Ok(Self {
+                invoice: Some(invoice.into()),
+            }),
             _ => Err("impossible".to_string()),
         }
     }

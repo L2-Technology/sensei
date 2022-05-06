@@ -29,6 +29,7 @@ use bitcoin::hashes::Hash;
 use entity::sea_orm::{ActiveModelTrait, ActiveValue};
 use lightning::chain::channelmonitor::ChannelMonitor;
 
+use lightning::ln::features::InvoiceFeatures;
 use lightning::ln::msgs::NetAddress;
 use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
@@ -49,17 +50,18 @@ use lightning::ln::peer_handler::{
     IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
-use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId};
+use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId, RoutingFees};
+use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScorerUsingTime};
 use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
-use lightning_invoice::{payment, utils, Currency, Invoice};
+use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
 use lightning_net_tokio::SocketDescriptor;
 use macaroon::Macaroon;
 use rand::{thread_rng, Rng};
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
 use std::fmt::Display;
 use std::fs::File;
 use std::io::Cursor;
@@ -69,9 +71,146 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
-use std::{fmt, fs};
+use std::{convert::From, fmt, fs};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
+
+#[derive(Serialize, Debug)]
+pub struct LocalInvoice {
+    pub payment_hash: String,
+    pub currency: String,
+    pub amount: u64,
+    pub description: String,
+    pub expiry: u64,
+    pub timestamp: u64,
+    pub min_final_cltv_expiry: u64,
+    #[serde(serialize_with = "serialize_route_hints")]
+    pub route_hints: Vec<RouteHint>,
+    pub features: Option<LocalInvoiceFeatures>,
+    pub payee_pub_key: PublicKey,
+}
+
+fn serialize_route_hints<S>(vector: &Vec<RouteHint>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut seq = serializer.serialize_seq(Some(vector.len()))?;
+    for item in vector {
+        let local_hint: LocalRouteHint = item.into();
+        seq.serialize_element(&local_hint)?;
+    }
+    seq.end()
+}
+
+impl From<Invoice> for LocalInvoice {
+    fn from(invoice: Invoice) -> Self {
+        Self {
+            payment_hash: invoice.payment_hash().to_string(),
+            currency: invoice.currency().to_string(),
+            amount: invoice.amount_milli_satoshis().unwrap_or_default(),
+            description: match invoice.description() {
+                InvoiceDescription::Direct(description) => description.clone().into_inner(),
+                _ => String::from(""),
+            },
+            expiry: invoice.expiry_time().as_secs(),
+            timestamp: invoice
+                .timestamp()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            min_final_cltv_expiry: invoice.min_final_cltv_expiry(),
+            route_hints: invoice.route_hints(),
+            features: invoice.features().map(|f| f.into()),
+            payee_pub_key: invoice.recover_payee_pub_key(),
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct LocalRouteHint {
+    #[serde(serialize_with = "serialize_route_hint_hops")]
+    pub hops: Vec<RouteHintHop>,
+}
+
+fn serialize_route_hint_hops<S>(
+    vector: &Vec<RouteHintHop>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut seq = serializer.serialize_seq(Some(vector.len()))?;
+    for item in vector {
+        let local_hint: LocalRouteHintHop = item.into();
+        seq.serialize_element(&local_hint)?;
+    }
+    seq.end()
+}
+
+impl From<&RouteHint> for LocalRouteHint {
+    fn from(hint: &RouteHint) -> Self {
+        Self {
+            hops: hint.0.clone(),
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct LocalRouteHintHop {
+    pub src_node_id: PublicKey,
+    pub short_channel_id: u64,
+    #[serde(with = "LocalRoutingFees")]
+    pub fees: RoutingFees,
+    pub cltv_expiry_delta: u16,
+    pub htlc_minimum_msat: Option<u64>,
+    pub htlc_maximum_msat: Option<u64>,
+}
+
+impl From<&RouteHintHop> for LocalRouteHintHop {
+    fn from(hop: &RouteHintHop) -> Self {
+        Self {
+            src_node_id: hop.src_node_id,
+            short_channel_id: hop.short_channel_id,
+            fees: hop.fees,
+            cltv_expiry_delta: hop.cltv_expiry_delta,
+            htlc_minimum_msat: hop.htlc_minimum_msat,
+            htlc_maximum_msat: hop.htlc_maximum_msat,
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+#[serde(remote = "RoutingFees")]
+pub struct LocalRoutingFees {
+    pub base_msat: u32,
+    pub proportional_millionths: u32,
+}
+
+impl From<RoutingFees> for LocalRoutingFees {
+    fn from(fees: RoutingFees) -> Self {
+        Self {
+            base_msat: fees.base_msat,
+            proportional_millionths: fees.proportional_millionths,
+        }
+    }
+}
+
+#[derive(Serialize, Debug)]
+pub struct LocalInvoiceFeatures {
+    pub variable_length_onion: bool,
+    pub payment_secret: bool,
+    pub basic_mpp: bool,
+}
+
+impl From<&InvoiceFeatures> for LocalInvoiceFeatures {
+    fn from(features: &InvoiceFeatures) -> Self {
+        Self {
+            variable_length_onion: features.supports_variable_length_onion(),
+            payment_secret: features.supports_payment_secret(),
+            basic_mpp: features.supports_basic_mpp(),
+        }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub enum HTLCStatus {
@@ -1326,6 +1465,12 @@ impl LightningNode {
                 let invoice = self.get_invoice_from_str(&invoice)?;
                 self.send_payment(&invoice).await?;
                 Ok(NodeResponse::SendPayment {})
+            }
+            NodeRequest::DecodeInvoice { invoice } => {
+                let invoice = self.get_invoice_from_str(&invoice)?;
+                Ok(NodeResponse::DecodeInvoice {
+                    invoice: invoice.into(),
+                })
             }
             NodeRequest::Keysend {
                 dest_pubkey,
