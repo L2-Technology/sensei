@@ -7,7 +7,6 @@ import { FormattedMessage } from "react-intl";
 import { SearchIcon } from "@heroicons/react/outline";
 import Spinner from "src/components/Spinner";
 
-
 export const SearchBar = ({ query = "", setQuery, placeholder, title }) => {
   return (
     <div className="p-4 bg-plum-100 text-light-plum flex items-center justify-between">
@@ -18,18 +17,18 @@ export const SearchBar = ({ query = "", setQuery, placeholder, title }) => {
         } flex w-full items-center space-x-1 rounded-xl border border-transparent bg-plum-200 px-2 focus-within:border-orange focus-within:text-orange md:space-x-2 md:px-5`}
       >
         <span>
-            <SearchIcon className="w-5" />
+          <SearchIcon className="w-5" />
         </span>
-      <input
-        className="w-full border-none bg-transparent py-3 text-sm text-white outline-none placeholder:text-gray-300 focus:ring-0"
-        type="text"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-        }}
-        placeholder={placeholder}
-      />
-    </div>
+        <input
+          className="w-full border-none bg-transparent py-3 text-sm text-white outline-none placeholder:text-gray-300 focus:ring-0"
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+          }}
+          placeholder={placeholder}
+        />
+      </div>
     </div>
   );
 };
@@ -37,7 +36,7 @@ export const SearchBar = ({ query = "", setQuery, placeholder, title }) => {
 export const SimpleRow = ({ result, extraClass, attributes }) => {
   return (
     <tr className={`${extraClass}`}>
-      {attributes.map(({ key, label, className }) => {
+      {attributes.map(({ key, className }) => {
         let value = result[key];
         if (typeof value === "object") {
           value = format(value, "MM/dd/YYY");
@@ -66,7 +65,7 @@ export const ResultRow = ({
   const linkClass = result.link ? "cursor-pointer hover:bg-plum-50" : "";
 
   if (result.link) {
-    <Link to={result.link}>
+    <Link to={result.link} key={index}>
       <RowComponent
         result={result}
         extraClass={`${linkClass} ${bgColor}`}
@@ -151,7 +150,7 @@ export const TableNavigation = ({
   if (total === 0) {
     return null;
   }
-  
+
   return (
     <nav className="bg-plum-100 px-4 py-3 flex items-center justify-between sm:px-6">
       <div className="hidden sm:block">
@@ -170,10 +169,7 @@ export const TableNavigation = ({
         </p>
       </div>
       <div className="flex-1 flex justify-between space-x-2 sm:justify-end">
-        <button
-          disabled={!canGoBack}
-          onClick={goBack}
-          className="btn-ghost" >
+        <button disabled={!canGoBack} onClick={goBack} className="btn-ghost">
           <FormattedMessage
             id="searchable-table-previous"
             defaultMessage="Previous"
@@ -183,7 +179,8 @@ export const TableNavigation = ({
         <button
           disabled={!canGoForward}
           onClick={goForward}
-          className="btn-ghost">
+          className="btn-ghost"
+        >
           <FormattedMessage
             id="searchable-table-next"
             defaultMessage="Next"
@@ -252,7 +249,11 @@ const SimpleSearchableTable = <T extends object>({
   );
 
   if (isLoading) {
-    return <div className="flex items-center justify-center p-4"><Spinner /></div>;
+    return (
+      <div className="flex items-center justify-center p-4">
+        <Spinner />
+      </div>
+    );
   }
 
   if (isError) {

@@ -40,10 +40,6 @@ export const AlertMsg = ({
   );
 };
 
-
-
-
-
 type ErrorAlertProps = {
   message: String;
   className: String;

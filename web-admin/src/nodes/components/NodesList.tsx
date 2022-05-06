@@ -6,12 +6,15 @@ import copy from "copy-to-clipboard";
 import { useState } from "react";
 import StartNodeForm from "../components/StartNodeForm";
 import { useModal } from "../../contexts/modal";
-import { PlayIcon, StopIcon, DotsHorizontalIcon } from "@heroicons/react/outline";
+import {
+  PlayIcon,
+  StopIcon,
+  DotsHorizontalIcon,
+} from "@heroicons/react/outline";
 import { useConfirm } from "../../contexts/confirm";
 import adminStopNode from "../mutations/adminStopNode";
 import { useQueryClient } from "react-query";
-import { Link } from "react-router-dom";
-import { Node } from "@l2-technology/sensei-client"
+import { Node } from "@l2-technology/sensei-client";
 import Dropdown from "src/components/layout/app/Dropdown";
 
 const SimpleColumn = ({ value, className }) => {
@@ -35,7 +38,7 @@ const RoleColumn = ({ value, className }) => {
   );
 };
 
-const ActionsColumn = ({ value, node, className }) => {
+const ActionsColumn = ({ node, className }) => {
   const { showModal, hideModal } = useModal();
   const { showConfirm } = useConfirm();
   const queryClient = useQueryClient();
@@ -67,22 +70,27 @@ const ActionsColumn = ({ value, node, className }) => {
   const actionItems = [
     {
       label: node.status === 0 ? "start" : "stop",
-      icon: node.status === 0 ? <PlayIcon className="w-6" /> : <StopIcon className="w-6" /> ,
-      onClick: node.status === 0 ? startNodeClicked : stopNodeClicked ,
+      icon:
+        node.status === 0 ? (
+          <PlayIcon className="w-6" />
+        ) : (
+          <StopIcon className="w-6" />
+        ),
+      onClick: node.status === 0 ? startNodeClicked : stopNodeClicked,
       className: node.status === 0 ? "text-green-400" : "text-yellow-400",
     },
     {
       label: "open channel",
       icon: <PlusCircleIcon className="w-5" />,
       path: `/admin/channels/open?connection=${node.pubkey}@${node.listenAddr}:${node.listenPort}`,
-    }
-  ]
+    },
+  ];
 
   return (
     <td
       className={`p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
-    <Dropdown
+      <Dropdown
         items={actionItems}
         button={<DotsHorizontalIcon className="w-6" />}
       />
@@ -91,30 +99,27 @@ const ActionsColumn = ({ value, node, className }) => {
 };
 
 const StatusColumn = ({ value, className }) => {
-
   let dot = "bg-white";
   let displayValue = "Stopped";
 
   if (value === 1) {
     dot = "bg-gradient-to-br from-green-400 to-green-700";
-    displayValue = "Running"
+    displayValue = "Running";
   }
 
-  if (value === 0)
-    dot = "bg-gradient-to-br from-yellow-400 to-yellow-700";
+  if (value === 0) dot = "bg-gradient-to-br from-yellow-400 to-yellow-700";
 
   return (
     <td
       className={`p-3 md:px-6 md:py-4 whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
     >
-    <div className="flex items-center justify-center md:justify-start">
+      <div className="flex items-center justify-center md:justify-start">
         <div className={`${dot} mr-2 h-4 w-4 rounded-full shadow-md`} />
         <span className="capitalize hidden md:block">{displayValue}</span>
       </div>
     </td>
   );
 };
-
 
 const ConnectionInfoColumn = ({ node, value, className }) => {
   let [copied, setCopied] = useState(false);
@@ -157,12 +162,12 @@ const NodeRow = ({ result, extraClass, attributes }) => {
     status: StatusColumn,
     connectionInfo: ConnectionInfoColumn,
     actions: ActionsColumn,
-    role: RoleColumn
+    role: RoleColumn,
   };
 
   return (
     <tr className={`${extraClass}`}>
-      {attributes.map(({ key, label, className }) => {
+      {attributes.map(({ key, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
           ? columnKeyComponentMap[key]
@@ -210,7 +215,7 @@ const NodesListCard = () => {
     {
       key: "actions",
       label: "Actions",
-      className:"text-center"
+      className: "text-center",
     },
   ];
 
@@ -232,8 +237,8 @@ const NodesListCard = () => {
     return {
       results: transformResults(response.nodes),
       hasMore: response.pagination.hasMore,
-      total: response.pagination.total
-    }
+      total: response.pagination.total,
+    };
   };
 
   return (

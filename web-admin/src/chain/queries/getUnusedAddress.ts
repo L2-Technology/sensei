@@ -1,7 +1,7 @@
 import sensei from "../../utils/sensei";
 
 const getUnusedAddress = async () => {
-    return await sensei.getUnusedAddress()
-}
+  return await sensei.getUnusedAddress();
+};
 
-export default getUnusedAddress
+export default getUnusedAddress;

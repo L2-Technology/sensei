@@ -1,7 +1,7 @@
-import sensei from "../../utils/sensei"
+import sensei from "../../utils/sensei";
 
 const getNodeInfo = async () => {
-    return await sensei.getInfo()
-}
+  return await sensei.getInfo();
+};
 
-export default getNodeInfo
+export default getNodeInfo;
