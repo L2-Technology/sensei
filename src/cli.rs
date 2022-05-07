@@ -263,7 +263,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let username = command_args.value_of("username").unwrap();
         let alias = command_args.value_of("alias").unwrap();
 
-        let passphrase = read_passphrase(&matches);
+        let passphrase = set_passphrase(&matches);
         
         let request = tonic::Request::new(CreateAdminRequest {
             username: username.to_string(),
@@ -279,7 +279,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             token: message.token,
             role: message.role,
             macaroon: message.macaroon,
-            external_id: message.external_id
+            // external_id: message.external_id
         };
         println!("{}", serde_json::to_string(&response).unwrap());
     } else {
@@ -342,7 +342,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .expect("start must be true or false");
 
 
-                let passphrase = read_passphrase(&matches);
+                let passphrase = set_passphrase(&matches);
                                 
                 let request = tonic::Request::new(CreateNodeRequest {
                     username: username.to_string(),
@@ -360,10 +360,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     macaroon: message.macaroon.clone(),
                     token: "".into(),
                     role: Role::User.to_integer(),
+                    // external_id: message.external_id.clone(),
                 };
                 config.save();
 
-                println!("{:?}", message);
+                println!("{}", serde_json::to_string(&config).unwrap());
             }
             
 
@@ -383,8 +384,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "getaddress" => {
                 let request = tonic::Request::new(GetUnusedAddressRequest {});
-                let response = client.get_unused_address(request).await?;
-                println!("{:?}", response.into_inner());
+                let result = client.get_unused_address(request).await?;
+                let response = messages::GetAddressResponse { address: result.into_inner().address.to_string() };
+
+                println!("{}", serde_json::to_string(&response).unwrap());
             }
             "createinvoice" => {
                 let amt_msat: Option<Result<u64, _>> = command_args
@@ -550,7 +553,20 @@ fn read_passphrase(matches: &clap::ArgMatches) -> String {
     match passphrase_arg {
         Some(p) => p.to_string(),
         None => {
-            println!("set a passphrase: ");
+            println!("Input the passphrase: ");
+            let mut read = String::new();
+            io::stdin().read_line(&mut read).expect("Reading passphrase failed");
+            read
+        },
+    }
+}
+
+fn set_passphrase(matches: &clap::ArgMatches) -> String {
+    let passphrase_arg = matches.value_of("passphrase");
+    match passphrase_arg {
+        Some(p) => p.to_string(),
+        None => {
+            println!("Set a passphrase: ");
             let mut read = String::new();
             io::stdin().read_line(&mut read).expect("Reading passphrase failed");
             read
@@ -568,18 +584,18 @@ pub struct NodeConfig {
     pub token: String,
 }
 
-impl Default for NodeConfig {
-    fn default() -> Self {
+// impl Default for NodeConfig {
+//     fn default() -> Self {
         
-        NodeConfig {
-            data_dir: ".".into(),
-            pubkey: "".into(),
-            macaroon: "".into(),
-            role: Role::Admin.to_integer(),
-            token: "satoshi".into(),
-        }
-    }
-}
+//         NodeConfig {
+//             data_dir: ".".into(),
+//             pubkey: "".into(),
+//             macaroon: "".into(),
+//             role: Role::Admin.to_integer(),
+//             token: "satoshi".into(),
+//         }
+//     }
+// }
 
 impl NodeConfig {
     pub fn path(&self) -> String {
@@ -618,7 +634,6 @@ mod messages {
     pub struct CreateAdminResponse {
         pub pubkey: String,
         pub macaroon: String,
-        pub external_id: String,
         pub role: u32,
         pub token: String,
     }
@@ -627,4 +642,10 @@ mod messages {
     pub struct CreateInvoiceResponse {
         pub invoice: String
     }
+
+    #[derive(Serialize)]
+    pub struct GetAddressResponse {
+        pub address: String
+    }
+
 }
