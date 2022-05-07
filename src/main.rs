@@ -22,9 +22,6 @@ mod services;
 mod utils;
 mod version;
 
-use tracing::{info, debug, error, Level};
-use tracing_subscriber::FmtSubscriber;
-
 use crate::chain::bitcoind_client::BitcoindClient;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
@@ -195,7 +192,6 @@ async fn main() {
         .await
         .expect("invalid bitcoind rpc config"),
     );
-    info!("Bitcoind connected successfully");
 
     let chain_manager = Arc::new(
         SenseiChainManager::new(
@@ -230,7 +226,6 @@ async fn main() {
 
     let router = add_admin_routes(router);
     let router = add_node_routes(router);
-    info!("Router initialized successfully");
 
     let router = match args.development_mode {
         Some(_development_mode) => router.layer(
@@ -280,11 +275,9 @@ async fn main() {
         "manage your sensei node at http://localhost:{}/admin/nodes",
         port
     );
-    
-    info!("Initialization complete");
 
     if let Err(e) = server.await {
-        error!("Uncaught error: {:?}", e);
+        dbg!("Uncaught error: {:?}", e);
     }
     
 }

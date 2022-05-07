@@ -584,19 +584,6 @@ pub struct NodeConfig {
     pub token: String,
 }
 
-// impl Default for NodeConfig {
-//     fn default() -> Self {
-        
-//         NodeConfig {
-//             data_dir: ".".into(),
-//             pubkey: "".into(),
-//             macaroon: "".into(),
-//             role: Role::Admin.to_integer(),
-//             token: "satoshi".into(),
-//         }
-//     }
-// }
-
 impl NodeConfig {
     pub fn path(&self) -> String {
         format!("{}/data/{}", self.data_dir, self.pubkey)
