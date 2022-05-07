@@ -264,23 +264,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let alias = command_args.value_of("alias").unwrap();
 
         let passphrase = read_passphrase(&matches);
-
+        
         let request = tonic::Request::new(CreateAdminRequest {
             username: username.to_string(),
             alias: alias.to_string(),
             passphrase,
             start: false,
         });
-        let response = admin_client.create_admin(request).await?;
-        let message = response.into_inner();
-        let my_object = CreateAdminResponse {
+        
+        let result = admin_client.create_admin(request).await?;
+        let message = result.into_inner();
+        let response = messages::CreateAdminResponse {
             pubkey: message.pubkey,
             token: message.token,
             role: message.role,
             macaroon: message.macaroon,
             external_id: message.external_id
         };
-        println!("{}", serde_json::to_string(&my_object).unwrap());
+        println!("{}", serde_json::to_string(&response).unwrap());
     } else {
         let macaroon_hex_str = matches.value_of("macaroon").unwrap_or("");
 
@@ -396,8 +397,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 amt_msat,
                                 description: String::from(""),
                             });
-                            let response = client.create_invoice(request).await?;
-                            println!("{:?}", response.into_inner());
+                            let result = client.create_invoice(request).await?;
+                            
+                            let response = messages::CreateInvoiceResponse {invoice: result.into_inner().invoice.to_string()};
+                            println!("{}", serde_json::to_string(&response).unwrap());
                         } else {
                             println!("invalid amount, please specify in msats");
                         }
@@ -607,13 +610,21 @@ impl Role {
     }
 }
 
-
 // Messages
-#[derive(Clone, Serialize, Deserialize, Debug)]
-struct CreateAdminResponse {
-    pubkey: String,
-    macaroon: String,
-    external_id: String,
-    role: u32,
-    token: String,
+mod messages {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    pub struct CreateAdminResponse {
+        pub pubkey: String,
+        pub macaroon: String,
+        pub external_id: String,
+        pub role: u32,
+        pub token: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct CreateInvoiceResponse {
+        pub invoice: String
+    }
 }
