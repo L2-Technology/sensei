@@ -62,9 +62,8 @@ function App() {
           <Route path="/admin/nodes/new" element={<NewNodePage />} />
           <Route path="/admin/tokens" element={<TokensPage />} />
           <Route path="/admin/tokens/new" element={<NewTokenPage />} />
+          <Route index element={<Navigate to="/admin/chain" replace />} />
         </Route>
-
-        <Route path="/*" element={<Navigate to="/admin/chain" replace />} />
       </Routes>
       <Modal />
       <ErrorModal />

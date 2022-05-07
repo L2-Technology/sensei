@@ -7,8 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use crate::database::node::Payment;
-use crate::node::LightningNode;
+use crate::node::{LightningNode, LocalInvoice};
 use bdk::TransactionDetails;
 use futures::Future;
 use std::pin::Pin;
@@ -29,6 +28,7 @@ pub struct Peer {
 
 #[derive(Serialize)]
 pub struct NodeInfo {
+    pub version: String,
     pub node_pubkey: String,
     pub num_channels: u32,
     pub num_usable_channels: u32,
@@ -134,6 +134,9 @@ pub enum NodeRequest {
         dest_pubkey: String,
         amt_msat: u64,
     },
+    DecodeInvoice {
+        invoice: String,
+    },
     GetInvoice {
         amt_msat: u64,
         description: String,
@@ -186,6 +189,9 @@ pub enum NodeResponse {
     },
     OpenChannel {},
     SendPayment {},
+    DecodeInvoice {
+        invoice: LocalInvoice,
+    },
     Keysend {},
     GetInvoice {
         invoice: String,
@@ -198,7 +204,7 @@ pub enum NodeResponse {
         pagination: PaginationResponse,
     },
     ListPayments {
-        payments: Vec<Payment>,
+        payments: Vec<entity::payment::Model>,
         pagination: PaginationResponse,
     },
     ListTransactions {

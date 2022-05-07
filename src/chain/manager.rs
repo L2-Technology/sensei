@@ -20,7 +20,7 @@ use lightning_block_sync::{init, poll, UnboundedCache};
 use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use std::ops::Deref;
 
-use super::{listener::SenseiChainListener, listener_database::ListenerDatabase};
+use super::{database::WalletDatabase, listener::SenseiChainListener};
 
 pub struct SenseiChainManager {
     config: SenseiConfig,
@@ -90,7 +90,7 @@ impl SenseiChainManager {
         synced_hash: BlockHash,
         channel_manager: Arc<ChannelManager>,
         chain_monitor: Arc<ChainMonitor>,
-        listener_database: ListenerDatabase,
+        wallet_database: WalletDatabase,
     ) -> Result<(), crate::error::Error> {
         let listeners = vec![
             (
@@ -101,17 +101,14 @@ impl SenseiChainManager {
                 synced_hash,
                 chain_monitor.deref() as &(dyn Listen + Send + Sync),
             ),
-            (
-                synced_hash,
-                &listener_database as &(dyn Listen + Send + Sync),
-            ),
+            (synced_hash, &wallet_database as &(dyn Listen + Send + Sync)),
         ];
 
         self.poller_paused.store(true, Ordering::Relaxed);
         // could skip this if synced_hash === current_tip
         let _new_tip = self.synchronize_to_tip(listeners).await.unwrap();
         self.listener
-            .add_listener((chain_monitor, channel_manager, listener_database));
+            .add_listener((chain_monitor, channel_manager, wallet_database));
         self.poller_paused.store(false, Ordering::Relaxed);
         Ok(())
     }

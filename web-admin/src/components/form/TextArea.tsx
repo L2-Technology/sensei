@@ -28,7 +28,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
   ({ name, label, extraClass, outerProps, className, ...props }, ref) => {
     const {
       input,
-      meta: { touched, dirty, error, submitFailed, submitError, submitting },
+      meta: { dirty, error, submitFailed, submitError, submitting },
     } = useField(name);
 
     const hasError = (dirty || submitFailed) && (error || submitError);
@@ -51,7 +51,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
             className={`form-input block border rounded-xl w-full bg-plum text-light-plum transition duration-150 ease-in-out sm:text-sm sm:leading-5 flex-1 ${
               hasError
                 ? "border-red-500 focus:border-red-500 focus:ring-red-500"
-                : "border-gray-plum-100 focus:border-orange focus:border-orange focus:ring-orange"
+                : "border-gray-plum-100 focus:border-orange  focus:ring-orange"
             } ${extraClass}`}
           ></textarea>
         </div>

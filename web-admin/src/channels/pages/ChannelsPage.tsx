@@ -10,16 +10,13 @@ const ChannelsPage = () => {
             Channels
           </h3>
           <div className="mt-3 sm:mt-0 sm:ml-4">
-            <Link
-              to="/admin/channels/open"
-              className="btn-orange"
-            >
+            <Link to="/admin/channels/open" className="btn-orange">
               Open Channel
             </Link>
           </div>
         </div>
       </div>
-      <div className="py-4">
+      <div className="py-4 relative">
         <div className="bg-gray-accent2 -mx-4 sm:mx-0 sm:rounded-xl overflow-x-auto">
           <ChannelsList />
         </div>

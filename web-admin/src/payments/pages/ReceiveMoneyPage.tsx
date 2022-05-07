@@ -4,7 +4,9 @@ const ReceiveMoneyPage = () => {
   return (
     <div className="py-6">
       <div className="">
-        <h1 className="text-2xl font-semibold text-light-plum">Receive Money</h1>
+        <h1 className="text-2xl font-semibold text-light-plum">
+          Receive Money
+        </h1>
       </div>
       <div className="">
         <div className="py-4">
@@ -19,7 +21,7 @@ const ReceiveMoneyPage = () => {
           Incoming Payments
         </h1>
       </div>
-      <div className="py-4 ">
+      <div className="py-4 relative">
         <div className="bg-gray-accent2 -mx-4 sm:mx-0 sm:rounded-xl  overflow-x-auto">
           <PaymentsList origin="incoming" />
         </div>

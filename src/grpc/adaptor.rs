@@ -16,15 +16,15 @@ use super::sensei::{
 
 use super::sensei::{
     CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-    CreateInvoiceRequest, CreateInvoiceResponse, GetBalanceRequest, GetBalanceResponse,
-    GetUnusedAddressRequest, GetUnusedAddressResponse, InfoRequest, InfoResponse, KeysendRequest,
-    KeysendResponse, ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest,
-    ListPaymentsResponse, ListPeersRequest, ListPeersResponse, OpenChannelRequest,
-    OpenChannelResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
-    SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse,
+    CreateInvoiceRequest, CreateInvoiceResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
+    GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
+    InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, ListChannelsRequest,
+    ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
+    ListPeersResponse, OpenChannelRequest, OpenChannelResponse, PayInvoiceRequest,
+    PayInvoiceResponse, SignMessageRequest, SignMessageResponse, VerifyMessageRequest,
+    VerifyMessageResponse,
 };
 
-use crate::database::node::Payment;
 use crate::services::{
     self,
     node::{Channel, NodeInfo, NodeRequest, NodeResponse, Peer},
@@ -89,14 +89,15 @@ impl From<Channel> for ChannelMessage {
     }
 }
 
-impl From<Payment> for PaymentMessage {
-    fn from(payment: Payment) -> Self {
+impl From<entity::payment::Model> for PaymentMessage {
+    fn from(payment: entity::payment::Model) -> Self {
         Self {
             hash: payment.payment_hash,
             preimage: payment.preimage,
             secret: payment.secret,
             status: payment.status,
             amt_msat: payment.amt_msat,
+            fee_paid_msat: payment.fee_paid_msat,
             origin: payment.origin,
             label: payment.label,
             invoice: payment.invoice,
@@ -107,6 +108,7 @@ impl From<Payment> for PaymentMessage {
 impl From<NodeInfo> for InfoMessage {
     fn from(info: NodeInfo) -> Self {
         Self {
+            version: info.version,
             node_pubkey: info.node_pubkey,
             num_channels: info.num_channels,
             num_usable_channels: info.num_usable_channels,
@@ -228,6 +230,27 @@ impl TryFrom<NodeResponse> for PayInvoiceResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::SendPayment {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<DecodeInvoiceRequest> for NodeRequest {
+    fn from(req: DecodeInvoiceRequest) -> Self {
+        NodeRequest::DecodeInvoice {
+            invoice: req.invoice,
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for DecodeInvoiceResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::DecodeInvoice { invoice } => Ok(Self {
+                invoice: Some(invoice.into()),
+            }),
             _ => Err("impossible".to_string()),
         }
     }

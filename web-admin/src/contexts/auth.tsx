@@ -49,7 +49,7 @@ const AuthProvider = ({
       username,
       alias,
       passphrase,
-      start
+      start,
     });
     setStatus((status) => {
       return {

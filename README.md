@@ -18,8 +18,28 @@ To run from source you will need to take the following steps:
 
 1. Clone the repo: `git clone git@github.com:L2-Technology/sensei.git`
 2. Build the web-admin: `cd sensei/web-admin && npm install && npm run build && cd ..`
-3. Run senseid on regtest: `cargo run --bin senseid -- --network=regtest --bitcoind-rpc-host=localhost --bitcoind-rpc-port=18443 --bitcoind-rpc-username=admin1 --bitcoind-rpc-password=123`
+3. Run senseid on regtest: `cargo run --bin senseid -- --network=regtest --bitcoind-rpc-host=localhost --bitcoind-rpc-port=18443 --bitcoind-rpc-username=admin1 --bitcoind-rpc-password=123 --database-url=sensei.db`
 4. Open the admin at `http://localhost:5401/admin/nodes`
+
+## Database Backends
+
+Sensei supports `sqlite`, `mysql`, and `postgres` databases.  You can configure what database to use by specifying a `DATABASE_URL` environment varilable or `--database-url` command line argument.
+
+### Sqlite
+
+For sqlite you just specify the filename to use for the database.  It will be saved in the Sensei data directory.
+
+Example: `--database-url=sensei.db`
+
+### Postgres & MySQL
+
+Sensei includes a `docker-compose.yml` file that can automatically run these databases for you locally.  Feel free to use these or just substitute the credentials to whatever database you already have.
+
+Starting docker based databases: `docker-compose up -d`
+
+Postgres Example: `--database-url=postgres://sensei:sensei@localhost:5432/sensei`
+MySQL Example: `--database-url=mysql://sensei:sensei@localhost:3306/sensei`
+
 
 ## Developing the web-admin
 

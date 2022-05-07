@@ -17,7 +17,7 @@ const EditLabelForm = ({ payment, setEditing }) => {
   let queryClient = useQueryClient();
   let [label, setLabel] = useState(payment.label || "");
 
-  async function handleSubmit(event: any) {
+  async function handleSubmit() {
     try {
       await labelPayment(label, payment.paymentHash);
       setEditing(false);
@@ -34,7 +34,7 @@ const EditLabelForm = ({ payment, setEditing }) => {
         value={label}
         onKeyPress={(e) => {
           if (e.key === "Enter") {
-            handleSubmit(e);
+            handleSubmit();
           }
         }}
         name="label"
@@ -74,7 +74,7 @@ const LabelColumn = ({ payment, value, className }) => {
   );
 };
 
-const AmountColumn = ({ payment, value, className }) => {
+const AmountColumn = ({ value, className }) => {
   return (
     <td
       className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
@@ -84,8 +84,8 @@ const AmountColumn = ({ payment, value, className }) => {
   );
 };
 
-const SimpleColumn = ({ payment, value, className }) => {
-   if (new Date(value).getTime() > 0) {
+const SimpleColumn = ({ value, className }) => {
+  if (new Date(value).getTime() > 0) {
     value = new Date(value).toLocaleDateString("en-US");
   }
 
@@ -163,7 +163,7 @@ const PaymentRow = ({ result, extraClass, attributes }) => {
 
   return (
     <tr className={`${extraClass}`}>
-      {attributes.map(({ key, label, className }) => {
+      {attributes.map(({ key, className }) => {
         let value = result[key];
         let ColumnComponent = columnKeyComponentMap[key]
           ? columnKeyComponentMap[key]
@@ -217,6 +217,8 @@ const PaymentsList = ({ origin = "", status = "" }) => {
     return payments.map((payment) => {
       return {
         ...payment,
+        createdAt: payment.createdAt * 1000,
+        updatedAt: payment.updatedAt * 1000,
         displayPaymentHash: truncateMiddle(payment.paymentHash || "", 10),
         displayInvoice: truncateMiddle(payment.invoice || "", 10),
       };
@@ -225,7 +227,7 @@ const PaymentsList = ({ origin = "", status = "" }) => {
 
   const queryFunction = async ({ queryKey }) => {
     const [_key, { page, searchTerm, take }] = queryKey;
-    const {payments, pagination } = await getPayments({
+    const { payments, pagination } = await getPayments({
       page,
       searchTerm,
       take,
@@ -236,7 +238,7 @@ const PaymentsList = ({ origin = "", status = "" }) => {
     return {
       results: transformResults(payments),
       hasMore: pagination.hasMore,
-      total: pagination.total
+      total: pagination.total,
     };
   };
 

@@ -22,6 +22,7 @@ service Node {
     rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
     rpc OpenChannel (OpenChannelRequest) returns (OpenChannelResponse);
     rpc PayInvoice (PayInvoiceRequest) returns (PayInvoiceResponse);
+    rpc DecodeInvoice (DecodeInvoiceRequest) returns (DecodeInvoiceResponse);
     rpc Keysend (KeysendRequest) returns (KeysendResponse);
     rpc CreateInvoice (CreateInvoiceRequest) returns (CreateInvoiceResponse);
     rpc LabelPayment (LabelPaymentRequest) returns (LabelPaymentResponse);
@@ -37,30 +38,28 @@ service Node {
 }
 
 message ListNode {
-    int64 id = 1;
-    string external_id = 2;
-    string created_at = 3;
-    string updated_at = 4;
-    uint32 role = 5;
-    string username = 6;
-    string alias = 7;
-    string network = 8;
-    string listen_addr = 9;
-    uint32 listen_port = 10;
-    string pubkey = 11;
-    uint32 status = 12;
+    string id = 1;
+    int64 created_at = 2;
+    int64 updated_at = 3;
+    uint32 role = 4;
+    string username = 5;
+    string alias = 6;
+    string network = 7;
+    string listen_addr = 8;
+    uint32 listen_port = 9;
+    string pubkey = 10;
+    uint32 status = 11;
 }
 
 message Token {
-    uint64 id = 1;
-    string external_id = 2;
-    string created_at = 3;
-    string updated_at = 4;
-    uint64 expires_at = 5;
-    string name = 6;
-    string token = 7;
-    bool single_use = 8;
-    string scope = 9;
+    string id = 1;
+    int64 created_at = 2;
+    int64 updated_at = 3;
+    int64 expires_at = 4;
+    string name = 5;
+    string token = 6;
+    bool single_use = 7;
+    string scope = 8;
 }
 
 message PaginationRequest {
@@ -102,7 +101,7 @@ message CreateAdminRequest {
 message CreateAdminResponse {
     string pubkey = 1;
     string macaroon = 2;
-    string external_id = 3;
+    string id = 3;
     uint32 role = 4;
     string token = 5;
 }
@@ -131,7 +130,7 @@ message CreateTokenRequest {
 }
 
 message DeleteTokenRequest {
-    uint64 id = 1;
+    string id = 1;
 }
 message DeleteTokenResponse {}
 
@@ -146,13 +145,14 @@ message StartAdminResponse {
 
 message GetStatusRequest {}
 message GetStatusResponse {
-    optional string alias = 1;
-    optional string pubkey = 2;
-    optional string username = 3;
-    optional uint32 role = 4;
-    bool created = 5;
-    bool running = 6;
-    bool authenticated = 7;
+    string version = 1;
+    optional string alias = 2;
+    optional string pubkey = 3;
+    optional string username = 4;
+    optional uint32 role = 5;
+    bool created = 6;
+    bool running = 7;
+    bool authenticated = 8;
 }
 
 message StartNodeRequest {
@@ -197,6 +197,45 @@ message PayInvoiceRequest {
     string invoice = 1;
 }
 message PayInvoiceResponse {}
+
+message DecodeInvoiceRequest {
+    string invoice = 1;
+}
+message DecodeInvoiceResponse {
+    Invoice invoice = 1;
+}
+message Invoice {
+    string payment_hash = 1;
+    string currency = 2;
+    uint64 amount = 3;
+    string description = 4;
+    uint64 expiry = 5;
+    uint64 timestamp = 6;
+    uint64 min_final_cltv_expiry = 7;
+    repeated RouteHint route_hints = 8;
+    Features features = 9;
+    string payee_pub_key = 10;
+}
+message RouteHint {
+    repeated RouteHintHop hops = 1;
+}
+message RouteHintHop {
+    string src_node_id = 1;
+    uint64 short_channel_id = 2;
+    RoutingFees fees = 3;
+    uint32 cltv_expiry_delta = 4;
+    optional uint64 htlc_minimum_msat = 5;
+    optional uint64 htlc_maximum_msat = 6;
+}
+message RoutingFees {
+    uint32 base_msat = 1;
+    uint32 proportional_millionths = 2;
+}
+message Features {
+    bool variable_length_onion = 1;
+    bool payment_secret = 2;
+    bool basic_mpp = 3;
+}
 
 message LabelPaymentRequest {
     string label = 1;
@@ -262,10 +301,11 @@ message Payment {
     optional string preimage = 2;
     optional string secret = 3;
     string status = 4;
-    optional uint64 amt_msat = 5;
-    string origin = 6;
-    optional string label = 7;
-    optional string invoice = 8;
+    optional int64 amt_msat = 5;
+    optional int64 fee_paid_msat = 6;
+    string origin = 7;
+    optional string label = 8;
+    optional string invoice = 9;
 }
 
 message PaymentsFilter {
@@ -289,10 +329,11 @@ message CloseChannelRequest {
 message CloseChannelResponse {}
 
 message Info {
-    string node_pubkey = 1;
-    uint32 num_channels = 2;
-    uint32 num_usable_channels = 3;
-    uint32 num_peers = 4;
+    string version = 1;
+    string node_pubkey = 2;
+    uint32 num_channels = 3;
+    uint32 num_usable_channels = 4;
+    uint32 num_peers = 5;
 }
 
 message InfoRequest {}

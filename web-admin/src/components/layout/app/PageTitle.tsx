@@ -11,7 +11,7 @@ const PageTitle = ({ title, breadcrumbs, buttons }) => {
         {backButton && (
           <nav className="sm:hidden">
             <Link to={backButton.href}>
-              <a className="flex items-center text-sm leading-5 font-medium text-gray-500 hover:text-gray-700 transition duration-150 ease-in-out">
+              <button className="flex items-center text-sm leading-5 font-medium text-gray-500 hover:text-gray-700 transition duration-150 ease-in-out">
                 <svg
                   className="flex-shrink-0 -ml-1 mr-1 h-5 w-5 text-gray-400"
                   fill="currentColor"
@@ -24,7 +24,7 @@ const PageTitle = ({ title, breadcrumbs, buttons }) => {
                   />
                 </svg>
                 Back
-              </a>
+              </button>
             </Link>
           </nav>
         )}
@@ -37,9 +37,9 @@ const PageTitle = ({ title, breadcrumbs, buttons }) => {
               return (
                 <React.Fragment key={index}>
                   <Link to={breadcrumb.href}>
-                    <a className="text-gray-500 hover:text-gray-700 transition duration-150 ease-in-out">
+                    <button className="text-gray-500 hover:text-gray-700 transition duration-150 ease-in-out">
                       {breadcrumb.text}
-                    </a>
+                    </button>
                   </Link>
                   {includeSeparator && (
                     <svg

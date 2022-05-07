@@ -10,16 +10,13 @@ const TokensPage = () => {
             Tokens
           </h3>
           <div className="mt-3 sm:mt-0 sm:ml-4">
-            <Link
-              to="/admin/tokens/new"
-              className="btn-orange"
-            >
+            <Link to="/admin/tokens/new" className="btn-orange">
               Create new token
             </Link>
           </div>
         </div>
       </div>
-      <div className="py-4">
+      <div className="py-4 relative">
         <div className="bg-gray-accent2 -mx-4 sm:mx-0 sm:rounded-xl  overflow-x-auto">
           <TokensListCard />
         </div>

@@ -22,17 +22,15 @@ use super::{
     utils::raw_macaroon_from_metadata,
 };
 use crate::{
-    database::admin::AccessToken,
     services::admin::{AdminRequest, AdminResponse},
     utils,
 };
 use tonic::{metadata::MetadataMap, Response, Status};
 
-impl From<AccessToken> for Token {
-    fn from(access_token: AccessToken) -> Token {
+impl From<entity::access_token::Model> for Token {
+    fn from(access_token: entity::access_token::Model) -> Token {
         Token {
             id: access_token.id,
-            external_id: access_token.external_id,
             created_at: access_token.created_at,
             updated_at: access_token.updated_at,
             expires_at: access_token.expires_at,
@@ -62,7 +60,6 @@ impl TryFrom<AdminResponse> for ListNodesResponse {
                     .into_iter()
                     .map(|node| ListNode {
                         id: node.id,
-                        external_id: node.external_id,
                         created_at: node.created_at,
                         updated_at: node.updated_at,
                         role: node.role as u32,
@@ -170,13 +167,13 @@ impl TryFrom<AdminResponse> for CreateAdminResponse {
             AdminResponse::CreateAdmin {
                 pubkey,
                 macaroon,
-                external_id,
+                id,
                 role,
                 token,
             } => Ok(Self {
                 pubkey,
                 macaroon,
-                external_id,
+                id,
                 role: role as u32,
                 token,
             }),
@@ -191,6 +188,7 @@ impl TryFrom<AdminResponse> for GetStatusResponse {
     fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
         match res {
             AdminResponse::GetStatus {
+                version,
                 alias,
                 running,
                 created,
@@ -199,6 +197,7 @@ impl TryFrom<AdminResponse> for GetStatusResponse {
                 username,
                 role,
             } => Ok(Self {
+                version,
                 alias,
                 running,
                 created,
@@ -328,17 +327,23 @@ pub fn get_scope_from_request(request: &AdminRequest) -> Option<&'static str> {
 
 impl AdminService {
     async fn is_valid_token(&self, token: String, scope: Option<&str>) -> bool {
-        let access_token = {
-            let mut admin_database = self.request_context.admin_service.database.lock().await;
-            admin_database.get_access_token(token)
-        };
+        let access_token = self
+            .request_context
+            .admin_service
+            .database
+            .get_access_token_by_token(token)
+            .await;
 
         match access_token {
             Ok(Some(access_token)) => {
                 if access_token.is_valid(scope) {
                     if access_token.single_use {
-                        let mut database = self.request_context.admin_service.database.lock().await;
-                        database.delete_access_token(access_token.id).unwrap();
+                        self.request_context
+                            .admin_service
+                            .database
+                            .delete_access_token(access_token.id)
+                            .await
+                            .unwrap();
                     }
                     true
                 } else {

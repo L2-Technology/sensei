@@ -1,6 +1,6 @@
 import adminStopNode from "../mutations/adminStopNode";
-import { Form, FORM_ERROR, Input } from "../../components/form";
-import * as z from "zod";
+import { Form, Input } from "../../components/form";
+import { z } from "zod";
 
 export const StopNodeInput = z.object({
   pubkey: z.string(),

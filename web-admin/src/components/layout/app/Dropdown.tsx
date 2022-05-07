@@ -1,4 +1,4 @@
-import { Menu } from "@headlessui/react";
+import { Menu, Transition } from "@headlessui/react";
 import { Fragment, PropsWithChildren, MouseEventHandler } from "react";
 import { Link } from "react-router-dom";
 
@@ -33,32 +33,42 @@ export default function Dropdown({
         >
           {button}
         </Menu.Button>
-        <Menu.Items
-          className={`${bodyClassName} absolute right-5 z-10 border border-gray-700 min-w-[160px] overflow-hidden rounded-xl bg-gray-background shadow-xl md:p-3`}
+        <Transition
+          as={Fragment}
+          enter="transition ease-out duration-200"
+          enterFrom="transform opacity-0 scale-95 translate-x-10"
+          enterTo="transform opacity-100 scale-100 translate-x-0"
+          leave="transition ease-in duration-100"
+          leaveFrom="transform opacity-100 scale-100 translate-x-0"
+          leaveTo="transform opacity-0 scale-95 translate-x-10"
         >
-          {items.map((item, i) => (
-            <Fragment key={item.label}>
-              {item.path ? (
-                <Link
-                  to={item.path}
-                  className={`${item.className} flex w-full items-center space-x-2 p-3 text-sm hover:bg-white hover:bg-opacity-5 md:rounded-xl`}
-                >
-                  {item.icon}
-                  <span className="capitalize">{item.label}</span>
-                </Link>
-              ) : (
-                <button
-                  onClick={item.onClick}
-                  className={`${item.className} flex w-full items-center space-x-2 p-2 text-sm hover:bg-white hover:bg-opacity-5 md:rounded-xl md:p-3`}
-                >
-                  {item.icon}
-                  <span className="capitalize">{item.label}</span>
-                </button>
-              )}
-            </Fragment>
-          ))}
-          {children}
-        </Menu.Items>
+          <Menu.Items
+            className={`${bodyClassName} absolute right-5 z-10 border border-gray-700 min-w-[160px] overflow-hidden rounded-xl bg-gray-background shadow-xl md:p-3`}
+          >
+            {items.map((item, _i) => (
+              <Fragment key={item.label}>
+                {item.path ? (
+                  <Link
+                    to={item.path}
+                    className={`${item.className} flex w-full items-center space-x-2 p-3 text-sm hover:bg-white hover:bg-opacity-5 md:rounded-xl`}
+                  >
+                    {item.icon}
+                    <span className="capitalize">{item.label}</span>
+                  </Link>
+                ) : (
+                  <button
+                    onClick={item.onClick}
+                    className={`${item.className} flex w-full items-center space-x-2 p-2 text-sm hover:bg-white hover:bg-opacity-5 md:rounded-xl md:p-3`}
+                  >
+                    {item.icon}
+                    <span className="capitalize">{item.label}</span>
+                  </button>
+                )}
+              </Fragment>
+            ))}
+            {children}
+          </Menu.Items>
+        </Transition>
       </Menu>
     </div>
   );

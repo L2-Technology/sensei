@@ -1,7 +1,7 @@
 import sensei from "../../utils/sensei";
 
 const getPeers = async () => {
-    return await sensei.getPeers()
-}
+  return await sensei.getPeers();
+};
 
-export default getPeers
+export default getPeers;
