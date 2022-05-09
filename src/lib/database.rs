@@ -3,7 +3,8 @@ use crate::hex_utils;
 use crate::services::PaginationRequest;
 use crate::services::PaginationResponse;
 use crate::services::PaymentsFilter;
-use bitcoin::consensus::encode::{deserialize, serialize};
+use bdk::database::SyncTime;
+use bdk::BlockTime;
 use bitcoin::BlockHash;
 use entity::access_token;
 use entity::access_token::Entity as AccessToken;
@@ -24,6 +25,32 @@ use rand::thread_rng;
 use rand::Rng;
 use sea_orm::entity::EntityTrait;
 use sea_orm::{prelude::*, DatabaseConnection};
+use serde::Deserialize;
+use serde::Serialize;
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+pub struct LastSync {
+    pub height: u32,
+    pub hash: BlockHash,
+    pub timestamp: u64,
+}
+
+impl From<LastSync> for BlockTime {
+    fn from(last_sync: LastSync) -> Self {
+        Self {
+            height: last_sync.height,
+            timestamp: last_sync.timestamp,
+        }
+    }
+}
+
+impl From<LastSync> for SyncTime {
+    fn from(last_sync: LastSync) -> Self {
+        Self {
+            block_time: last_sync.into(),
+        }
+    }
+}
 
 pub struct SenseiDatabase {
     connection: DatabaseConnection,
@@ -460,28 +487,35 @@ impl SenseiDatabase {
         Ok(macaroon.insert(&self.connection).await?)
     }
 
-    pub async fn find_or_create_last_sync(
+    pub async fn create_or_update_last_onchain_wallet_sync(
         &self,
         node_id: String,
-        best_blockhash: BlockHash,
-    ) -> Result<BlockHash, Error> {
+        hash: BlockHash,
+        height: u32,
+        timestamp: u64,
+    ) -> Result<LastSync, Error> {
         match self
-            .get_value(node_id.clone(), String::from("last_blockhash_sycned"))
+            .get_value(node_id.clone(), String::from("last_onchain_wallet_sync"))
             .await?
         {
             Some(entry) => {
-                let best_blockhash: BlockHash = deserialize(&entry.v).unwrap();
-                Ok(best_blockhash)
+                let last_sync: LastSync = serde_json::from_slice(&entry.v).unwrap();
+                Ok(last_sync)
             }
             None => {
-                let serialized_blockhash = serialize(&best_blockhash);
+                let last_sync = LastSync {
+                    hash,
+                    height,
+                    timestamp,
+                };
+                let serialized_last_sync = serde_json::to_vec(&last_sync).unwrap();
                 self.set_value(
                     node_id,
-                    String::from("last_blockhash_synced"),
-                    serialized_blockhash,
+                    String::from("last_onchain_wallet_sync"),
+                    serialized_last_sync,
                 )
                 .await?;
-                Ok(best_blockhash)
+                Ok(last_sync)
             }
         }
     }

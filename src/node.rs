@@ -23,6 +23,7 @@ use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
 use crate::{hex_utils, version};
 use bdk::keys::ExtendedKey;
+use bdk::wallet::time;
 use bdk::wallet::AddressIndex;
 use bdk::TransactionDetails;
 use bitcoin::hashes::Hash;
@@ -721,14 +722,19 @@ impl LightningNode {
             chain_listeners.push((block_hash, monitor as &(dyn chain::Listen + Send + Sync)));
         }
 
-        let bdk_database_last_sync = {
+        let onchain_wallet_sync = {
             database
-                .find_or_create_last_sync(id.clone(), best_block.block_hash())
+                .create_or_update_last_onchain_wallet_sync(
+                    id.clone(),
+                    best_block.block_hash(),
+                    best_block.height(),
+                    time::get_timestamp(),
+                )
                 .await?
         };
 
         chain_listeners.push((
-            bdk_database_last_sync,
+            onchain_wallet_sync.hash,
             &wallet_database as &(dyn chain::Listen + Send + Sync),
         ));
 
