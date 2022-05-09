@@ -1,5 +1,6 @@
-use crate::lib::database::SenseiDatabase;
+use crate::lib::database::{LastSync, SenseiDatabase};
 use bdk::database::{BatchDatabase, BatchOperations, Database};
+use bdk::wallet::time;
 use bdk::{BlockTime, KeychainKind, LocalUtxo, TransactionDetails};
 use bitcoin::consensus::encode::{deserialize, serialize};
 use bitcoin::{Block, BlockHeader, OutPoint, Script, TxOut, Txid};
@@ -62,13 +63,16 @@ impl Listen for WalletDatabase {
                 .unwrap();
         }
 
-        // TODO: there's probably a bug here.
-        //       need to atomicly update bdk database and this last_sync
         tokio::task::block_in_place(move || {
             wallet_database.tokio_handle.block_on(async move {
                 wallet_database
                     .database
-                    .find_or_create_last_sync(wallet_database.node_id.clone(), block.block_hash())
+                    .create_or_update_last_onchain_wallet_sync(
+                        wallet_database.node_id.clone(),
+                        block.block_hash(),
+                        height,
+                        time::get_timestamp(),
+                    )
                     .await
                     .unwrap();
             });
@@ -100,21 +104,20 @@ impl Listen for WalletDatabase {
         }
 
         // TODO: update the keychain indexes?
-        //
 
-        // TODO: there's probably a bug here.
-        //       need to atomicly update bdk database and this last_sync
         tokio::task::block_in_place(move || {
             wallet_database.tokio_handle.block_on(async move {
                 wallet_database
                     .database
-                    .find_or_create_last_sync(
+                    .create_or_update_last_onchain_wallet_sync(
                         wallet_database.node_id.clone(),
                         header.prev_blockhash,
+                        height - 1,
+                        time::get_timestamp(),
                     )
                     .await
                     .unwrap();
-            })
+            });
         });
     }
 }
@@ -1028,8 +1031,12 @@ impl Database for WalletDatabase {
 
     fn get_sync_time(&self) -> Result<Option<bdk::database::SyncTime>, bdk::Error> {
         let last_sync_key = format!("{}/chain/last_sync", self.node_id.clone());
-        self.get_value(&last_sync_key)
-            .map(|entry| entry.map(|entry| serde_json::from_slice(&entry.v).unwrap()))
+        self.get_value(&last_sync_key).map(|entry| {
+            entry.map(|entry| {
+                let last_sync: LastSync = serde_json::from_slice(&entry.v).unwrap();
+                last_sync.into()
+            })
+        })
     }
 
     fn increment_last_index(&mut self, keychain: bdk::KeychainKind) -> Result<u32, bdk::Error> {
