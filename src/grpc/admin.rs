@@ -120,7 +120,19 @@ impl TryFrom<AdminResponse> for CreateNodeResponse {
 
     fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
         match res {
-            AdminResponse::CreateNode { pubkey, macaroon } => Ok(Self { pubkey, macaroon }),
+            AdminResponse::CreateNode {
+                pubkey,
+                macaroon,
+                listen_addr,
+                listen_port,
+                id,
+            } => Ok(Self {
+                pubkey,
+                macaroon,
+                listen_addr,
+                listen_port,
+                id,
+            }),
             _ => Err("impossible".to_string()),
         }
     }

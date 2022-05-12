@@ -97,6 +97,9 @@ pub enum AdminResponse {
     CreateNode {
         pubkey: String,
         macaroon: String,
+        listen_addr: String,
+        listen_port: i32,
+        id: String,
     },
     ListNodes {
         nodes: Vec<node::Model>,
@@ -316,6 +319,9 @@ impl AdminService {
                 Ok(AdminResponse::CreateNode {
                     pubkey: node.pubkey,
                     macaroon: hex_utils::hex_str(macaroon.as_slice()),
+                    listen_addr: node.listen_addr,
+                    listen_port: node.listen_port,
+                    id: node.id,
                 })
             }
             AdminRequest::ListNodes { pagination } => {
