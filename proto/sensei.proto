@@ -115,6 +115,9 @@ message CreateNodeRequest {
 message CreateNodeResponse {
     string pubkey = 1;
     string macaroon = 2;
+    string listen_addr = 3;
+    int32 listen_port = 4;
+    string id = 5;
 }
 
 message DeleteNodeRequest {
