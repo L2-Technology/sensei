@@ -277,8 +277,9 @@ async fn main() {
     );
 
     if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+        dbg!("Uncaught error: {:?}", e);
     }
+    
 }
 
 // We use a wildcard matcher ("/static/*file") to match against everything

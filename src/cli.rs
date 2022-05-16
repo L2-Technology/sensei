@@ -9,20 +9,24 @@
 
 mod hex_utils;
 use std::{
-    fs::File,
-    io::{self, Read},
+    io::{self}
 };
+
+use std::{fs};
+
+use serde::{Deserialize, Serialize};
 
 use clap::{App, Arg};
 use sensei::GetBalanceRequest;
 use sensei::{admin_client::AdminClient, node_client::NodeClient};
 use tonic::{metadata::MetadataValue, transport::Channel, Request};
 
+
 use crate::sensei::{
     CloseChannelRequest, ConnectPeerRequest, CreateAdminRequest, CreateInvoiceRequest,
     CreateNodeRequest, GetUnusedAddressRequest, InfoRequest, KeysendRequest, ListChannelsRequest,
     ListNodesRequest, ListPaymentsRequest, ListPeersRequest, OpenChannelRequest, PayInvoiceRequest,
-    SignMessageRequest, StartAdminRequest, StartNodeRequest,
+    SignMessageRequest, StartAdminRequest, StartNodeRequest, PaginationRequest
 };
 
 pub mod sensei {
@@ -36,19 +40,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .author("John Cantrell <john@l2.technology>")
         .about("Control your sensei node from a cli")
         .arg(
-            Arg::new("datadir")
-                .short('d')
-                .long("datadir")
-                .value_name("DATADIR")
-                .help("Sets a custom Sensei data directory")
-                .takes_value(true),
-        )
-        .arg(
             Arg::new("node")
                 .short('n')
                 .long("node")
                 .value_name("NODE")
                 .help("Sets the node to issue commands to")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("token")
+                .short('t')
+                .long("token")
+                .value_name("TOKEN")
+                .help("Sets the admin token that will be used for admin requests")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("host")
+                .short('h')
+                .long("host")
+                .value_name("HOST")
+                .help("Sets the host of the senseid instance")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("port")
+                .short('p')
+                .long("port")
+                .value_name("PORT")
+                .help("Sets the port of the senseid instance")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("macaroon")
+                .long("macaroon")
+                .value_name("MACAROON")
+                .help("The macaroon for use communicating with your instance")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("dev")
+                .long("dev")
+                .value_name("DEV")
+                .help("Whether to connect in development mode")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::new("passphrase")
+                .long("passphrase")
+                .value_name("PASSPHRASE")
+                .help("Passphrase (for testing, this is pretty insecure)")
                 .takes_value(true),
         )
         .subcommand(
@@ -83,6 +124,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .required(true)
                         .index(2)
                         .help("alias to use for this lightning node"),
+                )
+                .arg(
+                    Arg::new("start")
+                        .required(true)
+                        .index(3)
+                        .possible_values(&["true", "false"])
+                        .help("Whether or not to start the node"),
                 ),
         )
         .subcommand(App::new("startnode").about("start a child lightning node"))
@@ -192,99 +240,138 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .subcommand(App::new("nodeinfo").about("see information about your node"))
         .get_matches();
 
+    let endpoint = if matches.is_present("dev") {
+        "http://0.0.0.0:5401"
+    } else {
+        "http://0.0.0.0:3000"
+    };
+
     let (command, command_args) = matches.subcommand().unwrap();
 
-    if command == "init" {
-        let channel = Channel::from_static("http://0.0.0.0:3000")
+    let host = matches.value_of("host").unwrap_or("http://127.0.0.1");
+    let port = matches.value_of("port").unwrap_or("5401");
+    let endpoint = format!("{}:{}", host, port);
+
+    let channel = Channel::from_shared(endpoint.to_string())?
             .connect()
             .await?;
+
+    if command == "init" {
+        // senseicli init username <node-alias> <start?>
         let mut admin_client = AdminClient::new(channel);
 
         let username = command_args.value_of("username").unwrap();
         let alias = command_args.value_of("alias").unwrap();
 
-        let mut passphrase = String::new();
-        print!("set a passphrase: ");
-        io::stdin().read_line(&mut passphrase)?;
-
+        let passphrase = set_passphrase(&matches);
+        
         let request = tonic::Request::new(CreateAdminRequest {
             username: username.to_string(),
             alias: alias.to_string(),
             passphrase,
             start: false,
         });
-        let response = admin_client.create_admin(request).await?;
-        println!("{:?}", response.into_inner());
+        
+        let result = admin_client.create_admin(request).await?;
+        let message = result.into_inner();
+        let response = messages::CreateAdminResponse {
+            pubkey: message.pubkey,
+            token: message.token,
+            role: message.role,
+            macaroon: message.macaroon,
+            // external_id: message.external_id
+        };
+        println!("{}", serde_json::to_string(&response).unwrap());
     } else {
-        let data_dir = matches.value_of("datadir").unwrap_or("./.sensei");
-        let node = matches.value_of("node").unwrap_or("admin");
-        let macaroon_path = format!("{}/{}/.ldk/admin.macaroon", data_dir, node);
+        let macaroon_hex_str = matches.value_of("macaroon").unwrap_or("");
 
-        println!("macaroon path: {:?}", macaroon_path);
+        let token_str = matches.value_of("token").unwrap_or("");
 
-        let mut macaroon_file = File::open(macaroon_path)?;
-        let mut macaroon_raw = Vec::new();
-        let _bytes = macaroon_file.read_to_end(&mut macaroon_raw)?;
-        let macaroon_hex_str = hex_utils::hex_str(&macaroon_raw);
-
-        let channel = Channel::from_static("http://0.0.0.0:3000")
-            .connect()
-            .await?;
         let macaroon = MetadataValue::from_str(&macaroon_hex_str)?;
         let admin_macaroon = macaroon.clone();
+        
+        let token = MetadataValue::from_str(&token_str)?;
 
-        let mut client = NodeClient::with_interceptor(channel, move |mut req: Request<()>| {
+        let mut client = NodeClient::with_interceptor(channel.clone(), move |mut req: Request<()>| {
             req.metadata_mut().insert("macaroon", macaroon.clone());
             Ok(req)
         });
 
-        let admin_channel = Channel::from_static("http://0.0.0.0:3000")
-            .connect()
-            .await?;
+        // This is only needed for a couple of queries.  Disabling pagination effectively by large get
+        let pagination = PaginationRequest {
+            page: 0,
+            take: 1000,
+            query: None,
+        };
 
         let mut admin_client =
-            AdminClient::with_interceptor(admin_channel, move |mut req: Request<()>| {
+            AdminClient::with_interceptor(channel.clone(), move |mut req: Request<()>| {
                 req.metadata_mut()
                     .insert("macaroon", admin_macaroon.clone());
+                req.metadata_mut()
+                    .insert("token", token.clone());
                 Ok(req)
             });
 
         match command {
+            // senseicli --token <> start
             "start" => {
-                let mut passphrase = String::new();
-                println!("enter your passphrase: ");
-                io::stdin().read_line(&mut passphrase)?;
+                let passphrase = read_passphrase(&matches);
 
                 let request = tonic::Request::new(StartAdminRequest { passphrase });
                 let response = admin_client.start_admin(request).await?;
                 println!("{:?}", response.into_inner());
             }
+            
+            // senseicli --token <> listnodes 
             "listnodes" => {
-                let request = tonic::Request::new(ListNodesRequest { pagination: None });
+                let request = tonic::Request::new(ListNodesRequest { pagination: pagination.into() });
                 let response = admin_client.list_nodes(request).await?;
                 println!("{:?}", response.into_inner());
             }
+            
+            // senseicli --token <> createnode <username> <alias>
             "createnode" => {
                 let username = command_args.value_of("username").unwrap();
                 let alias = command_args.value_of("alias").unwrap();
 
-                let mut passphrase = String::new();
-                println!("set a passphrase: ");
-                io::stdin().read_line(&mut passphrase)?;
+                let start: bool = command_args
+                    .value_of("start")
+                    .expect("start field required")
+                    .parse()
+                    .expect("start must be true or false");
 
+
+                let passphrase = set_passphrase(&matches);
+                                
                 let request = tonic::Request::new(CreateNodeRequest {
                     username: username.to_string(),
                     alias: alias.to_string(),
                     passphrase,
-                    start: false,
+                    start: start,
                 });
                 let response = admin_client.create_node(request).await?;
-                println!("{:?}", response.into_inner());
+                
+                let message = response.into_inner();
+                
+                let mut config = NodeConfig {
+                    data_dir: ".".into(),
+                    pubkey: message.pubkey.clone(),
+                    macaroon: message.macaroon.clone(),
+                    token: "".into(),
+                    role: Role::User.to_integer(),
+                    // external_id: message.external_id.clone(),
+                };
+                config.save();
+
+                println!("{}", serde_json::to_string(&config).unwrap());
             }
+            
+
+            // End Admin Commands
+
             "startnode" => {
-                let mut passphrase = String::new();
-                println!("enter your passphrase: ");
-                io::stdin().read_line(&mut passphrase)?;
+                let passphrase = read_passphrase(&matches);
 
                 let request = tonic::Request::new(StartNodeRequest { passphrase });
                 let response = client.start_node(request).await?;
@@ -297,8 +384,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             "getaddress" => {
                 let request = tonic::Request::new(GetUnusedAddressRequest {});
-                let response = client.get_unused_address(request).await?;
-                println!("{:?}", response.into_inner());
+                let result = client.get_unused_address(request).await?;
+                let response = messages::GetAddressResponse { address: result.into_inner().address.to_string() };
+
+                println!("{}", serde_json::to_string(&response).unwrap());
             }
             "createinvoice" => {
                 let amt_msat: Option<Result<u64, _>> = command_args
@@ -311,8 +400,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 amt_msat,
                                 description: String::from(""),
                             });
-                            let response = client.create_invoice(request).await?;
-                            println!("{:?}", response.into_inner());
+                            let result = client.create_invoice(request).await?;
+                            
+                            let response = messages::CreateInvoiceResponse {invoice: result.into_inner().invoice.to_string()};
+                            println!("{}", serde_json::to_string(&response).unwrap());
                         } else {
                             println!("invalid amount, please specify in msats");
                         }
@@ -426,13 +517,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{:?}", response.into_inner());
             }
             "listchannels" => {
-                let request = tonic::Request::new(ListChannelsRequest { pagination: None });
+                let request = tonic::Request::new(ListChannelsRequest { pagination: pagination.into() });
                 let response = client.list_channels(request).await?;
                 println!("{:?}", response.into_inner());
             }
             "listpayments" => {
                 let request = tonic::Request::new(ListPaymentsRequest {
-                    pagination: None,
+                    pagination: pagination.into(),
                     filter: None,
                 });
                 let response = client.list_payments(request).await?;
@@ -455,4 +546,93 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn read_passphrase(matches: &clap::ArgMatches) -> String {
+    let passphrase_arg = matches.value_of("passphrase");
+    match passphrase_arg {
+        Some(p) => p.to_string(),
+        None => {
+            println!("Input the passphrase: ");
+            let mut read = String::new();
+            io::stdin().read_line(&mut read).expect("Reading passphrase failed");
+            read
+        },
+    }
+}
+
+fn set_passphrase(matches: &clap::ArgMatches) -> String {
+    let passphrase_arg = matches.value_of("passphrase");
+    match passphrase_arg {
+        Some(p) => p.to_string(),
+        None => {
+            println!("Set a passphrase: ");
+            let mut read = String::new();
+            io::stdin().read_line(&mut read).expect("Reading passphrase failed");
+            read
+        },
+    }
+}
+
+
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct NodeConfig {
+    pub data_dir: String,
+    pub pubkey: String,
+    pub macaroon: String,
+    pub role: u8,
+    pub token: String,
+}
+
+impl NodeConfig {
+    pub fn path(&self) -> String {
+        format!("{}/data/{}", self.data_dir, self.pubkey)
+    }
+
+    pub fn save(&mut self) {
+        fs::write(
+            self.path().clone(),
+            serde_json::to_string(&self).expect("failed to serialize config"),
+        )
+        .expect("failed to write config");
+    }
+}
+
+// I could not figure out how to improt this from the database/admin
+pub enum Role {
+    Admin,
+    User,
+}
+
+impl Role {
+    pub fn to_integer(&self) -> u8 {
+        match self {
+            Role::Admin => 0,
+            Role::User => 1,
+        }
+    }
+}
+
+// Messages
+mod messages {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Clone, Serialize, Deserialize, Debug)]
+    pub struct CreateAdminResponse {
+        pub pubkey: String,
+        pub macaroon: String,
+        pub role: u32,
+        pub token: String,
+    }
+
+    #[derive(Serialize)]
+    pub struct CreateInvoiceResponse {
+        pub invoice: String
+    }
+
+    #[derive(Serialize)]
+    pub struct GetAddressResponse {
+        pub address: String
+    }
+
 }
