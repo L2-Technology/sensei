@@ -54,10 +54,8 @@ use grpc::node::{NodeServer, NodeService as GrpcNodeService};
 use lightning_background_processor::BackgroundProcessor;
 use node::LightningNode;
 use services::admin::{AdminRequest, AdminResponse, AdminService};
-use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tonic::transport::Server;
 use tower_http::cors::{CorsLayer, Origin};
@@ -68,13 +66,6 @@ pub struct NodeHandle {
     pub node: Arc<LightningNode>,
     pub background_processor: BackgroundProcessor,
     pub handles: Vec<JoinHandle<()>>,
-}
-
-pub type NodeDirectory = Arc<Mutex<HashMap<String, NodeHandle>>>;
-
-pub struct RequestContext {
-    pub node_directory: NodeDirectory,
-    pub admin_service: AdminService,
 }
 
 /// Sensei daemon
@@ -179,7 +170,6 @@ async fn main() {
     database.mark_all_nodes_stopped().await.unwrap();
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
-    let node_directory = Arc::new(Mutex::new(HashMap::new()));
 
     let bitcoind_client = Arc::new(
         BitcoindClient::new(
@@ -204,21 +194,13 @@ async fn main() {
         .unwrap(),
     );
 
-    let admin_service = AdminService::new(
+    let admin_service = Arc::new(AdminService::new(
         &sensei_dir,
         config.clone(),
-        node_directory.clone(),
         database,
         chain_manager,
     )
-    .await;
-
-    // TODO: this seems odd too, maybe just pass around the 'admin service'
-    //       and the servers will use it to get the node from the directory
-    let request_context = Arc::new(RequestContext {
-        node_directory: node_directory.clone(),
-        admin_service,
-    });
+    .await);
 
     let router = Router::new()
         .route("/admin/*path", static_handler.into_service())
@@ -255,15 +237,15 @@ async fn main() {
 
     let http_service = router
         .layer(CookieManagerLayer::new())
-        .layer(AddExtensionLayer::new(request_context.clone()))
+        .layer(AddExtensionLayer::new(admin_service.clone()))
         .into_make_service();
 
     let grpc_service = Server::builder()
         .add_service(NodeServer::new(GrpcNodeService {
-            request_context: request_context.clone(),
+            admin_service: admin_service.clone(),
         }))
         .add_service(AdminServer::new(GrpcAdminService {
-            request_context: request_context.clone(),
+            admin_service: admin_service.clone(),
         }))
         .into_service();
 

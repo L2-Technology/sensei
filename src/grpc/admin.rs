@@ -321,7 +321,7 @@ impl TryFrom<AdminResponse> for DeleteTokenResponse {
     }
 }
 pub struct AdminService {
-    pub request_context: Arc<crate::RequestContext>,
+    pub admin_service: Arc<crate::AdminService>,
 }
 
 pub fn get_scope_from_request(request: &AdminRequest) -> Option<&'static str> {
@@ -340,7 +340,6 @@ pub fn get_scope_from_request(request: &AdminRequest) -> Option<&'static str> {
 impl AdminService {
     async fn is_valid_token(&self, token: String, scope: Option<&str>) -> bool {
         let access_token = self
-            .request_context
             .admin_service
             .database
             .get_access_token_by_token(token)
@@ -350,8 +349,7 @@ impl AdminService {
             Ok(Some(access_token)) => {
                 if access_token.is_valid(scope) {
                     if access_token.single_use {
-                        self.request_context
-                            .admin_service
+                        self.admin_service
                             .database
                             .delete_access_token(access_token.id)
                             .await
@@ -377,8 +375,7 @@ impl AdminService {
         let token = self.raw_token_from_metadata(metadata)?;
 
         if self.is_valid_token(token, required_scope).await {
-            self.request_context
-                .admin_service
+            self.admin_service
                 .call(request)
                 .await
                 .map_err(|_e| Status::unknown("error"))
@@ -415,7 +412,7 @@ impl Admin for AdminService {
         let pubkey = session.pubkey.clone();
 
         let request = AdminRequest::GetStatus { pubkey };
-        match self.request_context.admin_service.call(request).await {
+        match self.admin_service.call(request).await {
             Ok(response) => {
                 let response: Result<GetStatusResponse, String> = response.try_into();
                 response
@@ -430,7 +427,7 @@ impl Admin for AdminService {
         request: tonic::Request<CreateAdminRequest>,
     ) -> Result<tonic::Response<CreateAdminResponse>, tonic::Status> {
         let request: AdminRequest = request.into_inner().into();
-        match self.request_context.admin_service.call(request).await {
+        match self.admin_service.call(request).await {
             Ok(response) => {
                 let response: Result<CreateAdminResponse, String> = response.try_into();
                 response
@@ -445,7 +442,7 @@ impl Admin for AdminService {
         request: tonic::Request<StartAdminRequest>,
     ) -> Result<tonic::Response<StartAdminResponse>, tonic::Status> {
         let request: AdminRequest = request.into_inner().into();
-        match self.request_context.admin_service.call(request).await {
+        match self.admin_service.call(request).await {
             Ok(response) => {
                 let response: Result<StartAdminResponse, String> = response.try_into();
                 response

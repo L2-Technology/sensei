@@ -12,7 +12,7 @@ use crate::chain::manager::SenseiChainManager;
 use crate::error::Error as SenseiError;
 use crate::lib::database::SenseiDatabase;
 use crate::{
-    config::SenseiConfig, hex_utils, node::LightningNode, version, NodeDirectory, NodeHandle,
+    config::SenseiConfig, hex_utils, node::LightningNode, version, NodeHandle,
 };
 
 use entity::access_token;
@@ -20,6 +20,8 @@ use entity::node;
 use entity::sea_orm::{ActiveModelTrait, ActiveValue};
 use macaroon::Macaroon;
 use serde::Serialize;
+use std::collections::HashMap;
+use tokio::sync::Mutex;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use uuid::Uuid;
@@ -121,6 +123,8 @@ pub enum AdminResponse {
     Error(Error),
 }
 
+pub type NodeDirectory = Arc<Mutex<HashMap<String, NodeHandle>>>;
+
 #[derive(Clone)]
 pub struct AdminService {
     pub data_dir: String,
@@ -134,14 +138,13 @@ impl AdminService {
     pub async fn new(
         data_dir: &str,
         config: SenseiConfig,
-        node_directory: NodeDirectory,
         database: SenseiDatabase,
         chain_manager: Arc<SenseiChainManager>,
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
             config: Arc::new(config),
-            node_directory,
+            node_directory: Arc::new(Mutex::new(HashMap::new())),
             database: Arc::new(database),
             chain_manager,
         }
