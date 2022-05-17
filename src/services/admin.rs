@@ -22,7 +22,9 @@ use macaroon::Macaroon;
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
+use tokio::runtime::Handle;
 use uuid::Uuid;
+
 pub enum AdminRequest {
     GetStatus {
         pubkey: String,
@@ -128,6 +130,7 @@ pub struct AdminService {
     pub node_directory: NodeDirectory,
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
+    pub ldk_runtime_handle: Handle,
 }
 
 impl AdminService {
@@ -137,6 +140,7 @@ impl AdminService {
         node_directory: NodeDirectory,
         database: SenseiDatabase,
         chain_manager: Arc<SenseiChainManager>,
+        ldk_runtime_handle: Handle,
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
@@ -144,6 +148,7 @@ impl AdminService {
             node_directory,
             database: Arc::new(database),
             chain_manager,
+            ldk_runtime_handle,
         }
     }
 }
@@ -507,7 +512,10 @@ impl AdminService {
                     node.listen_port
                 );
 
-                let (handles, background_processor) = lightning_node.clone().start().await;
+                let (handles, background_processor) = lightning_node
+                    .clone()
+                    .start(self.ldk_runtime_handle.clone())
+                    .await;
 
                 entry.insert(NodeHandle {
                     node: Arc::new(lightning_node.clone()),

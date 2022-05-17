@@ -866,13 +866,17 @@ impl LightningNode {
         })
     }
 
-    pub async fn start(self) -> (Vec<JoinHandle<()>>, BackgroundProcessor) {
+    pub async fn start(
+        self,
+        handle: tokio::runtime::Handle,
+    ) -> (Vec<JoinHandle<()>>, BackgroundProcessor) {
         let mut handles = vec![];
 
         let peer_manager_connection_handler = self.peer_manager.clone();
 
         let stop_listen_ref = Arc::clone(&self.stop_listen);
-        handles.push(tokio::spawn(async move {
+        let listener_handle = handle.clone();
+        handles.push(handle.spawn(async move {
             let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.listen_port))
                 .await
                 .expect(
@@ -884,7 +888,7 @@ impl LightningNode {
                 if stop_listen_ref.load(Ordering::Acquire) {
                     return;
                 }
-                tokio::spawn(async move {
+                listener_handle.spawn(async move {
                     lightning_net_tokio::setup_inbound(
                         peer_mgr.clone(),
                         tcp_stream.into_std().unwrap(),
@@ -897,7 +901,7 @@ impl LightningNode {
         let scorer_persister = Arc::clone(&self.persister);
         let scorer_persist = Arc::clone(&self.scorer);
 
-        handles.push(tokio::spawn(async move {
+        handles.push(handle.spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(600));
             loop {
                 interval.tick().await;
@@ -931,7 +935,7 @@ impl LightningNode {
         let channel_manager_reconnect = self.channel_manager.clone();
         let peer_manager_reconnect = self.peer_manager.clone();
         let persister_peer = self.persister.clone();
-        handles.push(tokio::spawn(async move {
+        handles.push(handle.spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
                 interval.tick().await;
@@ -985,7 +989,7 @@ impl LightningNode {
         let mut alias_bytes = [0; 32];
         alias_bytes[..self.alias.len()].copy_from_slice(self.alias.as_bytes());
 
-        handles.push(tokio::spawn(async move {
+        handles.push(handle.spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             loop {
                 interval.tick().await;
