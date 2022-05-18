@@ -60,3 +60,6 @@ migration = { path = "migration" }
 
 [build-dependencies]
 tonic-build = "0.6"
+
+[dev-dependencies]
+bitcoind = { version = "0.25.0", features = [ "22_0" ] }

@@ -11,9 +11,7 @@ use super::{PaginationRequest, PaginationResponse};
 use crate::chain::manager::SenseiChainManager;
 use crate::error::Error as SenseiError;
 use crate::lib::database::SenseiDatabase;
-use crate::{
-    config::SenseiConfig, hex_utils, node::LightningNode, version, NodeHandle,
-};
+use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version, NodeHandle};
 
 use entity::access_token;
 use entity::node;
@@ -21,9 +19,9 @@ use entity::sea_orm::{ActiveModelTrait, ActiveValue};
 use macaroon::Macaroon;
 use serde::Serialize;
 use std::collections::HashMap;
-use tokio::sync::Mutex;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 pub enum AdminRequest {
     GetStatus {
@@ -367,14 +365,6 @@ impl AdminService {
         }
     }
 
-    pub async fn get_node_details(
-        &self,
-        pubkey: String,
-    ) -> Result<Option<node::Model>, crate::error::Error> {
-        let node = self.database.get_node_by_pubkey(&pubkey).await?;
-        Ok(node)
-    }
-
     async fn list_tokens(
         &self,
         pagination: PaginationRequest,
@@ -549,5 +539,341 @@ impl AdminService {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::node::LightningNode;
+    use crate::services::PaginationRequest;
+    use bitcoin::{Address, Amount, Network};
+    use bitcoincore_rpc::RpcApi;
+    use bitcoind::BitcoinD;
+    use entity::sea_orm::Database;
+    use futures::{future, Future};
+    use migration::{Migrator, MigratorTrait};
+    use std::pin::Pin;
+    use std::{str::FromStr, sync::Arc, time::Duration};
+    use tokio::runtime::{Builder, Handle, Runtime};
+
+    use crate::{
+        chain::{bitcoind_client::BitcoindClient, manager::SenseiChainManager},
+        config::SenseiConfig,
+        lib::database::SenseiDatabase,
+        services::node::{NodeRequest, NodeResponse},
+    };
+
+    use super::{AdminRequest, AdminResponse, AdminService};
+
+    async fn fund_node(bitcoind: &BitcoinD, node: Arc<LightningNode>) {
+        let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
+        let fund_address = match node.call(NodeRequest::GetUnusedAddress {}).await.unwrap() {
+            NodeResponse::GetUnusedAddress { address } => Some(address),
+            _ => None,
+        }
+        .unwrap();
+
+        let fund_address = Address::from_str(&fund_address).unwrap();
+
+        let _res = bitcoind
+            .client
+            .send_to_address(
+                &fund_address,
+                Amount::from_btc(1.0).unwrap(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+        bitcoind
+            .client
+            .generate_to_address(1, &miner_address)
+            .unwrap();
+
+        // TODO: replace with a 'wait_until' type of loop?
+        tokio::time::sleep(Duration::from_millis(3000)).await;
+        let balance = match node.call(NodeRequest::GetBalance {}).await.unwrap() {
+            NodeResponse::GetBalance { balance_satoshis } => Some(balance_satoshis),
+            _ => None,
+        }
+        .unwrap();
+
+        assert_eq!(balance, 100_000_000);
+    }
+
+    async fn create_node(
+        admin_service: &AdminService,
+        username: &str,
+        passphrase: &str,
+        start: bool,
+    ) -> Arc<LightningNode> {
+        let node_pubkey = match admin_service
+            .call(AdminRequest::CreateNode {
+                username: String::from(username),
+                passphrase: String::from(passphrase),
+                alias: String::from(username),
+                start,
+            })
+            .await
+            .unwrap()
+        {
+            AdminResponse::CreateNode {
+                id,
+                listen_addr,
+                listen_port,
+                pubkey,
+                macaroon,
+            } => Some(pubkey),
+            _ => None,
+        }
+        .unwrap();
+
+        let directory = admin_service.node_directory.lock().await;
+        let handle = directory.get(&node_pubkey).unwrap();
+        handle.node.clone()
+    }
+
+    async fn create_root_node(
+        admin_service: &AdminService,
+        username: &str,
+        passphrase: &str,
+        start: bool,
+    ) -> Arc<LightningNode> {
+        match admin_service
+            .call(AdminRequest::CreateAdmin {
+                username: String::from(username),
+                alias: String::from(username),
+                passphrase: String::from(passphrase),
+                start,
+            })
+            .await
+            .unwrap()
+        {
+            AdminResponse::CreateAdmin {
+                pubkey,
+                macaroon,
+                id,
+                token,
+                role,
+            } => {
+                let directory = admin_service.node_directory.lock().await;
+                let handle = directory.get(&pubkey).unwrap();
+                Some(handle.node.clone())
+            }
+            _ => None,
+        }
+        .unwrap()
+    }
+
+    async fn open_channel(
+        bitcoind: &BitcoinD,
+        from: Arc<LightningNode>,
+        to: Arc<LightningNode>,
+        amt_sat: u64,
+    ) {
+        let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
+        let node_connection_string = format!(
+            "{}@{}:{}",
+            to.get_pubkey(),
+            to.listen_addresses.first().unwrap(),
+            to.listen_port
+        );
+        from.call(NodeRequest::OpenChannel {
+            node_connection_string: node_connection_string,
+            amt_satoshis: amt_sat,
+            public: true,
+        })
+        .await
+        .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+
+        bitcoind
+            .client
+            .generate_to_address(6, &miner_address)
+            .unwrap();
+
+        // TODO: replace with a 'wait_until' type of loop?
+        tokio::time::sleep(Duration::from_millis(3000)).await;
+
+        let channels = to
+            .list_channels(PaginationRequest {
+                page: 0,
+                take: 5,
+                query: None,
+            })
+            .unwrap()
+            .0;
+        assert_eq!(channels[0].is_usable, true);
+    }
+
+    async fn create_invoice(node: Arc<LightningNode>, amt_sat: u64) -> String {
+        match node
+            .call(NodeRequest::GetInvoice {
+                amt_msat: amt_sat * 1000,
+                description: String::from("test"),
+            })
+            .await
+            .unwrap()
+        {
+            NodeResponse::GetInvoice { invoice } => Some(invoice),
+            _ => None,
+        }
+        .unwrap()
+    }
+
+    async fn batch_create_invoices(
+        node: Arc<LightningNode>,
+        amt_sat: u64,
+        num_invoices: usize,
+    ) -> Vec<String> {
+        let mut i = 0;
+        let mut invoices: Vec<String> = vec![];
+        while i < num_invoices {
+            let raw_invoice = create_invoice(node.clone(), amt_sat).await;
+            invoices.push(raw_invoice);
+            i += 1;
+        }
+        invoices
+    }
+
+    async fn pay_invoice(node: Arc<LightningNode>, invoice: String) {
+        node.call(NodeRequest::SendPayment { invoice })
+            .await
+            .unwrap();
+    }
+
+    fn setup_bitcoind() -> BitcoinD {
+        let bitcoind = bitcoind::BitcoinD::new(bitcoind::downloaded_exe_path().unwrap()).unwrap();
+        let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
+        bitcoind
+            .client
+            .generate_to_address(110, &miner_address)
+            .unwrap();
+        bitcoind
+    }
+
+    fn setup_test_environment(bitcoind: &BitcoinD, sensei_dir: &str) -> SenseiConfig {
+        cleanup_test_environment(sensei_dir);
+        std::fs::create_dir_all(format!("{}/{}", sensei_dir, Network::Regtest))
+            .expect("failed to create data directory");
+        let sqlite_path = format!("{}/{}/{}", sensei_dir, Network::Regtest, "sensei.sqlite");
+
+        let mut config = SenseiConfig::default();
+        config.network = Network::Regtest;
+        config.bitcoind_rpc_host = bitcoind.params.rpc_socket.ip().to_string();
+        config.bitcoind_rpc_port = bitcoind.params.rpc_socket.port();
+        config.bitcoind_rpc_username = String::from("__cookie__");
+        let cookie = std::fs::read_to_string(bitcoind.params.cookie_file.clone()).unwrap();
+        let cookie_parts = cookie.split(':').collect::<Vec<&str>>();
+        config.bitcoind_rpc_password = cookie_parts.last().unwrap().to_string();
+        config.database_url = format!("sqlite://{}?mode=rwc", sqlite_path);
+        config
+    }
+
+    fn cleanup_test_environment(sensei_dir: &str) {
+        std::fs::remove_dir_all(&sensei_dir).unwrap_or_default();
+    }
+
+    async fn setup_sensei(
+        sensei_dir: &str,
+        bitcoind: &BitcoinD,
+        persistence_handle: Handle,
+    ) -> AdminService {
+        let config = setup_test_environment(&bitcoind, sensei_dir);
+        let db_connection = Database::connect(config.database_url.clone())
+            .await
+            .unwrap();
+        Migrator::up(&db_connection, None)
+            .await
+            .expect("failed to run migrations");
+
+        let database = SenseiDatabase::new(db_connection, persistence_handle);
+        database.mark_all_nodes_stopped().await.unwrap();
+
+        let bitcoind_client = Arc::new(
+            BitcoindClient::new(
+                config.bitcoind_rpc_host.clone(),
+                config.bitcoind_rpc_port,
+                config.bitcoind_rpc_username.clone(),
+                config.bitcoind_rpc_password.clone(),
+                tokio::runtime::Handle::current(),
+            )
+            .await
+            .expect("invalid bitcoind rpc config"),
+        );
+
+        let chain_manager = Arc::new(
+            SenseiChainManager::new(
+                config.clone(),
+                bitcoind_client.clone(),
+                bitcoind_client.clone(),
+                bitcoind_client,
+            )
+            .await
+            .unwrap(),
+        );
+
+        AdminService::new(&sensei_dir, config.clone(), database, chain_manager).await
+    }
+
+    fn run_test<F>(test: fn(BitcoinD, AdminService) -> F) -> F::Output
+    where
+        F: Future,
+    {
+        let persistence_runtime = Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("persistence")
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let persistence_runtime_handle = persistence_runtime.handle().clone();
+
+        Builder::new_multi_thread()
+            .worker_threads(10)
+            .thread_name("sensei")
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async move {
+                let sensei_dir = String::from("./.sensei-tests");
+                let bitcoind = setup_bitcoind();
+                let admin_service =
+                    setup_sensei(&sensei_dir, &bitcoind, persistence_runtime_handle).await;
+                test(bitcoind, admin_service).await
+            })
+    }
+
+    async fn smoke_test(bitcoind: BitcoinD, admin_service: AdminService) {
+        let alice = create_root_node(&admin_service, "alice", "alice", true).await;
+        let bob = create_node(&admin_service, "bob", "bob", true).await;
+        let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
+        fund_node(&bitcoind, alice.clone()).await;
+        fund_node(&bitcoind, bob.clone()).await;
+        open_channel(&bitcoind, alice.clone(), bob.clone(), 1_000_000).await;
+        open_channel(&bitcoind, bob.clone(), charlie.clone(), 1_000_000).await;
+        let invoices = batch_create_invoices(charlie.clone(), 10, 50).await;
+
+        future::try_join_all(
+            invoices
+                .into_iter()
+                .map(|invoice| pay_invoice(alice.clone(), invoice))
+                .map(tokio::spawn),
+        )
+        .await
+        .unwrap();
+
+        // TODO: need to have a pay_invoice_sync or something that blocks until payment is actually done
+        //       this currently isn't testing that charlie successfully receives all the payments
+        tokio::time::sleep(Duration::from_millis(3000)).await;
+    }
+
+    #[test]
+    fn run_smoke_test() {
+        run_test(smoke_test)
     }
 }
