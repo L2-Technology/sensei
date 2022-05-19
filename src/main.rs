@@ -42,6 +42,7 @@ use axum::{
     AddExtensionLayer, Router,
 };
 use clap::Parser;
+use lib::events::SenseiEvent;
 use migration::{Migrator, MigratorTrait};
 use rust_embed::RustEmbed;
 use sea_orm::Database;
@@ -61,6 +62,7 @@ use tonic::transport::Server;
 use tower_http::cors::{CorsLayer, Origin};
 
 use tokio::runtime::Builder;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc::Sender;
 
 pub struct NodeHandle {
@@ -174,6 +176,11 @@ fn main() {
         .unwrap();
 
     sensei_runtime.block_on(async move {
+        let (event_sender, _event_receiver): (
+            broadcast::Sender<SenseiEvent>,
+            broadcast::Receiver<SenseiEvent>,
+        ) = broadcast::channel(256);
+
         let db_connection = Database::connect(config.database_url.clone())
             .await
             .unwrap();
@@ -209,8 +216,16 @@ fn main() {
             .unwrap(),
         );
 
-        let admin_service =
-            Arc::new(AdminService::new(&sensei_dir, config.clone(), database, chain_manager).await);
+        let admin_service = Arc::new(
+            AdminService::new(
+                &sensei_dir,
+                config.clone(),
+                database,
+                chain_manager,
+                event_sender,
+            )
+            .await,
+        );
 
         let router = Router::new()
             .route("/admin/*path", static_handler.into_service())

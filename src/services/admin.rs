@@ -11,6 +11,7 @@ use super::{PaginationRequest, PaginationResponse};
 use crate::chain::manager::SenseiChainManager;
 use crate::error::Error as SenseiError;
 use crate::lib::database::SenseiDatabase;
+use crate::lib::events::SenseiEvent;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version, NodeHandle};
 
 use entity::access_token;
@@ -21,7 +22,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use uuid::Uuid;
 pub enum AdminRequest {
     GetStatus {
@@ -130,6 +131,7 @@ pub struct AdminService {
     pub node_directory: NodeDirectory,
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
+    pub event_sender: broadcast::Sender<SenseiEvent>,
 }
 
 impl AdminService {
@@ -138,6 +140,7 @@ impl AdminService {
         config: SenseiConfig,
         database: SenseiDatabase,
         chain_manager: Arc<SenseiChainManager>,
+        event_sender: broadcast::Sender<SenseiEvent>,
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
@@ -145,6 +148,7 @@ impl AdminService {
             node_directory: Arc::new(Mutex::new(HashMap::new())),
             database: Arc::new(database),
             chain_manager,
+            event_sender,
         }
     }
 }
@@ -491,6 +495,7 @@ impl AdminService {
                     network_graph_msg_handler,
                     self.chain_manager.clone(),
                     self.database.clone(),
+                    self.event_sender.clone(),
                 )
                 .await?;
 
@@ -544,8 +549,9 @@ impl AdminService {
 
 #[cfg(test)]
 mod test {
-    use crate::node::LightningNode;
-    use crate::services::PaginationRequest;
+    use crate::lib::events::SenseiEvent;
+    use crate::node::{HTLCStatus, LightningNode};
+    use crate::services::{PaginationRequest, PaymentsFilter};
     use bitcoin::{Address, Amount, Network};
     use bitcoincore_rpc::RpcApi;
     use bitcoind::BitcoinD;
@@ -553,8 +559,10 @@ mod test {
     use futures::{future, Future};
     use migration::{Migrator, MigratorTrait};
     use std::pin::Pin;
+    use std::time::Instant;
     use std::{str::FromStr, sync::Arc, time::Duration};
     use tokio::runtime::{Builder, Handle, Runtime};
+    use tokio::sync::broadcast;
 
     use crate::{
         chain::{bitcoind_client::BitcoindClient, manager::SenseiChainManager},
@@ -593,15 +601,14 @@ mod test {
             .generate_to_address(1, &miner_address)
             .unwrap();
 
-        // TODO: replace with a 'wait_until' type of loop?
-        tokio::time::sleep(Duration::from_millis(3000)).await;
-        let balance = match node.call(NodeRequest::GetBalance {}).await.unwrap() {
-            NodeResponse::GetBalance { balance_satoshis } => Some(balance_satoshis),
-            _ => None,
-        }
-        .unwrap();
+        let closed_node = node.clone();
+        let has_balance = move || {
+            let wallet = closed_node.wallet.lock().unwrap();
+            let balance = wallet.get_balance().unwrap();
+            balance == 100_000_000
+        };
 
-        assert_eq!(balance, 100_000_000);
+        assert!(wait_until(has_balance, 5000, 50).await);
     }
 
     async fn create_node(
@@ -668,6 +675,55 @@ mod test {
         .unwrap()
     }
 
+    async fn wait_for_event<F: Fn(SenseiEvent) -> bool>(
+        event_receiver: &mut broadcast::Receiver<SenseiEvent>,
+        filter: F,
+        timeout_ms: u64,
+        interval_ms: u64,
+    ) -> Option<SenseiEvent> {
+        let mut current_ms = 0;
+        while current_ms < timeout_ms {
+            while let Ok(event) = event_receiver.try_recv() {
+                if filter(event.clone()) {
+                    return Some(event);
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+            current_ms += interval_ms;
+        }
+        return None;
+    }
+
+    async fn wait_until<F: Fn() -> bool>(func: F, timeout_ms: u64, interval_ms: u64) -> bool {
+        let mut current_ms = 0;
+        while current_ms < timeout_ms {
+            if func() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+            current_ms += interval_ms;
+        }
+
+        return false;
+    }
+
+    async fn wait_until_async<F: Future<Output = bool>, G: Fn() -> F>(
+        func: G,
+        timeout_ms: u64,
+        interval_ms: u64,
+    ) -> bool {
+        let mut current_ms = 0;
+        while current_ms < timeout_ms {
+            if func().await {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
+            current_ms += interval_ms;
+        }
+
+        return false;
+    }
+
     async fn open_channel(
         bitcoind: &BitcoinD,
         from: Arc<LightningNode>,
@@ -681,6 +737,9 @@ mod test {
             to.listen_addresses.first().unwrap(),
             to.listen_port
         );
+
+        let mut event_receiver = from.event_sender.subscribe();
+
         from.call(NodeRequest::OpenChannel {
             node_connection_string: node_connection_string,
             amt_satoshis: amt_sat,
@@ -689,25 +748,37 @@ mod test {
         .await
         .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+        let from_node_id = from.id.clone();
+        let filter = move |event| {
+            if let SenseiEvent::TransactionBroadcast { node_id, .. } = event {
+                if *node_id == from_node_id {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        let event = wait_for_event(&mut event_receiver, filter, 5000, 50).await;
+        assert!(event.is_some());
 
         bitcoind
             .client
             .generate_to_address(6, &miner_address)
             .unwrap();
 
-        // TODO: replace with a 'wait_until' type of loop?
-        tokio::time::sleep(Duration::from_millis(3000)).await;
+        let has_usable_channel = move || {
+            let channels = to
+                .list_channels(PaginationRequest {
+                    page: 0,
+                    take: 5,
+                    query: None,
+                })
+                .unwrap()
+                .0;
+            channels.len() > 0 && channels[0].is_usable
+        };
 
-        let channels = to
-            .list_channels(PaginationRequest {
-                page: 0,
-                take: 5,
-                query: None,
-            })
-            .unwrap()
-            .0;
-        assert_eq!(channels[0].is_usable, true);
+        assert!(wait_until(Box::new(has_usable_channel), 5000, 50).await);
     }
 
     async fn create_invoice(node: Arc<LightningNode>, amt_sat: u64) -> String {
@@ -783,6 +854,10 @@ mod test {
         bitcoind: &BitcoinD,
         persistence_handle: Handle,
     ) -> AdminService {
+        let (event_sender, mut event_receiver): (
+            broadcast::Sender<SenseiEvent>,
+            broadcast::Receiver<SenseiEvent>,
+        ) = broadcast::channel(256);
         let config = setup_test_environment(&bitcoind, sensei_dir);
         let db_connection = Database::connect(config.database_url.clone())
             .await
@@ -817,7 +892,14 @@ mod test {
             .unwrap(),
         );
 
-        AdminService::new(&sensei_dir, config.clone(), database, chain_manager).await
+        AdminService::new(
+            &sensei_dir,
+            config.clone(),
+            database,
+            chain_manager,
+            event_sender,
+        )
+        .await
     }
 
     fn run_test<F>(test: fn(BitcoinD, AdminService) -> F) -> F::Output
@@ -856,7 +938,8 @@ mod test {
         fund_node(&bitcoind, bob.clone()).await;
         open_channel(&bitcoind, alice.clone(), bob.clone(), 1_000_000).await;
         open_channel(&bitcoind, bob.clone(), charlie.clone(), 1_000_000).await;
-        let invoices = batch_create_invoices(charlie.clone(), 10, 50).await;
+        let num_invoices = 50;
+        let invoices = batch_create_invoices(charlie.clone(), 10, num_invoices).await;
 
         future::try_join_all(
             invoices
@@ -867,9 +950,25 @@ mod test {
         .await
         .unwrap();
 
-        // TODO: need to have a pay_invoice_sync or something that blocks until payment is actually done
-        //       this currently isn't testing that charlie successfully receives all the payments
-        tokio::time::sleep(Duration::from_millis(3000)).await;
+        let charlie_test = charlie.clone();
+        let has_payments = move || {
+            let pagination = PaginationRequest {
+                page: 0,
+                take: 1,
+                query: None,
+            };
+            let filter = PaymentsFilter {
+                status: Some(HTLCStatus::Succeeded.to_string()),
+                origin: None,
+            };
+            let (_payments, pagination) = charlie_test
+                .database
+                .list_payments_sync(charlie_test.id.clone(), pagination, filter)
+                .unwrap();
+            pagination.total == num_invoices as u64
+        };
+
+        assert!(wait_until(has_payments, 10000, 100).await);
     }
 
     #[test]

@@ -8,5 +8,6 @@
 // licenses.
 
 pub mod database;
+pub mod events;
 pub mod network_graph;
 pub mod persist;
