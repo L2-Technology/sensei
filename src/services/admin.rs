@@ -608,7 +608,7 @@ mod test {
             balance == 100_000_000
         };
 
-        assert!(wait_until(has_balance, 5000, 50).await);
+        assert!(wait_until(has_balance, 15000, 250).await);
     }
 
     async fn create_node(
@@ -758,7 +758,7 @@ mod test {
             return false;
         };
 
-        let event = wait_for_event(&mut event_receiver, filter, 5000, 50).await;
+        let event = wait_for_event(&mut event_receiver, filter, 15000, 250).await;
         assert!(event.is_some());
 
         bitcoind
@@ -778,7 +778,7 @@ mod test {
             channels.len() > 0 && channels[0].is_usable
         };
 
-        assert!(wait_until(Box::new(has_usable_channel), 5000, 50).await);
+        assert!(wait_until(Box::new(has_usable_channel), 15000, 250).await);
     }
 
     async fn create_invoice(node: Arc<LightningNode>, amt_sat: u64) -> String {
@@ -968,7 +968,7 @@ mod test {
             pagination.total == num_invoices as u64
         };
 
-        assert!(wait_until(has_payments, 10000, 100).await);
+        assert!(wait_until(has_payments, 60000, 500).await);
     }
 
     #[test]
