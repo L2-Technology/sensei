@@ -27,7 +27,7 @@ use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
 use crate::lib::database::SenseiDatabase;
 use crate::{chain::manager::SenseiChainManager, config::SenseiConfig};
-use entity::sea_orm;
+use entity::sea_orm::{self, ConnectOptions};
 
 use ::http::{
     header::{self, ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
@@ -48,6 +48,7 @@ use rust_embed::RustEmbed;
 use sea_orm::Database;
 
 use std::net::SocketAddr;
+use std::time::Duration;
 use tower_cookies::CookieManagerLayer;
 
 use grpc::admin::{AdminServer, AdminService as GrpcAdminService};
@@ -181,9 +182,12 @@ fn main() {
             broadcast::Receiver<SenseiEvent>,
         ) = broadcast::channel(256);
 
-        let db_connection = Database::connect(config.database_url.clone())
-            .await
-            .unwrap();
+        let mut db_connection_options = ConnectOptions::new(config.database_url.clone());
+        db_connection_options
+            .max_connections(10)
+            .min_connections(3)
+            .connect_timeout(Duration::new(30, 0));
+        let db_connection = Database::connect(db_connection_options).await.unwrap();
         Migrator::up(&db_connection, None)
             .await
             .expect("failed to run migrations");
