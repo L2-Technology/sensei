@@ -555,7 +555,7 @@ mod test {
     use bitcoin::{Address, Amount, Network};
     use bitcoincore_rpc::RpcApi;
     use bitcoind::BitcoinD;
-    use entity::sea_orm::Database;
+    use entity::sea_orm::{ConnectOptions, Database};
     use futures::{future, Future};
     use migration::{Migrator, MigratorTrait};
     use std::pin::Pin;
@@ -763,7 +763,7 @@ mod test {
 
         bitcoind
             .client
-            .generate_to_address(6, &miner_address)
+            .generate_to_address(10, &miner_address)
             .unwrap();
 
         let has_usable_channel = move || {
@@ -859,9 +859,13 @@ mod test {
             broadcast::Receiver<SenseiEvent>,
         ) = broadcast::channel(256);
         let config = setup_test_environment(&bitcoind, sensei_dir);
-        let db_connection = Database::connect(config.database_url.clone())
-            .await
-            .unwrap();
+
+        let mut db_connection_options = ConnectOptions::new(config.database_url.clone());
+        db_connection_options
+            .max_connections(100)
+            .min_connections(10)
+            .connect_timeout(Duration::new(30, 0));
+        let db_connection = Database::connect(db_connection_options).await.unwrap();
         Migrator::up(&db_connection, None)
             .await
             .expect("failed to run migrations");
@@ -938,7 +942,9 @@ mod test {
         fund_node(&bitcoind, bob.clone()).await;
         open_channel(&bitcoind, alice.clone(), bob.clone(), 1_000_000).await;
         open_channel(&bitcoind, bob.clone(), charlie.clone(), 1_000_000).await;
-        let num_invoices = 50;
+
+        let num_invoices = 25;
+
         let invoices = batch_create_invoices(charlie.clone(), 10, num_invoices).await;
 
         future::try_join_all(

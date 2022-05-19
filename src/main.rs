@@ -184,8 +184,8 @@ fn main() {
 
         let mut db_connection_options = ConnectOptions::new(config.database_url.clone());
         db_connection_options
-            .max_connections(10)
-            .min_connections(3)
+            .max_connections(50)
+            .min_connections(5)
             .connect_timeout(Duration::new(30, 0));
         let db_connection = Database::connect(db_connection_options).await.unwrap();
         Migrator::up(&db_connection, None)
