@@ -1,4 +1,4 @@
-use crate::lib::database::{LastSync, SenseiDatabase};
+use crate::database::{LastSync, SenseiDatabase};
 use bdk::database::{BatchDatabase, BatchOperations, Database};
 use bdk::wallet::time;
 use bdk::{BlockTime, KeychainKind, LocalUtxo, TransactionDetails};

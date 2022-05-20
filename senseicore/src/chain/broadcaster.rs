@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::lib::events::SenseiEvent;
+use crate::events::SenseiEvent;
 
 use super::database::WalletDatabase;
 use bitcoin::Transaction;

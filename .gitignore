@@ -1,3 +1,4 @@
 /target
 /.sensei-tests
+./senseicore/.sensei-tests
 .DS_Store

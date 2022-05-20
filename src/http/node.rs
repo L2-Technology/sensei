@@ -10,14 +10,15 @@
 use std::sync::Arc;
 
 use crate::http::auth_header::AuthHeader;
-use crate::services::admin::AdminRequest;
-use crate::services::node::{NodeRequest, NodeRequestError, NodeResponse};
-use crate::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
-use crate::{utils, AdminService};
+use crate::AdminService;
 use axum::extract::{Extension, Json, Query};
 use axum::routing::{get, post};
 use axum::Router;
 use http::{HeaderValue, StatusCode};
+use senseicore::services::admin::AdminRequest;
+use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse};
+use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
+use senseicore::utils;
 use serde::Deserialize;
 use serde_json::Value;
 use tower_cookies::Cookies;
@@ -356,7 +357,7 @@ pub async fn handle_authenticated_request(
                 Ok(Json(NodeResponse::StartNode {}))
             }
             _ => {
-                let err = crate::error::Error::Unauthenticated;
+                let err = senseicore::error::Error::Unauthenticated;
                 let node_request_error: NodeRequestError = err.into();
                 Ok(Json(NodeResponse::Error(node_request_error)))
             }

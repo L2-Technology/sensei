@@ -13,7 +13,7 @@ pub mod node;
 pub mod utils;
 
 pub mod sensei {
-    use crate::node::{
+    use senseicore::node::{
         LocalInvoice, LocalInvoiceFeatures, LocalRouteHint, LocalRouteHintHop, LocalRoutingFees,
     };
 

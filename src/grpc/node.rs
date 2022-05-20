@@ -27,7 +27,7 @@ use super::{
     utils::raw_macaroon_from_metadata,
 };
 
-use crate::{
+use senseicore::{
     services::{
         admin::AdminRequest,
         node::{NodeRequest, NodeResponse},
@@ -37,7 +37,7 @@ use crate::{
 use tonic::{metadata::MetadataMap, Response, Status};
 
 pub struct NodeService {
-    pub admin_service: Arc<crate::AdminService>,
+    pub admin_service: Arc<senseicore::services::admin::AdminService>,
 }
 impl NodeService {
     async fn authenticated_request(

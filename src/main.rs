@@ -7,27 +7,24 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-mod chain;
-mod config;
-mod disk;
-mod error;
-mod event_handler;
 mod grpc;
-mod hex_utils;
 mod http;
 mod hybrid;
-mod lib;
-mod node;
-mod services;
-mod utils;
-mod version;
 
-use crate::chain::bitcoind_client::BitcoindClient;
+use senseicore::{
+    chain::{bitcoind_client::BitcoindClient, manager::SenseiChainManager},
+    config::SenseiConfig,
+    database::SenseiDatabase,
+    events::SenseiEvent,
+    services::admin::{AdminRequest, AdminResponse, AdminService},
+};
+
+use entity::sea_orm::{self, ConnectOptions};
+use migration::{Migrator, MigratorTrait};
+use sea_orm::Database;
+
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
-use crate::lib::database::SenseiDatabase;
-use crate::{chain::manager::SenseiChainManager, config::SenseiConfig};
-use entity::sea_orm::{self, ConnectOptions};
 
 use ::http::{
     header::{self, ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
@@ -42,35 +39,23 @@ use axum::{
     AddExtensionLayer, Router,
 };
 use clap::Parser;
-use lib::events::SenseiEvent;
-use migration::{Migrator, MigratorTrait};
-use rust_embed::RustEmbed;
-use sea_orm::Database;
 
+use rust_embed::RustEmbed;
+
+use grpc::admin::{AdminServer, AdminService as GrpcAdminService};
+use grpc::node::{NodeServer, NodeService as GrpcNodeService};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tower_cookies::CookieManagerLayer;
 
-use grpc::admin::{AdminServer, AdminService as GrpcAdminService};
-use grpc::node::{NodeServer, NodeService as GrpcNodeService};
-use lightning_background_processor::BackgroundProcessor;
-use node::LightningNode;
-use services::admin::{AdminRequest, AdminResponse, AdminService};
 use std::fs;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 use tonic::transport::Server;
 use tower_http::cors::{CorsLayer, Origin};
 
 use tokio::runtime::Builder;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc::Sender;
-
-pub struct NodeHandle {
-    pub node: Arc<LightningNode>,
-    pub background_processor: BackgroundProcessor,
-    pub handles: Vec<JoinHandle<()>>,
-}
 
 /// Sensei daemon
 #[derive(Parser, Debug)]

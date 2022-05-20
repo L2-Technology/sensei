@@ -21,7 +21,7 @@ use super::{
     },
     utils::raw_macaroon_from_metadata,
 };
-use crate::{
+use senseicore::{
     services::admin::{AdminRequest, AdminResponse},
     utils,
 };
@@ -45,7 +45,7 @@ impl From<entity::access_token::Model> for Token {
 impl From<ListNodesRequest> for AdminRequest {
     fn from(req: ListNodesRequest) -> Self {
         AdminRequest::ListNodes {
-            pagination: req.pagination.into(),
+            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
         }
     }
 }
@@ -82,7 +82,7 @@ impl TryFrom<AdminResponse> for ListNodesResponse {
 impl From<ListTokensRequest> for AdminRequest {
     fn from(req: ListTokensRequest) -> Self {
         AdminRequest::ListTokens {
-            pagination: req.pagination.into(),
+            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
         }
     }
 }
@@ -321,7 +321,7 @@ impl TryFrom<AdminResponse> for DeleteTokenResponse {
     }
 }
 pub struct AdminService {
-    pub admin_service: Arc<crate::AdminService>,
+    pub admin_service: Arc<senseicore::services::admin::AdminService>,
 }
 
 pub fn get_scope_from_request(request: &AdminRequest) -> Option<&'static str> {

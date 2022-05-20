@@ -20,12 +20,12 @@ use http::{HeaderValue, StatusCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::{
+use senseicore::{
     services::{
-        admin::{AdminRequest, AdminResponse},
+        admin::{AdminRequest, AdminResponse, AdminService},
         PaginationRequest,
     },
-    utils, AdminService,
+    utils,
 };
 
 use super::{auth_header::AuthHeader, utils::get_macaroon_hex_str_from_cookies_or_header};

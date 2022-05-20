@@ -10,9 +10,9 @@
 use crate::chain::database::WalletDatabase;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::SenseiConfig;
+use crate::database::SenseiDatabase;
+use crate::events::SenseiEvent;
 use crate::hex_utils;
-use crate::lib::database::SenseiDatabase;
-use crate::lib::events::SenseiEvent;
 use crate::node::{ChannelManager, HTLCStatus, PaymentOrigin};
 
 use bdk::wallet::AddressIndex;

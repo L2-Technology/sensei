@@ -25,32 +25,26 @@ use super::sensei::{
     VerifyMessageResponse,
 };
 
-use crate::services::{
+use senseicore::services::{
     self,
     node::{Channel, NodeInfo, NodeRequest, NodeResponse, Peer},
 };
 
-impl From<Option<PaymentsFilter>> for services::PaymentsFilter {
-    fn from(filter: Option<PaymentsFilter>) -> Self {
-        match filter {
-            Some(filter) => Self {
-                origin: filter.origin,
-                status: filter.status,
-            },
-            None => Self::default(),
+impl From<PaymentsFilter> for services::PaymentsFilter {
+    fn from(filter: PaymentsFilter) -> Self {
+        Self {
+            origin: filter.origin,
+            status: filter.status,
         }
     }
 }
 
-impl From<Option<PaginationRequest>> for services::PaginationRequest {
-    fn from(pagination: Option<PaginationRequest>) -> Self {
-        match pagination {
-            Some(pagination) => Self {
-                take: pagination.take,
-                page: pagination.page,
-                query: pagination.query,
-            },
-            None => Self::default(),
+impl From<PaginationRequest> for services::PaginationRequest {
+    fn from(pagination: PaginationRequest) -> Self {
+        Self {
+            take: pagination.take,
+            page: pagination.page,
+            query: pagination.query,
         }
     }
 }
@@ -357,7 +351,7 @@ impl TryFrom<NodeResponse> for ConnectPeerResponse {
 impl From<ListChannelsRequest> for NodeRequest {
     fn from(req: ListChannelsRequest) -> Self {
         NodeRequest::ListChannels {
-            pagination: req.pagination.into(),
+            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
         }
     }
 }
@@ -388,8 +382,8 @@ impl TryFrom<NodeResponse> for ListChannelsResponse {
 impl From<ListPaymentsRequest> for NodeRequest {
     fn from(req: ListPaymentsRequest) -> Self {
         NodeRequest::ListPayments {
-            pagination: req.pagination.into(),
-            filter: req.filter.into(),
+            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
+            filter: req.filter.map(|f| f.into()).unwrap_or_default(),
         }
     }
 }
