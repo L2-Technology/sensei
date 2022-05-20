@@ -194,7 +194,9 @@ message OpenChannelRequest {
     uint64 amt_satoshis = 2;
     bool public = 3;
 }
-message OpenChannelResponse {}
+message OpenChannelResponse {
+    string temp_channel_id = 1;
+}
 
 message PayInvoiceRequest {
     string invoice = 1;

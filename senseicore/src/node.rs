@@ -1469,11 +1469,17 @@ impl LightningNode {
 
                 let res = self.open_channel(pubkey, amt_satoshis, 0, 0, public);
 
-                if res.is_ok() {
-                    let _ = self.persister.persist_channel_peer(&node_connection_string);
-                }
-
-                Ok(NodeResponse::OpenChannel {})
+                match res {
+                    Ok(temp_channel_id) => {
+                        let _ = self.persister.persist_channel_peer(&node_connection_string);
+                        Ok(NodeResponse::OpenChannel {
+                            temp_channel_id: hex_utils::hex_str(&temp_channel_id)
+                        })
+                    },
+                    Err(e) => {
+                        Ok(NodeResponse::Error(NodeRequestError::Sensei(format!("Failed to open channel: {:?}", e))))
+                    }
+                }    
             }
             NodeRequest::SendPayment { invoice } => {
                 let invoice = self.get_invoice_from_str(&invoice)?;
