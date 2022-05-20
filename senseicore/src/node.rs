@@ -12,12 +12,13 @@ use crate::chain::database::WalletDatabase;
 use crate::chain::fee_estimator::SenseiFeeEstimator;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::SenseiConfig;
+use crate::database::SenseiDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
-use crate::lib::database::SenseiDatabase;
-use crate::lib::network_graph::OptionalNetworkGraphMsgHandler;
-use crate::lib::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
+use crate::events::SenseiEvent;
+use crate::network_graph::OptionalNetworkGraphMsgHandler;
+use crate::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
 use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
@@ -74,6 +75,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 use std::{convert::From, fmt, fs};
 use tokio::runtime::Handle;
+use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 
 #[derive(Serialize, Debug)]
@@ -400,6 +402,7 @@ pub struct LightningNode {
     pub scorer: Arc<Mutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
     pub stop_listen: Arc<AtomicBool>,
     pub persister: Arc<SenseiPersister>,
+    pub event_sender: broadcast::Sender<SenseiEvent>,
 }
 
 impl LightningNode {
@@ -563,6 +566,7 @@ impl LightningNode {
         network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
         chain_manager: Arc<SenseiChainManager>,
         database: Arc<SenseiDatabase>,
+        event_sender: broadcast::Sender<SenseiEvent>,
     ) -> Result<Self, Error> {
         fs::create_dir_all(data_dir.clone())?;
 
@@ -627,8 +631,10 @@ impl LightningNode {
         });
 
         let broadcaster = Arc::new(SenseiBroadcaster {
+            node_id: id.clone(),
             broadcaster: chain_manager.broadcaster.clone(),
             wallet_database: Arc::new(Mutex::new(wallet_database.clone())),
+            event_sender: event_sender.clone(),
         });
 
         let persistence_store =
@@ -828,6 +834,7 @@ impl LightningNode {
             database: database.clone(),
             tokio_handle: Handle::current(),
             chain_manager: chain_manager.clone(),
+            event_sender: event_sender.clone(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -863,6 +870,7 @@ impl LightningNode {
             invoice_payer,
             stop_listen,
             persister,
+            event_sender,
         })
     }
 

@@ -10,14 +10,15 @@
 use std::sync::Arc;
 
 use crate::http::auth_header::AuthHeader;
-use crate::services::admin::AdminRequest;
-use crate::services::node::{NodeRequest, NodeRequestError, NodeResponse};
-use crate::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
-use crate::{utils, RequestContext};
+use crate::AdminService;
 use axum::extract::{Extension, Json, Query};
 use axum::routing::{get, post};
 use axum::Router;
 use http::{HeaderValue, StatusCode};
+use senseicore::services::admin::AdminRequest;
+use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse};
+use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
+use senseicore::utils;
 use serde::Deserialize;
 use serde_json::Value;
 use tower_cookies::Cookies;
@@ -219,12 +220,12 @@ pub fn add_routes(router: Router) -> Router {
 }
 
 pub async fn get_unused_address(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     handle_authenticated_request(
-        request_context,
+        admin_service,
         NodeRequest::GetUnusedAddress {},
         macaroon,
         cookies,
@@ -233,21 +234,15 @@ pub async fn get_unused_address(
 }
 
 pub async fn get_wallet_balance(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
-    handle_authenticated_request(
-        request_context,
-        NodeRequest::GetBalance {},
-        macaroon,
-        cookies,
-    )
-    .await
+    handle_authenticated_request(admin_service, NodeRequest::GetBalance {}, macaroon, cookies).await
 }
 
 pub async fn handle_get_payments(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Query(params): Query<ListPaymentsParams>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -257,11 +252,11 @@ pub async fn handle_get_payments(
         filter: params.into(),
     };
 
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn get_channels(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Query(params): Query<ListChannelsParams>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -270,11 +265,11 @@ pub async fn get_channels(
         pagination: params.clone().into(),
     };
 
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn get_transactions(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Query(params): Query<ListTransactionsParams>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -283,41 +278,35 @@ pub async fn get_transactions(
         pagination: params.clone().into(),
     };
 
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn get_info(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
-    handle_authenticated_request(request_context, NodeRequest::NodeInfo {}, macaroon, cookies).await
+    handle_authenticated_request(admin_service, NodeRequest::NodeInfo {}, macaroon, cookies).await
 }
 
 pub async fn get_peers(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
-    handle_authenticated_request(
-        request_context,
-        NodeRequest::ListPeers {},
-        macaroon,
-        cookies,
-    )
-    .await
+    handle_authenticated_request(admin_service, NodeRequest::ListPeers {}, macaroon, cookies).await
 }
 
 pub async fn stop_node(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
-    handle_authenticated_request(request_context, NodeRequest::StopNode {}, macaroon, cookies).await
+    handle_authenticated_request(admin_service, NodeRequest::StopNode {}, macaroon, cookies).await
 }
 
 pub async fn handle_authenticated_request(
-    request_context: Arc<RequestContext>,
+    admin_service: Arc<AdminService>,
     request: NodeRequest,
     macaroon: Option<HeaderValue>,
     cookies: Cookies,
@@ -328,7 +317,7 @@ pub async fn handle_authenticated_request(
         .map_err(|_e| StatusCode::UNAUTHORIZED)?;
 
     let pubkey = session.pubkey.clone();
-    let node_directory = request_context.node_directory.lock().await;
+    let node_directory = admin_service.node_directory.lock().await;
     let node = node_directory.get(&session.pubkey);
 
     match node {
@@ -342,8 +331,7 @@ pub async fn handle_authenticated_request(
             match request {
                 NodeRequest::StopNode {} => {
                     let admin_request = AdminRequest::StopNode { pubkey };
-                    let _ = request_context
-                        .admin_service
+                    let _ = admin_service
                         .call(admin_request)
                         .await
                         .map_err(|_e| StatusCode::UNPROCESSABLE_ENTITY)?;
@@ -362,15 +350,14 @@ pub async fn handle_authenticated_request(
                     passphrase,
                     pubkey: session.pubkey,
                 };
-                let _ = request_context
-                    .admin_service
+                let _ = admin_service
                     .call(req)
                     .await
                     .map_err(|_e| StatusCode::UNAUTHORIZED)?;
                 Ok(Json(NodeResponse::StartNode {}))
             }
             _ => {
-                let err = crate::error::Error::Unauthenticated;
+                let err = senseicore::error::Error::Unauthenticated;
                 let node_request_error: NodeRequestError = err.into();
                 Ok(Json(NodeResponse::Error(node_request_error)))
             }
@@ -379,7 +366,7 @@ pub async fn handle_authenticated_request(
 }
 
 pub async fn start_node(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -391,11 +378,11 @@ pub async fn start_node(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn create_invoice(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -407,11 +394,11 @@ pub async fn create_invoice(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn label_payment(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -423,11 +410,11 @@ pub async fn label_payment(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn delete_payment(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -439,11 +426,11 @@ pub async fn delete_payment(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn pay_invoice(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -455,11 +442,11 @@ pub async fn pay_invoice(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn decode_invoice(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -471,11 +458,11 @@ pub async fn decode_invoice(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn open_channel(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -487,11 +474,11 @@ pub async fn open_channel(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn close_channel(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -503,11 +490,11 @@ pub async fn close_channel(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn keysend(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -519,11 +506,11 @@ pub async fn keysend(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn connect_peer(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -535,11 +522,11 @@ pub async fn connect_peer(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn sign_message(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -551,11 +538,11 @@ pub async fn sign_message(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
 pub async fn verify_message(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
@@ -567,5 +554,5 @@ pub async fn verify_message(
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
         }
     }?;
-    handle_authenticated_request(request_context, request, macaroon, cookies).await
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }

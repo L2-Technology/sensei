@@ -20,12 +20,12 @@ use http::{HeaderValue, StatusCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::{
+use senseicore::{
     services::{
-        admin::{AdminRequest, AdminResponse},
+        admin::{AdminRequest, AdminResponse, AdminService},
         PaginationRequest,
     },
-    utils, RequestContext,
+    utils,
 };
 
 use super::{auth_header::AuthHeader, utils::get_macaroon_hex_str_from_cookies_or_header};
@@ -181,15 +181,14 @@ pub fn get_token_from_cookies_or_header(
 }
 
 pub async fn authenticate_request(
-    request_context: &RequestContext,
+    admin_service: &AdminService,
     scope: &str,
     cookies: &Cookies,
     token: Option<HeaderValue>,
 ) -> Result<bool, StatusCode> {
     let token = get_token_from_cookies_or_header(cookies, token)?;
 
-    let access_token = request_context
-        .admin_service
+    let access_token = admin_service
         .database
         .get_access_token_by_token(token)
         .await
@@ -199,8 +198,7 @@ pub async fn authenticate_request(
         Some(access_token) => {
             if access_token.is_valid(Some(scope)) {
                 if access_token.single_use {
-                    request_context
-                        .admin_service
+                    admin_service
                         .database
                         .delete_access_token(access_token.id)
                         .await
@@ -233,16 +231,15 @@ pub fn add_routes(router: Router) -> Router {
 }
 
 pub async fn list_tokens(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
-        authenticate_request(&request_context, "tokens/list", &cookies, token).await?;
+        authenticate_request(&admin_service, "tokens/list", &cookies, token).await?;
     if authenticated {
-        match request_context
-            .admin_service
+        match admin_service
             .call(AdminRequest::ListTokens { pagination })
             .await
         {
@@ -255,13 +252,13 @@ pub async fn list_tokens(
 }
 
 pub async fn create_token(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
-        authenticate_request(&request_context, "tokens/create", &cookies, token).await?;
+        authenticate_request(&admin_service, "tokens/create", &cookies, token).await?;
     let request = {
         let params: Result<CreateTokenParams, _> = serde_json::from_value(payload);
         match params {
@@ -271,7 +268,7 @@ pub async fn create_token(
     }?;
 
     if authenticated {
-        match request_context.admin_service.call(request).await {
+        match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
             Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }
@@ -281,13 +278,13 @@ pub async fn create_token(
 }
 
 pub async fn delete_token(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
-        authenticate_request(&request_context, "tokens/delete", &cookies, token).await?;
+        authenticate_request(&admin_service, "tokens/delete", &cookies, token).await?;
     let request = {
         let params: Result<DeleteTokenParams, _> = serde_json::from_value(payload);
         match params {
@@ -297,7 +294,7 @@ pub async fn delete_token(
     }?;
 
     if authenticated {
-        match request_context.admin_service.call(request).await {
+        match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
             Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }
@@ -307,16 +304,14 @@ pub async fn delete_token(
 }
 
 pub async fn list_nodes(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated =
-        authenticate_request(&request_context, "nodes/list", &cookies, token).await?;
+    let authenticated = authenticate_request(&admin_service, "nodes/list", &cookies, token).await?;
     if authenticated {
-        match request_context
-            .admin_service
+        match admin_service
             .call(AdminRequest::ListNodes { pagination })
             .await
         {
@@ -329,15 +324,14 @@ pub async fn list_nodes(
 }
 
 pub async fn login(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, StatusCode> {
     let params: LoginNodeParams =
         serde_json::from_value(payload).map_err(|_e| StatusCode::UNPROCESSABLE_ENTITY)?;
 
-    let node = request_context
-        .admin_service
+    let node = admin_service
         .database
         .get_node_by_username(&params.username)
         .await
@@ -355,7 +349,7 @@ pub async fn login(
                 },
             };
 
-            match request_context.admin_service.call(request).await {
+            match admin_service.call(request).await {
                 Ok(response) => match response {
                     AdminResponse::StartNode { macaroon } => {
                         let macaroon_cookie = Cookie::build("macaroon", macaroon.clone())
@@ -403,7 +397,7 @@ pub async fn logout(cookies: Cookies) -> Result<Json<Value>, StatusCode> {
 }
 
 pub async fn init_sensei(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
 ) -> Result<Json<AdminResponse>, StatusCode> {
@@ -413,7 +407,7 @@ pub async fn init_sensei(
         Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
     }?;
 
-    match request_context.admin_service.call(request).await {
+    match admin_service.call(request).await {
         Ok(response) => match response {
             AdminResponse::CreateAdmin {
                 pubkey,
@@ -451,7 +445,7 @@ pub async fn init_sensei(
 // 2) is the node specified in my macaroon running?
 // 3) is my macaroon valid?
 pub async fn get_status(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     AuthHeader { macaroon, token: _ }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
@@ -465,18 +459,14 @@ pub async fn get_status(
         }
     };
 
-    match request_context
-        .admin_service
-        .call(AdminRequest::GetStatus { pubkey })
-        .await
-    {
+    match admin_service.call(AdminRequest::GetStatus { pubkey }).await {
         Ok(response) => Ok(Json(response)),
         Err(err) => Ok(Json(AdminResponse::Error(err))),
     }
 }
 
 pub async fn start_sensei(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
 ) -> Result<Json<AdminResponse>, StatusCode> {
@@ -488,8 +478,7 @@ pub async fn start_sensei(
 
     match request {
         AdminRequest::StartAdmin { passphrase } => {
-            match request_context
-                .admin_service
+            match admin_service
                 .call(AdminRequest::StartAdmin { passphrase })
                 .await
             {
@@ -525,13 +514,13 @@ pub async fn start_sensei(
 }
 
 pub async fn create_node(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
-        authenticate_request(&request_context, "nodes/create", &cookies, token).await?;
+        authenticate_request(&admin_service, "nodes/create", &cookies, token).await?;
     let request = {
         let params: Result<CreateNodeParams, _> = serde_json::from_value(payload);
         match params {
@@ -541,7 +530,7 @@ pub async fn create_node(
     }?;
 
     if authenticated {
-        match request_context.admin_service.call(request).await {
+        match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
             Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }
@@ -551,13 +540,13 @@ pub async fn create_node(
 }
 
 pub async fn start_node(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
-        authenticate_request(&request_context, "nodes/start", &cookies, token).await?;
+        authenticate_request(&admin_service, "nodes/start", &cookies, token).await?;
     let request = {
         let params: Result<StartNodeParams, _> = serde_json::from_value(payload);
         match params {
@@ -567,7 +556,7 @@ pub async fn start_node(
     }?;
 
     if authenticated {
-        match request_context.admin_service.call(request).await {
+        match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
             Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }
@@ -577,13 +566,12 @@ pub async fn start_node(
 }
 
 pub async fn stop_node(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
-    let authenticated =
-        authenticate_request(&request_context, "nodes/stop", &cookies, token).await?;
+    let authenticated = authenticate_request(&admin_service, "nodes/stop", &cookies, token).await?;
     let request = {
         let params: Result<StopNodeParams, _> = serde_json::from_value(payload);
         match params {
@@ -593,7 +581,7 @@ pub async fn stop_node(
     }?;
 
     if authenticated {
-        match request_context.admin_service.call(request).await {
+        match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
             Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }
@@ -603,13 +591,13 @@ pub async fn stop_node(
 }
 
 pub async fn delete_node(
-    Extension(request_context): Extension<Arc<RequestContext>>,
+    Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
 ) -> Result<Json<AdminResponse>, StatusCode> {
     let authenticated =
-        authenticate_request(&request_context, "nodes/delete", &cookies, token).await?;
+        authenticate_request(&admin_service, "nodes/delete", &cookies, token).await?;
     let request = {
         let params: Result<DeleteNodeParams, _> = serde_json::from_value(payload);
         match params {
@@ -619,7 +607,7 @@ pub async fn delete_node(
     }?;
 
     if authenticated {
-        match request_context.admin_service.call(request).await {
+        match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
             Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }

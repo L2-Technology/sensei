@@ -7,7 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-mod hex_utils;
+use senseicore::hex_utils;
 use std::{
     fs::File,
     io::{self, Read},

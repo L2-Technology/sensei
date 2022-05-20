@@ -296,6 +296,18 @@ impl SenseiDatabase {
         }
     }
 
+    pub fn list_payments_sync(
+        &self,
+        node_id: String,
+        pagination: PaginationRequest,
+        filter: PaymentsFilter,
+    ) -> Result<(Vec<payment::Model>, PaginationResponse), Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.list_payments(node_id, pagination, filter).await })
+        })
+    }
+
     pub async fn list_payments(
         &self,
         node_id: String,

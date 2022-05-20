@@ -7,27 +7,24 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-mod chain;
-mod config;
-mod disk;
-mod error;
-mod event_handler;
 mod grpc;
-mod hex_utils;
 mod http;
 mod hybrid;
-mod lib;
-mod node;
-mod services;
-mod utils;
-mod version;
 
-use crate::chain::bitcoind_client::BitcoindClient;
+use senseicore::{
+    chain::{bitcoind_client::BitcoindClient, manager::SenseiChainManager},
+    config::SenseiConfig,
+    database::SenseiDatabase,
+    events::SenseiEvent,
+    services::admin::{AdminRequest, AdminResponse, AdminService},
+};
+
+use entity::sea_orm::{self, ConnectOptions};
+use migration::{Migrator, MigratorTrait};
+use sea_orm::Database;
+
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
-use crate::lib::database::SenseiDatabase;
-use crate::{chain::manager::SenseiChainManager, config::SenseiConfig};
-use entity::sea_orm;
 
 use ::http::{
     header::{self, ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
@@ -42,40 +39,23 @@ use axum::{
     AddExtensionLayer, Router,
 };
 use clap::Parser;
-use migration::{Migrator, MigratorTrait};
-use rust_embed::RustEmbed;
-use sea_orm::Database;
 
-use std::net::SocketAddr;
-use tower_cookies::CookieManagerLayer;
+use rust_embed::RustEmbed;
 
 use grpc::admin::{AdminServer, AdminService as GrpcAdminService};
 use grpc::node::{NodeServer, NodeService as GrpcNodeService};
-use lightning_background_processor::BackgroundProcessor;
-use node::LightningNode;
-use services::admin::{AdminRequest, AdminResponse, AdminService};
-use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::time::Duration;
+use tower_cookies::CookieManagerLayer;
+
 use std::fs;
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use tonic::transport::Server;
 use tower_http::cors::{CorsLayer, Origin};
 
+use tokio::runtime::Builder;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc::Sender;
-
-pub struct NodeHandle {
-    pub node: Arc<LightningNode>,
-    pub background_processor: BackgroundProcessor,
-    pub handles: Vec<JoinHandle<()>>,
-}
-
-pub type NodeDirectory = Arc<Mutex<HashMap<String, NodeHandle>>>;
-
-pub struct RequestContext {
-    pub node_directory: NodeDirectory,
-    pub admin_service: AdminService,
-}
 
 /// Sensei daemon
 #[derive(Parser, Debug)]
@@ -107,9 +87,7 @@ struct SenseiArgs {
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
-
-#[tokio::main]
-async fn main() {
+fn main() {
     env_logger::init();
     macaroon::initialize().expect("failed to initialize macaroons");
     let args = SenseiArgs::parse();
@@ -168,117 +146,136 @@ async fn main() {
         config.database_url = format!("sqlite://{}?mode=rwc", sqlite_path);
     }
 
-    let db_connection = Database::connect(config.database_url.clone())
-        .await
+    let persistence_runtime = Builder::new_multi_thread()
+        .worker_threads(4)
+        .thread_name("persistence")
+        .enable_all()
+        .build()
         .unwrap();
-    Migrator::up(&db_connection, None)
-        .await
-        .expect("failed to run migrations");
+    let persistence_runtime_handle = persistence_runtime.handle().clone();
 
-    let database = SenseiDatabase::new(db_connection, tokio::runtime::Handle::current());
-    database.mark_all_nodes_stopped().await.unwrap();
+    let sensei_runtime = Builder::new_multi_thread()
+        .worker_threads(10)
+        .thread_name("sensei")
+        .enable_all()
+        .build()
+        .unwrap();
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
-    let node_directory = Arc::new(Mutex::new(HashMap::new()));
+    sensei_runtime.block_on(async move {
+        let (event_sender, _event_receiver): (
+            broadcast::Sender<SenseiEvent>,
+            broadcast::Receiver<SenseiEvent>,
+        ) = broadcast::channel(256);
 
-    let bitcoind_client = Arc::new(
-        BitcoindClient::new(
-            config.bitcoind_rpc_host.clone(),
-            config.bitcoind_rpc_port,
-            config.bitcoind_rpc_username.clone(),
-            config.bitcoind_rpc_password.clone(),
-            tokio::runtime::Handle::current(),
-        )
-        .await
-        .expect("invalid bitcoind rpc config"),
-    );
+        let mut db_connection_options = ConnectOptions::new(config.database_url.clone());
+        db_connection_options
+            .max_connections(50)
+            .min_connections(5)
+            .connect_timeout(Duration::new(30, 0));
+        let db_connection = Database::connect(db_connection_options).await.unwrap();
+        Migrator::up(&db_connection, None)
+            .await
+            .expect("failed to run migrations");
 
-    let chain_manager = Arc::new(
-        SenseiChainManager::new(
-            config.clone(),
-            bitcoind_client.clone(),
-            bitcoind_client.clone(),
-            bitcoind_client,
-        )
-        .await
-        .unwrap(),
-    );
+        let database = SenseiDatabase::new(db_connection, persistence_runtime_handle);
+        database.mark_all_nodes_stopped().await.unwrap();
 
-    let admin_service = AdminService::new(
-        &sensei_dir,
-        config.clone(),
-        node_directory.clone(),
-        database,
-        chain_manager,
-    )
-    .await;
+        let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
 
-    // TODO: this seems odd too, maybe just pass around the 'admin service'
-    //       and the servers will use it to get the node from the directory
-    let request_context = Arc::new(RequestContext {
-        node_directory: node_directory.clone(),
-        admin_service,
+        let bitcoind_client = Arc::new(
+            BitcoindClient::new(
+                config.bitcoind_rpc_host.clone(),
+                config.bitcoind_rpc_port,
+                config.bitcoind_rpc_username.clone(),
+                config.bitcoind_rpc_password.clone(),
+                tokio::runtime::Handle::current(),
+            )
+            .await
+            .expect("invalid bitcoind rpc config"),
+        );
+
+        let chain_manager = Arc::new(
+            SenseiChainManager::new(
+                config.clone(),
+                bitcoind_client.clone(),
+                bitcoind_client.clone(),
+                bitcoind_client,
+            )
+            .await
+            .unwrap(),
+        );
+
+        let admin_service = Arc::new(
+            AdminService::new(
+                &sensei_dir,
+                config.clone(),
+                database,
+                chain_manager,
+                event_sender,
+            )
+            .await,
+        );
+
+        let router = Router::new()
+            .route("/admin/*path", static_handler.into_service())
+            .fallback(get(not_found));
+
+        let router = add_admin_routes(router);
+        let router = add_node_routes(router);
+
+        let router = match args.development_mode {
+            Some(_development_mode) => router.layer(
+                CorsLayer::new()
+                    .allow_headers(vec![AUTHORIZATION, ACCEPT, COOKIE, CONTENT_TYPE])
+                    .allow_credentials(true)
+                    .allow_origin(Origin::list(vec![
+                        "http://localhost:3001".parse().unwrap(),
+                        "http://localhost:5401".parse().unwrap(),
+                    ]))
+                    .allow_methods(vec![
+                        Method::GET,
+                        Method::POST,
+                        Method::OPTIONS,
+                        Method::DELETE,
+                        Method::PUT,
+                        Method::PATCH,
+                    ]),
+            ),
+            None => router,
+        };
+
+        let port = match args.development_mode {
+            Some(_) => String::from("3001"),
+            None => format!("{}", config.api_port),
+        };
+
+        let http_service = router
+            .layer(CookieManagerLayer::new())
+            .layer(AddExtensionLayer::new(admin_service.clone()))
+            .into_make_service();
+
+        let grpc_service = Server::builder()
+            .add_service(NodeServer::new(GrpcNodeService {
+                admin_service: admin_service.clone(),
+            }))
+            .add_service(AdminServer::new(GrpcAdminService {
+                admin_service: admin_service.clone(),
+            }))
+            .into_service();
+
+        let hybrid_service = hybrid::hybrid(http_service, grpc_service);
+
+        let server = hyper::Server::bind(&addr).serve(hybrid_service);
+
+        println!(
+            "manage your sensei node at http://localhost:{}/admin/nodes",
+            port
+        );
+
+        if let Err(e) = server.await {
+            eprintln!("server error: {}", e);
+        }
     });
-
-    let router = Router::new()
-        .route("/admin/*path", static_handler.into_service())
-        .fallback(get(not_found));
-
-    let router = add_admin_routes(router);
-    let router = add_node_routes(router);
-
-    let router = match args.development_mode {
-        Some(_development_mode) => router.layer(
-            CorsLayer::new()
-                .allow_headers(vec![AUTHORIZATION, ACCEPT, COOKIE, CONTENT_TYPE])
-                .allow_credentials(true)
-                .allow_origin(Origin::list(vec![
-                    "http://localhost:3001".parse().unwrap(),
-                    "http://localhost:5401".parse().unwrap(),
-                ]))
-                .allow_methods(vec![
-                    Method::GET,
-                    Method::POST,
-                    Method::OPTIONS,
-                    Method::DELETE,
-                    Method::PUT,
-                    Method::PATCH,
-                ]),
-        ),
-        None => router,
-    };
-
-    let port = match args.development_mode {
-        Some(_) => String::from("3001"),
-        None => format!("{}", config.api_port),
-    };
-
-    let http_service = router
-        .layer(CookieManagerLayer::new())
-        .layer(AddExtensionLayer::new(request_context.clone()))
-        .into_make_service();
-
-    let grpc_service = Server::builder()
-        .add_service(NodeServer::new(GrpcNodeService {
-            request_context: request_context.clone(),
-        }))
-        .add_service(AdminServer::new(GrpcAdminService {
-            request_context: request_context.clone(),
-        }))
-        .into_service();
-
-    let hybrid_service = hybrid::hybrid(http_service, grpc_service);
-
-    let server = hyper::Server::bind(&addr).serve(hybrid_service);
-
-    println!(
-        "manage your sensei node at http://localhost:{}/admin/nodes",
-        port
-    );
-
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
-    }
 }
 
 // We use a wildcard matcher ("/static/*file") to match against everything

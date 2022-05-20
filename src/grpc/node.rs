@@ -27,7 +27,7 @@ use super::{
     utils::raw_macaroon_from_metadata,
 };
 
-use crate::{
+use senseicore::{
     services::{
         admin::AdminRequest,
         node::{NodeRequest, NodeResponse},
@@ -37,7 +37,7 @@ use crate::{
 use tonic::{metadata::MetadataMap, Response, Status};
 
 pub struct NodeService {
-    pub request_context: Arc<crate::RequestContext>,
+    pub admin_service: Arc<senseicore::services::admin::AdminService>,
 }
 impl NodeService {
     async fn authenticated_request(
@@ -52,7 +52,7 @@ impl NodeService {
                 .map_err(|_e| tonic::Status::unauthenticated("invalid macaroon"))?;
         let pubkey = session.pubkey.clone();
 
-        let node_directory = self.request_context.node_directory.lock().await;
+        let node_directory = self.admin_service.node_directory.lock().await;
 
         match node_directory.get(&session.pubkey) {
             Some(handle) => {
@@ -67,7 +67,6 @@ impl NodeService {
                         drop(node_directory);
                         let admin_request = AdminRequest::StopNode { pubkey };
                         let _ = self
-                            .request_context
                             .admin_service
                             .call(admin_request)
                             .await
@@ -88,16 +87,9 @@ impl NodeService {
                         passphrase,
                         pubkey: session.pubkey,
                     };
-                    let _ = self
-                        .request_context
-                        .admin_service
-                        .call(admin_request)
-                        .await
-                        .map_err(|_e| {
-                            Status::unauthenticated(
-                                "failed to start node, likely invalid passphrase",
-                            )
-                        })?;
+                    let _ = self.admin_service.call(admin_request).await.map_err(|_e| {
+                        Status::unauthenticated("failed to start node, likely invalid passphrase")
+                    })?;
                     Ok(NodeResponse::StartNode {})
                 }
                 _ => Err(Status::not_found("node with that pubkey not found")),

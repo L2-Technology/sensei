@@ -10,8 +10,9 @@
 use crate::chain::database::WalletDatabase;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::SenseiConfig;
+use crate::database::SenseiDatabase;
+use crate::events::SenseiEvent;
 use crate::hex_utils;
-use crate::lib::database::SenseiDatabase;
 use crate::node::{ChannelManager, HTLCStatus, PaymentOrigin};
 
 use bdk::wallet::AddressIndex;
@@ -27,6 +28,7 @@ use rand::{thread_rng, Rng};
 use std::sync::Mutex;
 use std::{sync::Arc, time::Duration};
 use tokio::runtime::Handle;
+use tokio::sync::broadcast;
 
 pub struct LightningNodeEventHandler {
     pub node_id: String,
@@ -37,6 +39,7 @@ pub struct LightningNodeEventHandler {
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,
+    pub event_sender: broadcast::Sender<SenseiEvent>,
 }
 
 impl EventHandler for LightningNodeEventHandler {
@@ -319,5 +322,9 @@ impl EventHandler for LightningNodeEventHandler {
                 // the funding transaction either confirms, or this event is generated.
             }
         }
+
+        self.event_sender
+            .send(SenseiEvent::Ldk(Box::new(event.clone())))
+            .unwrap_or_default();
     }
 }

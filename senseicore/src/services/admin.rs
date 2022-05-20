@@ -9,20 +9,30 @@
 
 use super::{PaginationRequest, PaginationResponse};
 use crate::chain::manager::SenseiChainManager;
+use crate::database::SenseiDatabase;
 use crate::error::Error as SenseiError;
-use crate::lib::database::SenseiDatabase;
-use crate::{
-    config::SenseiConfig, hex_utils, node::LightningNode, version, NodeDirectory, NodeHandle,
-};
+use crate::events::SenseiEvent;
+use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
 
 use entity::access_token;
 use entity::node;
 use entity::sea_orm::{ActiveModelTrait, ActiveValue};
+use lightning_background_processor::BackgroundProcessor;
 use macaroon::Macaroon;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
+use tokio::sync::{broadcast, Mutex};
+use tokio::task::JoinHandle;
 use uuid::Uuid;
+
+pub struct NodeHandle {
+    pub node: Arc<LightningNode>,
+    pub background_processor: BackgroundProcessor,
+    pub handles: Vec<JoinHandle<()>>,
+}
+
 pub enum AdminRequest {
     GetStatus {
         pubkey: String,
@@ -121,6 +131,8 @@ pub enum AdminResponse {
     Error(Error),
 }
 
+pub type NodeDirectory = Arc<Mutex<HashMap<String, NodeHandle>>>;
+
 #[derive(Clone)]
 pub struct AdminService {
     pub data_dir: String,
@@ -128,22 +140,24 @@ pub struct AdminService {
     pub node_directory: NodeDirectory,
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
+    pub event_sender: broadcast::Sender<SenseiEvent>,
 }
 
 impl AdminService {
     pub async fn new(
         data_dir: &str,
         config: SenseiConfig,
-        node_directory: NodeDirectory,
         database: SenseiDatabase,
         chain_manager: Arc<SenseiChainManager>,
+        event_sender: broadcast::Sender<SenseiEvent>,
     ) -> Self {
         Self {
             data_dir: String::from(data_dir),
             config: Arc::new(config),
-            node_directory,
+            node_directory: Arc::new(Mutex::new(HashMap::new())),
             database: Arc::new(database),
             chain_manager,
+            event_sender,
         }
     }
 }
@@ -364,14 +378,6 @@ impl AdminService {
         }
     }
 
-    pub async fn get_node_details(
-        &self,
-        pubkey: String,
-    ) -> Result<Option<node::Model>, crate::error::Error> {
-        let node = self.database.get_node_by_pubkey(&pubkey).await?;
-        Ok(node)
-    }
-
     async fn list_tokens(
         &self,
         pagination: PaginationRequest,
@@ -498,6 +504,7 @@ impl AdminService {
                     network_graph_msg_handler,
                     self.chain_manager.clone(),
                     self.database.clone(),
+                    self.event_sender.clone(),
                 )
                 .await?;
 
