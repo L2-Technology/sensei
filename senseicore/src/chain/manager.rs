@@ -19,6 +19,7 @@ use lightning_block_sync::SpvClient;
 use lightning_block_sync::{init, poll, UnboundedCache};
 use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use std::ops::Deref;
+use tokio::{sync::Mutex, task::JoinHandle};
 
 use super::{database::WalletDatabase, listener::SenseiChainListener};
 
@@ -29,6 +30,8 @@ pub struct SenseiChainManager {
     pub fee_estimator: Arc<dyn FeeEstimator + Send + Sync>,
     pub broadcaster: Arc<dyn BroadcasterInterface + Send + Sync>,
     poller_paused: Arc<AtomicBool>,
+    poller_running: Arc<AtomicBool>,
+    poller_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl SenseiChainManager {
@@ -42,8 +45,10 @@ impl SenseiChainManager {
         let block_source_poller = block_source.clone();
         let listener_poller = listener.clone();
         let poller_paused = Arc::new(AtomicBool::new(false));
+        let poller_running = Arc::new(AtomicBool::new(true));
         let poller_paused_poller = poller_paused.clone();
-        tokio::spawn(async move {
+        let poller_running_poller = poller_running.clone();
+        let poller_handle = tokio::spawn(async move {
             let mut cache = UnboundedCache::new();
             let chain_tip = init::validate_best_block_header(block_source_poller.clone())
                 .await
@@ -51,7 +56,7 @@ impl SenseiChainManager {
             let chain_poller = poll::ChainPoller::new(block_source_poller, config.network);
             let mut spv_client =
                 SpvClient::new(chain_tip, chain_poller, &mut cache, listener_poller);
-            loop {
+            while poller_running_poller.load(Ordering::Relaxed) {
                 if !poller_paused_poller.load(Ordering::Relaxed) {
                     let _tip = spv_client.poll_best_tip().await.unwrap();
                 }
@@ -63,10 +68,19 @@ impl SenseiChainManager {
             config,
             listener,
             poller_paused,
+            poller_running,
             block_source,
             fee_estimator,
             broadcaster,
+            poller_handle: Mutex::new(Some(poller_handle)),
         })
+    }
+
+    pub async fn stop(&self) {
+        self.poller_running.store(false, Ordering::Relaxed);
+        let handle = self.poller_handle.lock().await.take().unwrap();
+        handle.abort();
+        handle.await.unwrap_or_default();
     }
 
     pub async fn synchronize_to_tip(

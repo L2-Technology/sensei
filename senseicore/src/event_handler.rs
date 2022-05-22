@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::database::WalletDatabase;
 use crate::chain::manager::SenseiChainManager;
 use crate::config::SenseiConfig;
@@ -20,6 +21,7 @@ use bdk::{FeeRate, SignOptions};
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use entity::sea_orm::ActiveValue;
+use lightning::chain::chaininterface::BroadcasterInterface;
 use lightning::{
     chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
     util::events::{Event, EventHandler, PaymentPurpose},
@@ -40,6 +42,7 @@ pub struct LightningNodeEventHandler {
     pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,
     pub event_sender: broadcast::Sender<SenseiEvent>,
+    pub broadcaster: Arc<SenseiBroadcaster>,
 }
 
 impl EventHandler for LightningNodeEventHandler {
@@ -73,13 +76,18 @@ impl EventHandler for LightningNodeEventHandler {
                 let wallet = self.wallet.lock().unwrap();
 
                 let mut tx_builder = wallet.build_tx();
-                let _fee_sats_per_1000_wu = self
+                let fee_sats_per_1000_wu = self
                     .chain_manager
                     .fee_estimator
                     .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 
                 // TODO: is this the correct conversion??
-                let fee_rate = FeeRate::from_sat_per_vb(2.0);
+                let sat_per_vb = match fee_sats_per_1000_wu {
+                    253 => 1.0,
+                    _ => fee_sats_per_1000_wu as f32 / 250.0,
+                } as f32;
+
+                let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
 
                 tx_builder
                     .add_recipient(output_script.clone(), *channel_value_satoshis)
@@ -302,9 +310,7 @@ impl EventHandler for LightningNodeEventHandler {
                     )
                     .unwrap();
 
-                self.chain_manager
-                    .broadcaster
-                    .broadcast_transaction(&spending_tx);
+                self.broadcaster.broadcast_transaction(&spending_tx);
             }
             Event::ChannelClosed {
                 channel_id,

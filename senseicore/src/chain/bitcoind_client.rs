@@ -119,8 +119,8 @@ impl BitcoindClient {
             })?;
         let mut fees: HashMap<Target, AtomicU32> = HashMap::new();
         fees.insert(Target::Background, AtomicU32::new(MIN_FEERATE));
-        fees.insert(Target::Normal, AtomicU32::new(2000));
-        fees.insert(Target::HighPriority, AtomicU32::new(5000));
+        fees.insert(Target::Normal, AtomicU32::new(2000)); // 8 sats per byte
+        fees.insert(Target::HighPriority, AtomicU32::new(5000)); // 20 sats per byte
         let client = Self {
             bitcoind_rpc_client: Arc::new(Mutex::new(bitcoind_rpc_client)),
             fees: Arc::new(fees),

@@ -204,7 +204,7 @@ impl TryFrom<NodeResponse> for OpenChannelResponse {
 
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
-            NodeResponse::OpenChannel {} => Ok(Self {}),
+            NodeResponse::OpenChannel { temp_channel_id } => Ok(Self { temp_channel_id }),
             _ => Err("impossible".to_string()),
         }
     }

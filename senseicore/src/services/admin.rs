@@ -554,4 +554,19 @@ impl AdminService {
 
         Ok(())
     }
+
+    pub async fn stop(&self) -> Result<(), crate::error::Error> {
+        let pubkeys = {
+            let node_directory = self.node_directory.lock().await;
+            node_directory.keys().cloned().collect::<Vec<String>>()
+        };
+
+        for pubkey in pubkeys.into_iter() {
+            self.stop_node(pubkey).await.unwrap();
+        }
+
+        self.chain_manager.stop().await;
+
+        Ok(())
+    }
 }

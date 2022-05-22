@@ -187,7 +187,9 @@ pub enum NodeResponse {
     GetBalance {
         balance_satoshis: u64,
     },
-    OpenChannel {},
+    OpenChannel {
+        temp_channel_id: String,
+    },
     SendPayment {},
     DecodeInvoice {
         invoice: LocalInvoice,
