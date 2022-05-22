@@ -2,8 +2,11 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
-    types: [opened]
+    branches:
+      - '*'
 
 jobs:
   rustfmt:
@@ -36,6 +39,45 @@ jobs:
           name: build-web-admin-artifact-${{ github.sha }}
           path: web-admin/build
           retention-days: 1
+
+  integration:
+    needs: build-web-admin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: build-web-admin-artifact-${{ github.sha }}
+          path: web-admin/build
+
+      - name: Bitcoin
+        id: bitcoin
+        uses: actions/cache@v3
+        with:
+          path: bitcoin-23.0
+          key: ${{ runner.os }}-bitcoin
+
+      - name: Download Bitcoin
+        if: steps.bitcoin.outputs.cache-hit != 'true'
+        run: |
+          wget https://bitcoincore.org/bin/bitcoin-core-23.0/bitcoin-23.0-x86_64-linux-gnu.tar.gz
+          tar xzf bitcoin-23.0-x86_64-linux-gnu.tar.gz
+
+      - run: |
+          export PATH=$PATH:`pwd`/bitcoin-23.0/bin
+          pip3 install -r system-tests/requirements.txt
+          ./system-tests/compile-proto
+          cargo build
+          ./system-tests/system-test.py
 
   clippy:
     needs: build-web-admin

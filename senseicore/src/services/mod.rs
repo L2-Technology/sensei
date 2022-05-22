@@ -38,7 +38,7 @@ pub struct PaginationRequest {
 impl Default for PaginationRequest {
     fn default() -> Self {
         Self {
-            page: 1,
+            page: 0,
             take: 10,
             query: None,
         }
