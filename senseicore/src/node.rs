@@ -835,6 +835,7 @@ impl LightningNode {
             tokio_handle: Handle::current(),
             chain_manager: chain_manager.clone(),
             event_sender: event_sender.clone(),
+            broadcaster: broadcaster.clone(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -1473,13 +1474,14 @@ impl LightningNode {
                     Ok(temp_channel_id) => {
                         let _ = self.persister.persist_channel_peer(&node_connection_string);
                         Ok(NodeResponse::OpenChannel {
-                            temp_channel_id: hex_utils::hex_str(&temp_channel_id)
+                            temp_channel_id: hex_utils::hex_str(&temp_channel_id),
                         })
-                    },
-                    Err(e) => {
-                        Ok(NodeResponse::Error(NodeRequestError::Sensei(format!("Failed to open channel: {:?}", e))))
                     }
-                }    
+                    Err(e) => Ok(NodeResponse::Error(NodeRequestError::Sensei(format!(
+                        "Failed to open channel: {:?}",
+                        e
+                    )))),
+                }
             }
             NodeRequest::SendPayment { invoice } => {
                 let invoice = self.get_invoice_from_str(&invoice)?;

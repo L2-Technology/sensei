@@ -188,7 +188,7 @@ pub enum NodeResponse {
         balance_satoshis: u64,
     },
     OpenChannel {
-        temp_channel_id: String
+        temp_channel_id: String,
     },
     SendPayment {},
     DecodeInvoice {

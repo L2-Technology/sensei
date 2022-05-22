@@ -8,6 +8,7 @@ mod test {
     use migration::{Migrator, MigratorTrait};
     use senseicore::events::SenseiEvent;
     use senseicore::node::{HTLCStatus, LightningNode};
+    use senseicore::services::node::Channel;
     use senseicore::services::{PaginationRequest, PaymentsFilter};
     use std::{str::FromStr, sync::Arc, time::Duration};
     use tokio::runtime::{Builder, Handle};
@@ -173,12 +174,121 @@ mod test {
         return false;
     }
 
+    async fn close_channel(
+        bitcoind: &BitcoinD,
+        from: Arc<LightningNode>,
+        to: Arc<LightningNode>,
+        channel: Channel,
+        force: bool,
+    ) {
+        let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
+        let mut event_receiver = from.event_sender.subscribe();
+
+        from.call(NodeRequest::CloseChannel {
+            channel_id: channel.channel_id.clone(),
+            force,
+        })
+        .await
+        .unwrap();
+
+        let close_node_id = from.id.clone();
+        let filter = move |event| {
+            if let SenseiEvent::TransactionBroadcast { node_id, .. } = event {
+                if *node_id == close_node_id {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        let event = wait_for_event(&mut event_receiver, filter.clone(), 15000, 250).await;
+        assert!(event.is_some());
+
+        let blocks_needed = match force {
+            true => 144,
+            false => 20,
+        };
+
+        let mut from_event_receiver = from.event_sender.subscribe();
+        let mut to_event_receiver = to.event_sender.subscribe();
+
+        bitcoind
+            .client
+            .generate_to_address(blocks_needed, &miner_address)
+            .unwrap();
+
+        let from_channel = from.clone();
+        let to_channel = to.clone();
+        let channel_is_gone = move || {
+            let from_channels = from_channel
+                .list_channels(PaginationRequest {
+                    page: 0,
+                    take: 10,
+                    query: Some(channel.channel_id.clone()),
+                })
+                .unwrap()
+                .0;
+
+            let to_channels = to_channel
+                .list_channels(PaginationRequest {
+                    page: 0,
+                    take: 10,
+                    query: Some(channel.channel_id.clone()),
+                })
+                .unwrap()
+                .0;
+            from_channels.len() == 0 && to_channels.len() == 0
+        };
+
+        assert!(wait_until(Box::new(channel_is_gone), 15000, 250).await);
+
+        let from_sweep_node_id = from.id.clone();
+        let from_sweep_filter = move |event| {
+            if let SenseiEvent::TransactionBroadcast { node_id, .. } = event {
+                if *node_id == from_sweep_node_id {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        let to_sweep_node_id = to.id.clone();
+        let to_sweep_filter = move |event| {
+            if let SenseiEvent::TransactionBroadcast { node_id, .. } = event {
+                if *node_id == to_sweep_node_id {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // wait for sweep txs
+        let event = wait_for_event(&mut from_event_receiver, from_sweep_filter, 120000, 250).await;
+        assert!(event.is_some());
+
+        let event = wait_for_event(&mut to_event_receiver, to_sweep_filter, 120000, 250).await;
+        assert!(event.is_some());
+
+        bitcoind
+            .client
+            .generate_to_address(20, &miner_address)
+            .unwrap();
+    }
+
+    async fn get_balance(node: Arc<LightningNode>) -> u64 {
+        match node.call(NodeRequest::GetBalance {}).await.unwrap() {
+            NodeResponse::GetBalance { balance_satoshis } => Some(balance_satoshis),
+            _ => None,
+        }
+        .unwrap()
+    }
+
     async fn open_channel(
         bitcoind: &BitcoinD,
         from: Arc<LightningNode>,
         to: Arc<LightningNode>,
         amt_sat: u64,
-    ) {
+    ) -> Channel {
         let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
         let node_connection_string = format!(
             "{}@{}:{}",
@@ -210,6 +320,12 @@ mod test {
         let event = wait_for_event(&mut event_receiver, filter, 15000, 250).await;
         assert!(event.is_some());
 
+        let funding_txid = match event.unwrap() {
+            SenseiEvent::TransactionBroadcast { txid, .. } => Some(txid),
+            _ => None,
+        }
+        .unwrap();
+
         bitcoind
             .client
             .generate_to_address(10, &miner_address)
@@ -228,6 +344,15 @@ mod test {
         };
 
         assert!(wait_until(Box::new(has_usable_channel), 15000, 250).await);
+
+        from.list_channels(PaginationRequest {
+            page: 0,
+            take: 1,
+            query: Some(funding_txid.to_string()),
+        })
+        .unwrap()
+        .0[0]
+            .clone()
     }
 
     async fn create_invoice(node: Arc<LightningNode>, amt_sat: u64) -> String {
@@ -264,6 +389,10 @@ mod test {
         node.call(NodeRequest::SendPayment { invoice })
             .await
             .unwrap();
+    }
+
+    fn within_range(actual: f64, expected: f64, pct_err: f64) -> bool {
+        (actual - expected).abs() < expected * pct_err
     }
 
     fn setup_bitcoind() -> BitcoinD {
@@ -303,7 +432,7 @@ mod test {
         bitcoind: &BitcoinD,
         persistence_handle: Handle,
     ) -> AdminService {
-        let (event_sender, mut event_receiver): (
+        let (event_sender, event_receiver): (
             broadcast::Sender<SenseiEvent>,
             broadcast::Receiver<SenseiEvent>,
         ) = broadcast::channel(256);
@@ -379,7 +508,9 @@ mod test {
                 let bitcoind = setup_bitcoind();
                 let admin_service =
                     setup_sensei(&sensei_dir, &bitcoind, persistence_runtime_handle).await;
-                test(bitcoind, admin_service).await
+                let output = test(bitcoind, admin_service.clone()).await;
+                admin_service.stop().await.unwrap();
+                output
             })
     }
 
@@ -389,12 +520,14 @@ mod test {
         let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
         fund_node(&bitcoind, alice.clone()).await;
         fund_node(&bitcoind, bob.clone()).await;
-        open_channel(&bitcoind, alice.clone(), bob.clone(), 1_000_000).await;
-        open_channel(&bitcoind, bob.clone(), charlie.clone(), 1_000_000).await;
+        let alice_bob_channel =
+            open_channel(&bitcoind, alice.clone(), bob.clone(), 1_000_000).await;
+        let bob_charlie_channel =
+            open_channel(&bitcoind, bob.clone(), charlie.clone(), 1_000_000).await;
 
         let num_invoices = 25;
-
-        let invoices = batch_create_invoices(charlie.clone(), 10, num_invoices).await;
+        let invoice_amt = 3500;
+        let invoices = batch_create_invoices(charlie.clone(), invoice_amt, num_invoices).await;
 
         future::try_join_all(
             invoices
@@ -405,7 +538,7 @@ mod test {
         .await
         .unwrap();
 
-        let charlie_test = charlie.clone();
+        let alice_test = alice.clone();
         let has_payments = move || {
             let pagination = PaginationRequest {
                 page: 0,
@@ -416,16 +549,76 @@ mod test {
                 status: Some(HTLCStatus::Succeeded.to_string()),
                 origin: None,
             };
-            let (_payments, pagination) = charlie_test
+            let (_payments, pagination) = alice_test
                 .database
-                .list_payments_sync(charlie_test.id.clone(), pagination, filter)
+                .list_payments_sync(alice_test.id.clone(), pagination, filter)
                 .unwrap();
             pagination.total == num_invoices as u64
         };
 
         assert!(wait_until(has_payments, 60000, 500).await);
 
+        close_channel(
+            &bitcoind,
+            alice.clone(),
+            bob.clone(),
+            alice_bob_channel,
+            false,
+        )
+        .await;
+        close_channel(
+            &bitcoind,
+            bob.clone(),
+            charlie.clone(),
+            bob_charlie_channel,
+            true,
+        )
+        .await;
 
+        let alice_balance = get_balance(alice.clone()).await;
+        let bob_balance = get_balance(bob.clone()).await;
+        let charlie_balance = get_balance(charlie.clone()).await;
+
+        let alice_initial_balance = 100_000_000 as u64;
+        let bob_initial_balance = 100_000_000 as u64;
+        let charlie_initial_balance = 0 as u64;
+        let expected_payment_amount = num_invoices as u64 * invoice_amt;
+        let routing_fee_sats = 1 as u64;
+        let routing_fees = routing_fee_sats * num_invoices as u64;
+        let channel_open_tx_fee = 1224 as u64;
+        let channel_close_tx_fee = 2348 as u64;
+        let channel_force_close_tx_fee = 1538 as u64;
+        let channel_sweep_tx_fee = 876 as u64;
+
+        let alice_expected_balance = alice_initial_balance
+            - expected_payment_amount
+            - routing_fees
+            - channel_open_tx_fee
+            - channel_close_tx_fee
+            - channel_sweep_tx_fee;
+        let bob_expected_balance = bob_initial_balance + routing_fees
+            - channel_open_tx_fee
+            - channel_force_close_tx_fee
+            - 2 * channel_sweep_tx_fee;
+        let charlie_expected_balance =
+            charlie_initial_balance + expected_payment_amount - channel_sweep_tx_fee;
+
+        // fuzzy match here because fee estimation could change
+        assert!(within_range(
+            alice_balance as f64,
+            alice_expected_balance as f64,
+            0.01
+        ));
+        assert!(within_range(
+            bob_balance as f64,
+            bob_expected_balance as f64,
+            0.01
+        ));
+        assert!(within_range(
+            charlie_balance as f64,
+            charlie_expected_balance as f64,
+            0.01
+        ));
     }
 
     #[test]
