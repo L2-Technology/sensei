@@ -46,7 +46,7 @@ use lightning::chain::chainmonitor;
 use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager, Recipient};
 use lightning::chain::Watch;
 use lightning::chain::{self, Filter};
-use lightning::ln::channelmanager::{self, ChannelDetails, SimpleArcChannelManager};
+use lightning::ln::channelmanager::{self, ChannelDetails, ChannelManager as LdkChannelManager};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
     IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
@@ -289,6 +289,9 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
 >;
 
 trait MustSized: Sized {}
+
+pub type SimpleArcChannelManager<M, T, F, L> =
+    LdkChannelManager<InMemorySigner, Arc<M>, Arc<T>, Arc<KeysManager>, Arc<F>, Arc<L>>;
 
 pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
     SD,
