@@ -54,7 +54,7 @@ use lightning::ln::peer_handler::{
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId, RoutingFees};
 use lightning::routing::router::{RouteHint, RouteHintHop};
-use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScorerUsingTime};
+use lightning::routing::scoring::ProbabilisticScorer;
 use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
@@ -72,7 +72,7 @@ use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 use std::{convert::From, fmt, fs};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
@@ -313,11 +313,12 @@ pub type ChannelManager =
     SimpleArcChannelManager<ChainMonitor, SenseiBroadcaster, SenseiFeeEstimator, FilesystemLogger>;
 
 pub type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
+pub type Scorer = ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 
 pub type InvoicePayer = payment::InvoicePayer<
     Arc<ChannelManager>,
     Router,
-    Arc<Mutex<ProbabilisticScorer<Arc<NetworkGraph>>>>,
+    Arc<Mutex<Scorer>>,
     Arc<FilesystemLogger>,
     Arc<LightningNodeEventHandler>,
 >;
@@ -402,7 +403,7 @@ pub struct LightningNode {
     pub keys_manager: Arc<KeysManager>,
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
-    pub scorer: Arc<Mutex<ProbabilisticScorerUsingTime<Arc<NetworkGraph>, Instant>>>,
+    pub scorer: Arc<Mutex<Scorer>>,
     pub stop_listen: Arc<AtomicBool>,
     pub persister: Arc<SenseiPersister>,
     pub event_sender: broadcast::Sender<SenseiEvent>,
@@ -642,7 +643,11 @@ impl LightningNode {
 
         let persistence_store =
             AnyKVStore::Database(DatabaseStore::new(database.clone(), id.clone()));
-        let persister = Arc::new(SenseiPersister::new(persistence_store, config.network));
+        let persister = Arc::new(SenseiPersister::new(
+            persistence_store,
+            config.network,
+            logger.clone(),
+        ));
 
         let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
             None,
@@ -846,7 +851,7 @@ impl LightningNode {
             scorer.clone(),
             logger.clone(),
             event_handler,
-            payment::RetryAttempts(5),
+            payment::Retry::Attempts(5),
         ));
 
         let stop_listen = Arc::new(AtomicBool::new(false));
@@ -935,6 +940,7 @@ impl LightningNode {
             Some(self.network_graph_msg_handler.clone()),
             self.peer_manager.clone(),
             self.logger.clone(),
+            Some(self.scorer.clone()),
         );
 
         // Reconnect to channel peers if possible.
@@ -1216,6 +1222,7 @@ impl LightningNode {
             currency,
             Some(amt_msat),
             description.clone(),
+            3600, // FIXME invoice_expiry_delta_secs
         )?;
 
         let payment_hash = hex_utils::hex_str(&(*invoice.payment_hash()).into_inner());
@@ -1362,11 +1369,20 @@ impl LightningNode {
     }
 
     pub fn close_channel(&self, channel_id: [u8; 32], force: bool) -> Result<(), Error> {
+        let cp_id = self.get_channel_counterparty(&channel_id);
         if force {
-            Ok(self.channel_manager.force_close_channel(&channel_id)?)
+            Ok(self
+                .channel_manager
+                .force_close_channel(&channel_id, &cp_id)?)
         } else {
-            Ok(self.channel_manager.close_channel(&channel_id)?)
+            Ok(self.channel_manager.close_channel(&channel_id, &cp_id)?)
         }
+    }
+
+    fn get_channel_counterparty(&self, channel_id: &[u8; 32]) -> PublicKey {
+        let chans = self.channel_manager.list_channels();
+        let chan = chans.iter().find(|c| *channel_id == c.channel_id).unwrap();
+        chan.counterparty.node_id
     }
 
     pub fn node_info(&self) -> Result<NodeInfo, Error> {

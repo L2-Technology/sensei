@@ -13,7 +13,7 @@ use std::{
     io::{self, Read},
 };
 
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use sensei::GetBalanceRequest;
 use sensei::{admin_client::AdminClient, node_client::NodeClient};
 use tonic::{metadata::MetadataValue, transport::Channel, Request};
@@ -31,7 +31,7 @@ pub mod sensei {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let matches = App::new("senseicli")
+    let matches = Command::new("senseicli")
         .version("1.0")
         .author("John Cantrell <john@l2.technology>")
         .about("Control your sensei node from a cli")
@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .takes_value(true),
         )
         .subcommand(
-            App::new("init")
+            Command::new("init")
                 .about("initialize your Sensei node")
                 .arg(
                     Arg::new("username")
@@ -67,10 +67,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .help("alias used for the root lightning node"),
                 ),
         )
-        .subcommand(App::new("start").about("unlock and start your sensei node"))
-        .subcommand(App::new("listnodes").about("list all the lightning nodes"))
+        .subcommand(Command::new("start").about("unlock and start your sensei node"))
+        .subcommand(Command::new("listnodes").about("list all the lightning nodes"))
         .subcommand(
-            App::new("createnode")
+            Command::new("createnode")
                 .about("create a new child node")
                 .arg(
                     Arg::new("username")
@@ -85,11 +85,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .help("alias to use for this lightning node"),
                 ),
         )
-        .subcommand(App::new("startnode").about("start a child lightning node"))
-        .subcommand(App::new("getbalance").about("gets wallet's balance"))
-        .subcommand(App::new("getaddress").about("get wallet's next unused address"))
+        .subcommand(Command::new("startnode").about("start a child lightning node"))
+        .subcommand(Command::new("getbalance").about("gets wallet's balance"))
+        .subcommand(Command::new("getaddress").about("get wallet's next unused address"))
         .subcommand(
-            App::new("createinvoice")
+            Command::new("createinvoice")
                 .about("create an invoice for an amount in msats")
                 .arg(
                     Arg::new("amt_msat")
@@ -99,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .subcommand(
-            App::new("openchannel")
+            Command::new("openchannel")
                 .about("open a channel with another node")
                 .arg(
                     Arg::new("node_connection_string")
@@ -124,7 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .subcommand(
-            App::new("closechannel")
+            Command::new("closechannel")
                 .about("close a channel")
                 .arg(
                     Arg::new("channel_id")
@@ -143,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .subcommand(
-            App::new("payinvoice").about("pay an invoice").arg(
+            Command::new("payinvoice").about("pay an invoice").arg(
                 Arg::new("invoice")
                     .required(true)
                     .index(1)
@@ -151,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         )
         .subcommand(
-            App::new("keysend")
+            Command::new("keysend")
                 .about("send a payment to a public key")
                 .arg(
                     Arg::new("dest_pubkey")
@@ -167,7 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .subcommand(
-            App::new("connectpeer")
+            Command::new("connectpeer")
                 .about("connect to a peer on the lightning network")
                 .arg(
                     Arg::new("node_connection_string")
@@ -177,7 +177,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ),
         )
         .subcommand(
-            App::new("signmessage")
+            Command::new("signmessage")
                 .about("sign a message with your nodes key")
                 .arg(
                     Arg::new("message")
@@ -186,10 +186,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .help("the message to be signed"),
                 ),
         )
-        .subcommand(App::new("listchannels").about("list channels"))
-        .subcommand(App::new("listpayments").about("list payments"))
-        .subcommand(App::new("listpeers").about("list peers"))
-        .subcommand(App::new("nodeinfo").about("see information about your node"))
+        .subcommand(Command::new("listchannels").about("list channels"))
+        .subcommand(Command::new("listpayments").about("list payments"))
+        .subcommand(Command::new("listpeers").about("list peers"))
+        .subcommand(Command::new("nodeinfo").about("see information about your node"))
         .get_matches();
 
     let (command, command_args) = matches.subcommand().unwrap();

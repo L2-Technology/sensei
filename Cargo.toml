@@ -15,14 +15,14 @@ name = "senseid"
 path = "src/main.rs"
 
 [dependencies]
-lightning = { version = "0.0.106", features = ["max_level_trace"], git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
-lightning-block-sync = { version = "0.0.106", features = [ "rpc-client" ], git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
-lightning-invoice = { version = "0.14.0", git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
-lightning-net-tokio = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
-lightning-persister = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
-lightning-background-processor = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "d0f69f77bd6ed40bff7ef1026f23e4444a5a884a" }
+lightning = { version = "0.0.106", features = ["max_level_trace"], git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
+lightning-block-sync = { version = "0.0.106", features = [ "rpc-client" ], git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
+lightning-invoice = { version = "0.14.0", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
+lightning-net-tokio = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
+lightning-persister = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
+lightning-background-processor = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
 base64 = "0.13.0"
-bitcoin = "0.27"
+bitcoin = "0.28.1"
 bitcoin-bech32 = "0.12"
 bech32 = "0.8"
 futures = "0.3"
@@ -33,11 +33,11 @@ http = "0.2"
 tower = { version = "0.4", features = ["full"] }
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
-tokio = { version = "1", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
+tokio = { version = "1.17", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
 log = "0.4.16"
 env_logger = "0.9.0"
-bitcoincore-rpc = "0.14"
-bdk = { version = "0.18.0" }
+bitcoincore-rpc = "0.15"
+bdk = { git = "https://github.com/bitcoindevkit/bdk", rev = "fbd98b4c5a88a10f8dfc22b4c54187eba4d68afe" }
 tonic = "0.6"
 prost = "0.9"
 pin-project = "1.0"
@@ -63,7 +63,7 @@ senseicore = { path = "senseicore" }
 tonic-build = "0.6"
 
 [dev-dependencies]
-bitcoind = { version = "0.25.0", features = [ "22_0" ] }
+bitcoind = { version = "0.26", features = [ "22_0" ] }
 
 [[test]]
 name = "senseicore"

@@ -4,7 +4,8 @@ use std::{
 };
 
 use crate::node::{ChainMonitor, ChannelManager};
-use bitcoin::{Block, BlockHeader};
+use bitcoin::BlockHeader;
+use lightning::chain::transaction::TransactionData;
 use lightning::chain::Listen;
 
 use super::database::WalletDatabase;
@@ -44,12 +45,17 @@ impl SenseiChainListener {
 }
 
 impl Listen for SenseiChainListener {
-    fn block_connected(&self, block: &Block, height: u32) {
+    fn filtered_block_connected(
+        &self,
+        header: &BlockHeader,
+        txdata: &TransactionData,
+        height: u32,
+    ) {
         let listeners = self.listeners.lock().unwrap();
         for (chain_monitor, channel_manager, wallet_database) in listeners.values() {
-            channel_manager.block_connected(block, height);
-            chain_monitor.block_connected(block, height);
-            wallet_database.block_connected(block, height);
+            channel_manager.filtered_block_connected(header, txdata, height);
+            chain_monitor.filtered_block_connected(header, txdata, height);
+            wallet_database.filtered_block_connected(header, txdata, height);
         }
     }
 
