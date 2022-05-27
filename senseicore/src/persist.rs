@@ -8,7 +8,8 @@ use std::{
     sync::Arc,
 };
 
-use bitcoin::secp256k1::key::PublicKey;
+use crate::disk::FilesystemLogger;
+use bitcoin::secp256k1::PublicKey;
 use bitcoin::{
     blockdata::constants::genesis_block, hashes::hex::FromHex, BlockHash, Network, Txid,
 };
@@ -159,11 +160,16 @@ impl KVStoreReader for AnyKVStore {
 pub struct SenseiPersister {
     store: AnyKVStore,
     network: Network,
+    logger: Arc<FilesystemLogger>,
 }
 
 impl SenseiPersister {
-    pub fn new(store: AnyKVStore, network: Network) -> Self {
-        Self { store, network }
+    pub fn new(store: AnyKVStore, network: Network, logger: Arc<FilesystemLogger>) -> Self {
+        Self {
+            store,
+            network,
+            logger,
+        }
     }
 
     pub fn read_channel_manager(&self) -> std::io::Result<Option<Vec<u8>>> {
@@ -185,22 +191,23 @@ impl SenseiPersister {
     pub fn read_scorer(
         &self,
         network_graph: Arc<NetworkGraph>,
-    ) -> ProbabilisticScorer<Arc<NetworkGraph>> {
+    ) -> ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLogger>> {
         let params = ProbabilisticScoringParameters::default();
         if let Ok(Some(contents)) = self.store.read("scorer") {
             let mut cursor = Cursor::new(contents);
-            if let Ok(scorer) =
-                ProbabilisticScorer::read(&mut cursor, (params, Arc::clone(&network_graph)))
-            {
+            if let Ok(scorer) = ProbabilisticScorer::read(
+                &mut cursor,
+                (params, Arc::clone(&network_graph), self.logger.clone()),
+            ) {
                 return scorer;
             }
         }
-        ProbabilisticScorer::new(params, network_graph)
+        ProbabilisticScorer::new(params, network_graph, self.logger.clone())
     }
 
     pub fn persist_scorer(
         &self,
-        scorer: &ProbabilisticScorer<Arc<NetworkGraph>>,
+        scorer: &ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLogger>>,
     ) -> std::io::Result<()> {
         self.store.persist("scorer", scorer)
     }

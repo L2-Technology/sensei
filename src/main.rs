@@ -32,11 +32,12 @@ use ::http::{
 };
 use axum::{
     body::{boxed, Full},
+    extract::Extension,
     handler::Handler,
     http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::get,
-    AddExtensionLayer, Router,
+    Router,
 };
 use clap::Parser;
 
@@ -251,7 +252,7 @@ fn main() {
 
         let http_service = router
             .layer(CookieManagerLayer::new())
-            .layer(AddExtensionLayer::new(admin_service.clone()))
+            .layer(Extension(admin_service.clone()))
             .into_make_service();
 
         let grpc_service = Server::builder()

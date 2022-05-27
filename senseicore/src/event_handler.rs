@@ -56,6 +56,7 @@ impl EventHandler for LightningNodeEventHandler {
                 channel_value_satoshis,
                 output_script,
                 user_channel_id: _,
+                counterparty_node_id,
             } => {
                 // Construct the raw transaction with one output, that is paid the amount of the
                 // channel.
@@ -103,7 +104,11 @@ impl EventHandler for LightningNodeEventHandler {
                 // Give the funding transaction back to LDK for opening the channel.
                 if self
                     .channel_manager
-                    .funding_transaction_generated(temporary_channel_id, funding_tx)
+                    .funding_transaction_generated(
+                        temporary_channel_id,
+                        counterparty_node_id,
+                        funding_tx,
+                    )
                     .is_err()
                 {
                     println!(
@@ -247,7 +252,8 @@ impl EventHandler for LightningNodeEventHandler {
             Event::PaymentForwarded {
                 fee_earned_msat,
                 claim_from_onchain_tx,
-                source_channel_id: _,
+                prev_channel_id: _,
+                next_channel_id: _,
             } => {
                 let from_onchain_str = if *claim_from_onchain_tx {
                     "from onchain downstream claim"

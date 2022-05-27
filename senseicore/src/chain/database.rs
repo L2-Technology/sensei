@@ -3,7 +3,7 @@ use bdk::database::{BatchDatabase, BatchOperations, Database};
 use bdk::wallet::time;
 use bdk::{BlockTime, KeychainKind, LocalUtxo, TransactionDetails};
 use bitcoin::consensus::encode::{deserialize, serialize};
-use bitcoin::{Block, BlockHeader, OutPoint, Script, TxOut, Txid};
+use bitcoin::{BlockHeader, OutPoint, Script, TxOut, Txid};
 use entity::keychain::Entity as Keychain;
 use entity::kv_store;
 use entity::kv_store::Entity as KVStore;
@@ -20,22 +20,28 @@ use entity::transaction::Entity as Transaction;
 use entity::utxo;
 use entity::utxo::Entity as Utxo;
 use entity::{hex_str, keychain, to_vec_unsafe};
+use lightning::chain::transaction::TransactionData;
 use lightning::chain::Listen;
 use std::sync::Arc;
 
 impl Listen for WalletDatabase {
-    fn block_connected(&self, block: &Block, height: u32) {
+    fn filtered_block_connected(
+        &self,
+        header: &BlockHeader,
+        txdata: &TransactionData,
+        height: u32,
+    ) {
         let mut wallet_database = self.clone();
 
         let mut internal_max_deriv = None;
         let mut external_max_deriv = None;
 
         // iterate all transactions in the block, looking for ones we care about
-        for tx in &block.txdata {
+        for (_, tx) in txdata {
             wallet_database.process_tx(
                 tx,
                 Some(height),
-                Some(block.header.time.into()),
+                Some(header.time.into()),
                 &mut internal_max_deriv,
                 &mut external_max_deriv,
             )
@@ -69,7 +75,7 @@ impl Listen for WalletDatabase {
                     .database
                     .create_or_update_last_onchain_wallet_sync(
                         wallet_database.node_id.clone(),
-                        block.block_hash(),
+                        header.block_hash(),
                         height,
                         time::get_timestamp(),
                     )

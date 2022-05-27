@@ -7,7 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use bitcoin::secp256k1::key::PublicKey;
+use bitcoin::secp256k1::PublicKey;
 
 #[allow(dead_code)]
 pub fn to_vec(hex: &str) -> Option<Vec<u8>> {
