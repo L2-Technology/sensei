@@ -341,7 +341,7 @@ pub async fn handle_authenticated_request(
         }
         Some(None) => {
             // TODO: rethink this Some(None) business
-            let err = senseicore::error::Error::Unauthenticated;
+            let err = senseicore::error::Error::Unauthenticated(String::from(""));
             let node_request_error: NodeRequestError = err.into();
             Ok(Json(NodeResponse::Error(node_request_error)))
         }
@@ -359,7 +359,7 @@ pub async fn handle_authenticated_request(
                 Ok(Json(NodeResponse::StartNode {}))
             }
             _ => {
-                let err = senseicore::error::Error::Unauthenticated;
+                let err = senseicore::error::Error::Unauthenticated(String::from(""));
                 let node_request_error: NodeRequestError = err.into();
                 Ok(Json(NodeResponse::Error(node_request_error)))
             }

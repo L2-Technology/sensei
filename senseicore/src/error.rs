@@ -12,6 +12,8 @@ use std::{
     io::ErrorKind,
 };
 
+use crate::services;
+
 #[derive(Debug)]
 pub enum Error {
     Db(migration::DbErr),
@@ -30,12 +32,15 @@ pub enum Error {
     FailedToWriteSeed,
     SeedNotFound,
     MacaroonNotFound,
-    Unauthenticated,
+    Unauthenticated(String),
     InvalidMacaroon,
+    AdminNodeNotFound,
     AdminNodeNotStarted,
     AdminNodeNotCreated,
     FundingGenerationNeverHappened,
     NodeBeingStartedAlready,
+    AdminNodeService(services::admin::Error),
+    UnknownResponse,
 }
 
 impl Display for Error {
@@ -57,14 +62,17 @@ impl Display for Error {
             Error::SeedNotFound => String::from("seed not found for node"),
             Error::MacaroonNotFound => String::from("macaroon not found for node"),
             Error::FailedToWriteSeed => String::from("failed to write seed"),
-            Error::Unauthenticated => String::from("unauthenticated"),
+            Error::Unauthenticated(msg) => format!("unauthenticated: {}", msg),
             Error::InvalidMacaroon => String::from("invalid macaroon"),
+            Error::AdminNodeNotFound => String::from("admin node not found"),
             Error::AdminNodeNotCreated => String::from("admin node not created"),
             Error::AdminNodeNotStarted => String::from("admin node not started"),
             Error::NodeBeingStartedAlready => String::from("node already being started"),
             Error::FundingGenerationNeverHappened => {
                 String::from("funding generation for request never happened")
             }
+            Error::AdminNodeService(e) => format!("admin node service error: {}", e),
+            Error::UnknownResponse => String::from("unknown response"),
         };
         write!(f, "{}", str)
     }
@@ -139,6 +147,12 @@ impl From<tindercrypt::errors::Error> for Error {
 impl From<macaroon::MacaroonError> for Error {
     fn from(e: macaroon::MacaroonError) -> Self {
         Error::Macaroon(e)
+    }
+}
+
+impl From<services::admin::Error> for Error {
+    fn from(e: services::admin::Error) -> Self {
+        Error::AdminNodeService(e)
     }
 }
 
