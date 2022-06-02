@@ -20,7 +20,7 @@ service Node {
     rpc StopNode (StopNodeRequest) returns (StopNodeResponse);
     rpc GetUnusedAddress (GetUnusedAddressRequest) returns (GetUnusedAddressResponse);
     rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
-    rpc OpenChannel (OpenChannelRequest) returns (OpenChannelResponse);
+    rpc OpenChannels (OpenChannelsRequest) returns (OpenChannelsResponse);
     rpc PayInvoice (PayInvoiceRequest) returns (PayInvoiceResponse);
     rpc DecodeInvoice (DecodeInvoiceRequest) returns (DecodeInvoiceResponse);
     rpc Keysend (KeysendRequest) returns (KeysendResponse);
@@ -189,13 +189,24 @@ message GetBalanceResponse {
     uint64 balance_satoshis = 1;
 }
 
-message OpenChannelRequest {
+message OpenChannelInfo {
     string node_connection_string = 1;
     uint64 amt_satoshis = 2;
     bool public = 3;
 }
-message OpenChannelResponse {
-    string temp_channel_id = 1;
+
+message OpenChannelResult {
+    bool error = 1;
+    optional string error_message = 2;
+    optional string temp_channel_id = 3;
+}
+
+message OpenChannelsRequest {
+    repeated OpenChannelInfo channels = 1;
+}
+message OpenChannelsResponse {
+    repeated OpenChannelInfo channels = 1;
+    repeated OpenChannelResult results = 2;
 }
 
 message PayInvoiceRequest {

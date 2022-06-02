@@ -21,7 +21,7 @@ bitcoin-bech32 = "0.12"
 bech32 = "0.8"
 futures = "0.3"
 chrono = "0.4"
-rand = "0.4"
+rand = "0.8.4"
 axum = { version = "0.4.2", features = ["headers"] }
 http = "0.2"
 tower = { version = "0.4", features = ["full"] }
@@ -49,3 +49,4 @@ migration = { path = "../migration" }
 
 [dev-dependencies]
 bitcoind = { version = "0.26", features = [ "22_0" ] }
+serial_test = "0.6.0"

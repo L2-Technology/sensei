@@ -16,7 +16,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use http::{HeaderValue, StatusCode};
 use senseicore::services::admin::AdminRequest;
-use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse};
+use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelInfo};
 use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
 use senseicore::utils;
 use serde::Deserialize;
@@ -69,18 +69,14 @@ impl From<DeletePaymentParams> for NodeRequest {
 }
 
 #[derive(Deserialize)]
-pub struct OpenChannelParams {
-    pub node_connection_string: String,
-    pub amt_satoshis: u64,
-    pub public: bool,
+pub struct BatchOpenChannelParams {
+    channels: Vec<OpenChannelInfo>,
 }
 
-impl From<OpenChannelParams> for NodeRequest {
-    fn from(params: OpenChannelParams) -> Self {
-        Self::OpenChannel {
-            node_connection_string: params.node_connection_string,
-            amt_satoshis: params.amt_satoshis,
-            public: params.public,
+impl From<BatchOpenChannelParams> for NodeRequest {
+    fn from(params: BatchOpenChannelParams) -> Self {
+        Self::OpenChannels {
+            channels: params.channels,
         }
     }
 }
@@ -211,7 +207,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/invoices/decode", post(decode_invoice))
         .route("/v1/node/payments/label", post(label_payment))
         .route("/v1/node/payments/delete", post(delete_payment))
-        .route("/v1/node/channels/open", post(open_channel))
+        .route("/v1/node/channels/open", post(open_channels))
         .route("/v1/node/channels/close", post(close_channel))
         .route("/v1/node/keysend", post(keysend))
         .route("/v1/node/peers/connect", post(connect_peer))
@@ -461,14 +457,14 @@ pub async fn decode_invoice(
     handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }
 
-pub async fn open_channel(
+pub async fn open_channels(
     Extension(admin_service): Extension<Arc<AdminService>>,
     Json(payload): Json<Value>,
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = {
-        let params: Result<OpenChannelParams, _> = serde_json::from_value(payload);
+        let params: Result<BatchOpenChannelParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),

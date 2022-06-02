@@ -8,10 +8,11 @@
 // licenses.
 
 use super::sensei::{
-    Channel as ChannelMessage, DeletePaymentRequest, DeletePaymentResponse, Info as InfoMessage,
-    LabelPaymentRequest, LabelPaymentResponse, PaginationRequest, PaginationResponse,
-    Payment as PaymentMessage, PaymentsFilter, Peer as PeerMessage, StartNodeRequest,
-    StartNodeResponse, StopNodeRequest, StopNodeResponse,
+    self, Channel as ChannelMessage, DeletePaymentRequest, DeletePaymentResponse,
+    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse, OpenChannelsRequest,
+    OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
+    PaymentsFilter, Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest,
+    StopNodeResponse,
 };
 
 use super::sensei::{
@@ -20,9 +21,8 @@ use super::sensei::{
     GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
     InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, ListChannelsRequest,
     ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
-    ListPeersResponse, OpenChannelRequest, OpenChannelResponse, PayInvoiceRequest,
-    PayInvoiceResponse, SignMessageRequest, SignMessageResponse, VerifyMessageRequest,
-    VerifyMessageResponse,
+    ListPeersResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
+    SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse,
 };
 
 use senseicore::services::{
@@ -189,22 +189,45 @@ impl TryFrom<NodeResponse> for GetBalanceResponse {
     }
 }
 
-impl From<OpenChannelRequest> for NodeRequest {
-    fn from(req: OpenChannelRequest) -> Self {
-        NodeRequest::OpenChannel {
-            node_connection_string: req.node_connection_string,
-            amt_satoshis: req.amt_satoshis,
-            public: req.public,
+impl From<OpenChannelsRequest> for NodeRequest {
+    fn from(req: OpenChannelsRequest) -> Self {
+        NodeRequest::OpenChannels {
+            channels: req
+                .channels
+                .into_iter()
+                .map(|channel| senseicore::services::node::OpenChannelInfo {
+                    node_connection_string: channel.node_connection_string,
+                    amt_satoshis: channel.amt_satoshis,
+                    public: channel.public,
+                })
+                .collect::<Vec<_>>(),
         }
     }
 }
 
-impl TryFrom<NodeResponse> for OpenChannelResponse {
+impl TryFrom<NodeResponse> for OpenChannelsResponse {
     type Error = String;
 
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
-            NodeResponse::OpenChannel { temp_channel_id } => Ok(Self { temp_channel_id }),
+            NodeResponse::OpenChannels { channels, results } => Ok(Self {
+                channels: channels
+                    .into_iter()
+                    .map(|channel| sensei::OpenChannelInfo {
+                        node_connection_string: channel.node_connection_string,
+                        amt_satoshis: channel.amt_satoshis,
+                        public: channel.public,
+                    })
+                    .collect::<Vec<_>>(),
+                results: results
+                    .into_iter()
+                    .map(|result| sensei::OpenChannelResult {
+                        error: result.error,
+                        error_message: result.error_message,
+                        temp_channel_id: result.temp_channel_id,
+                    })
+                    .collect::<Vec<_>>(),
+            }),
             _ => Err("impossible".to_string()),
         }
     }

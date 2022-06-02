@@ -1,4 +1,5 @@
 pub mod chain;
+pub mod channels;
 pub mod config;
 pub mod database;
 pub mod disk;

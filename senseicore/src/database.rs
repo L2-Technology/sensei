@@ -22,7 +22,7 @@ use entity::sea_orm::QueryOrder;
 use migration::Condition;
 use migration::Expr;
 use rand::thread_rng;
-use rand::Rng;
+use rand::RngCore;
 use sea_orm::entity::EntityTrait;
 use sea_orm::{prelude::*, DatabaseConnection};
 use serde::Deserialize;

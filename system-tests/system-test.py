@@ -19,7 +19,7 @@ from sensei_pb2_grpc import AdminStub, NodeStub
 from sensei_pb2 import (
     CloseChannelRequest, GetStatusRequest, CreateNodeRequest, GetUnusedAddressRequest,
     GetBalanceRequest,
-    ListPaymentsRequest, OpenChannelRequest, ListChannelsRequest, CreateInvoiceRequest,
+    ListPaymentsRequest, OpenChannelsRequest, OpenChannelInfo, ListChannelsRequest, CreateInvoiceRequest,
     PaginationRequest, PayInvoiceRequest
 )
 
@@ -148,15 +148,17 @@ def run():
     bob, meta_b, id_b = fund_node(btc, metadata, senseid, 1)
 
     print('Create channel alice -> bob')
-    alice.OpenChannel(OpenChannelRequest(node_connection_string=f"{id_b}@127.0.0.1:10000", amt_satoshis=CHANNEL_VALUE_SAT, public=True),
+    oc_res = alice.OpenChannels(OpenChannelsRequest(channels=[OpenChannelInfo(node_connection_string=f"{id_b}@127.0.0.1:10000", amt_satoshis=CHANNEL_VALUE_SAT, public=True)]),
                       metadata=meta_a)
+
+    print(oc_res)
     wait_until('channel at bob', lambda: bob.ListChannels(ListChannelsRequest(), metadata=meta_b).channels[0])
     assert not bob.ListChannels(ListChannelsRequest(), metadata=meta_b).channels[0].is_usable
 
     charlie, meta_c, id_c = fund_node(btc, metadata, senseid, 2)
 
     print('Create channel bob -> charlie')
-    bob.OpenChannel(OpenChannelRequest(node_connection_string=f"{id_c}@127.0.0.1:10001", amt_satoshis=CHANNEL_VALUE_SAT, public=True),
+    bob.OpenChannels(OpenChannelsRequest(channels=[OpenChannelInfo(node_connection_string=f"{id_c}@127.0.0.1:10001", amt_satoshis=CHANNEL_VALUE_SAT, public=True)]),
                     metadata=meta_b)
     wait_until('channel at charlie', lambda: charlie.ListChannels(ListChannelsRequest(), metadata=meta_c).channels[0])
     assert not charlie.ListChannels(ListChannelsRequest(), metadata=meta_c).channels[0].is_usable

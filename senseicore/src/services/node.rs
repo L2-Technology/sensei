@@ -17,7 +17,7 @@ use tower::Service;
 use crate::hex_utils;
 
 use lightning::ln::channelmanager::ChannelDetails;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{PaginationRequest, PaginationResponse, PaymentsFilter};
 
@@ -115,6 +115,20 @@ impl From<ChannelDetails> for Channel {
     }
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct OpenChannelInfo {
+    pub node_connection_string: String,
+    pub amt_satoshis: u64,
+    pub public: bool,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct OpenChannelResult {
+    pub error: bool,
+    pub error_message: Option<String>,
+    pub temp_channel_id: Option<String>,
+}
+
 pub enum NodeRequest {
     StartNode {
         passphrase: String,
@@ -122,10 +136,8 @@ pub enum NodeRequest {
     StopNode {},
     GetUnusedAddress {},
     GetBalance {},
-    OpenChannel {
-        node_connection_string: String,
-        amt_satoshis: u64,
-        public: bool,
+    OpenChannels {
+        channels: Vec<OpenChannelInfo>,
     },
     SendPayment {
         invoice: String,
@@ -187,8 +199,9 @@ pub enum NodeResponse {
     GetBalance {
         balance_satoshis: u64,
     },
-    OpenChannel {
-        temp_channel_id: String,
+    OpenChannels {
+        channels: Vec<OpenChannelInfo>,
+        results: Vec<OpenChannelResult>,
     },
     SendPayment {},
     DecodeInvoice {

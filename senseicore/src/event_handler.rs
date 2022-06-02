@@ -17,7 +17,6 @@ use crate::hex_utils;
 use crate::node::{ChannelManager, HTLCStatus, PaymentOrigin};
 
 use bdk::wallet::AddressIndex;
-use bdk::{FeeRate, SignOptions};
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use entity::sea_orm::ActiveValue;
@@ -55,8 +54,8 @@ impl EventHandler for LightningNodeEventHandler {
                 temporary_channel_id,
                 channel_value_satoshis,
                 output_script,
-                user_channel_id: _,
                 counterparty_node_id,
+                user_channel_id,
             } => {
                 // Construct the raw transaction with one output, that is paid the amount of the
                 // channel.
@@ -72,48 +71,17 @@ impl EventHandler for LightningNodeEventHandler {
                 .expect("Lightning funding tx should always be to a SegWit output")
                 .to_address();
 
-                // Have wallet put the inputs into the transaction such that the output
-                // is satisfied and then sign the funding transaction
-                let wallet = self.wallet.lock().unwrap();
-
-                let mut tx_builder = wallet.build_tx();
-                let fee_sats_per_1000_wu = self
-                    .chain_manager
-                    .fee_estimator
-                    .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
-
-                // TODO: is this the correct conversion??
-                let sat_per_vb = match fee_sats_per_1000_wu {
-                    253 => 1.0,
-                    _ => fee_sats_per_1000_wu as f32 / 250.0,
-                } as f32;
-
-                let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
-
-                tx_builder
-                    .add_recipient(output_script.clone(), *channel_value_satoshis)
-                    .fee_rate(fee_rate)
-                    .enable_rbf();
-
-                let (mut psbt, _tx_details) = tx_builder.finish().unwrap();
-
-                let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
-
-                let funding_tx = psbt.extract_tx();
-
-                // Give the funding transaction back to LDK for opening the channel.
-                if self
-                    .channel_manager
-                    .funding_transaction_generated(
-                        temporary_channel_id,
-                        counterparty_node_id,
-                        funding_tx,
-                    )
-                    .is_err()
-                {
-                    println!(
-                        "\nERROR: Channel went away before we could fund it. The peer disconnected or refused the channel.");
-                }
+                let _res = self
+                    .event_sender
+                    .send(SenseiEvent::FundingGenerationReady {
+                        node_id: self.node_id.clone(),
+                        temporary_channel_id: *temporary_channel_id,
+                        channel_value_satoshis: *channel_value_satoshis,
+                        output_script: output_script.clone(),
+                        user_channel_id: *user_channel_id,
+                        counterparty_node_id: *counterparty_node_id
+                    })
+                    .unwrap();
             }
             Event::PaymentReceived {
                 payment_hash,
@@ -289,7 +257,7 @@ impl EventHandler for LightningNodeEventHandler {
                 let forwarding_channel_manager = self.channel_manager.clone();
                 let min = time_forwardable.as_millis() as u64;
                 self.tokio_handle.spawn(async move {
-                    let millis_to_sleep = thread_rng().gen_range(min, min * 5) as u64;
+                    let millis_to_sleep = thread_rng().gen_range(min..(min * 5)) as u64;
                     tokio::time::sleep(Duration::from_millis(millis_to_sleep)).await;
                     forwarding_channel_manager.process_pending_htlc_forwards();
                 });
