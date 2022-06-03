@@ -412,13 +412,23 @@ impl AdminService {
         self.database.list_nodes(pagination).await
     }
 
-    async fn create_node(
+    async fn build_node(
         &self,
         username: String,
         alias: String,
         passphrase: String,
         role: node::NodeRole,
-    ) -> Result<(node::Model, Macaroon), crate::error::Error> {
+    ) -> Result<
+        (
+            entity::node::Model,
+            Macaroon,
+            entity::node::ActiveModel,
+            entity::kv_store::ActiveModel,
+            entity::macaroon::ActiveModel,
+        ),
+        crate::error::Error,
+    > {
+        // IP/PORT
         let listen_addr = public_ip::addr().await.unwrap().to_string();
 
         let listen_port: i32 = match role {
@@ -429,33 +439,26 @@ impl AdminService {
             }
         };
 
+        // NODE ID
         let node_id = Uuid::new_v4().to_string();
 
-        let node_directory = format!(
-            "{}/{}/{}",
-            self.data_dir,
-            self.config.network,
-            node_id.clone()
-        );
+        // NODE DIRECTORY
+        let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
         fs::create_dir_all(node_directory.clone())?;
-        let macaroon_path = format!("{}/admin.macaroon", node_directory.clone());
+        let macaroon_path = format!("{}/admin.macaroon", node_directory);
 
+        // NODE SEED
         let seed = LightningNode::generate_seed();
         let encrypted_seed = LightningNode::encrypt_seed(&seed, passphrase.clone())?;
         let seed_active_model = self
             .database
             .get_seed_active_model(node_id.clone(), encrypted_seed);
-        let result = self.database.insert_kv_store(seed_active_model).await;
 
-        if let Err(e) = result {
-            let mut available_ports = self.available_ports.lock().await;
-            available_ports.push_front(listen_port.try_into().unwrap());
-            return Err(e);
-        }
-
+        // NODE PUBKEY
         let secp_ctx = Secp256k1::new();
         let node_pubkey = LightningNode::get_node_pubkey_from_seed(&secp_ctx, &seed);
 
+        // NODE MACAROON
         let (macaroon, macaroon_id) = LightningNode::generate_macaroon(&seed, node_pubkey.clone())?;
         LightningNode::write_macaroon_to_file(macaroon_path, &macaroon).unwrap_or_default();
         let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.clone())?;
@@ -466,36 +469,51 @@ impl AdminService {
             encrypted_macaroon: ActiveValue::Set(encrypted_macaroon),
             ..Default::default()
         };
-        let result = db_macaroon.insert(self.database.get_connection()).await;
 
-        if let Err(e) = result {
-            let mut available_ports = self.available_ports.lock().await;
-            available_ports.push_front(listen_port.try_into().unwrap());
-            return Err(e.into());
-        }
-
-        let node = entity::node::ActiveModel {
-            id: ActiveValue::Set(node_id),
-            pubkey: ActiveValue::Set(node_pubkey),
-            username: ActiveValue::Set(username),
-            alias: ActiveValue::Set(alias),
+        // NODE
+        let active_node = entity::node::ActiveModel {
+            id: ActiveValue::Set(node_id.clone()),
+            pubkey: ActiveValue::Set(node_pubkey.clone()),
+            username: ActiveValue::Set(username.clone()),
+            alias: ActiveValue::Set(alias.clone()),
             network: ActiveValue::Set(self.config.network.to_string()),
-            listen_addr: ActiveValue::Set(listen_addr),
+            listen_addr: ActiveValue::Set(listen_addr.clone()),
             listen_port: ActiveValue::Set(listen_port),
-            role: ActiveValue::Set(role.into()),
+            role: ActiveValue::Set(role.clone().into()),
             status: ActiveValue::Set(node::NodeStatus::Stopped.into()),
             ..Default::default()
         };
 
-        let result = node.insert(self.database.get_connection()).await;
+        let node = node::Model {
+            id: node_id,
+            role: role.into(),
+            username,
+            alias,
+            network: self.config.network.to_string(),
+            listen_addr,
+            listen_port,
+            pubkey: node_pubkey,
+            created_at: 0,
+            updated_at: 0,
+            status: node::NodeStatus::Stopped.into(),
+        };
 
-        if let Err(e) = result {
-            let mut available_ports = self.available_ports.lock().await;
-            available_ports.push_front(listen_port.try_into().unwrap());
-            return Err(e.into());
-        }
+        Ok((node, macaroon, active_node, seed_active_model, db_macaroon))
+    }
 
-        let node = result.unwrap();
+    async fn create_node(
+        &self,
+        username: String,
+        alias: String,
+        passphrase: String,
+        role: node::NodeRole,
+    ) -> Result<(node::Model, Macaroon), crate::error::Error> {
+        let (node, macaroon, db_node, db_seed, db_macaroon) =
+            self.build_node(username, alias, passphrase, role).await?;
+
+        db_seed.insert(self.database.get_connection()).await?;
+        db_macaroon.insert(self.database.get_connection()).await?;
+        db_node.insert(self.database.get_connection()).await?;
 
         Ok((node, macaroon))
     }
