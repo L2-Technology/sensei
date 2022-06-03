@@ -114,6 +114,15 @@ impl SenseiDatabase {
             .await?)
     }
 
+    pub async fn list_ports_in_use(&self) -> Result<Vec<u16>, Error> {
+        Ok(Node::find()
+            .all(&self.connection)
+            .await?
+            .into_iter()
+            .map(|node| node.listen_port as u16)
+            .collect())
+    }
+
     pub async fn list_nodes(
         &self,
         pagination: PaginationRequest,

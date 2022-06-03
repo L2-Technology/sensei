@@ -139,8 +139,8 @@ impl ChannelOpener {
                         } = event
                         {
                             if *user_channel_id == request.custom_id {
-                              channel_counterparty_node_id = Some(*counterparty_node_id);
-                              return true;
+                                channel_counterparty_node_id = Some(*counterparty_node_id);
+                                return true;
                             }
                         }
                         false
@@ -149,10 +149,10 @@ impl ChannelOpener {
                     if event.is_none() {
                         (request, Err(Error::FundingGenerationNeverHappened), None)
                     } else {
-                      (request, result, channel_counterparty_node_id)
+                        (request, result, channel_counterparty_node_id)
                     }
                 } else {
-                  (request, result, None)
+                    (request, result, None)
                 }
             })
             .collect::<Vec<_>>();
@@ -192,7 +192,7 @@ impl ChannelOpener {
 
         let channels_to_open = requests_with_results
             .iter()
-            .filter(|(_request, result, counterparty_node_id)| result.is_ok())
+            .filter(|(_request, result, _counterparty_node_id)| result.is_ok())
             .count();
 
         self.broadcaster
@@ -203,10 +203,11 @@ impl ChannelOpener {
             .map(|(request, result, counterparty_node_id)| {
                 if let Ok(tcid) = result {
                     let counterparty_node_id = counterparty_node_id.unwrap();
-                    match self
-                        .channel_manager
-                        .funding_transaction_generated(&tcid, &counterparty_node_id, funding_tx.clone())
-                    {
+                    match self.channel_manager.funding_transaction_generated(
+                        &tcid,
+                        &counterparty_node_id,
+                        funding_tx.clone(),
+                    ) {
                         Ok(()) => (request, result),
                         Err(e) => (request, Err(Error::LdkApi(e))),
                     }

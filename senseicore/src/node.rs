@@ -58,7 +58,7 @@ use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId, RoutingFees};
 use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
-use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
+use lightning::util::config::UserConfig;
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;

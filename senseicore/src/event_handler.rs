@@ -79,7 +79,7 @@ impl EventHandler for LightningNodeEventHandler {
                         channel_value_satoshis: *channel_value_satoshis,
                         output_script: output_script.clone(),
                         user_channel_id: *user_channel_id,
-                        counterparty_node_id: *counterparty_node_id
+                        counterparty_node_id: *counterparty_node_id,
                     })
                     .unwrap();
             }
