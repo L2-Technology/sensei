@@ -431,9 +431,20 @@ impl AdminService {
 
         let node_id = Uuid::new_v4().to_string();
 
+        let node_directory = format!(
+            "{}/{}/{}",
+            self.data_dir,
+            self.config.network,
+            node_id.clone()
+        );
+        fs::create_dir_all(node_directory.clone())?;
+        let macaroon_path = format!("{}/admin.macaroon", node_directory.clone());
+
         let seed = LightningNode::generate_seed();
         let encrypted_seed = LightningNode::encrypt_seed(&seed, passphrase.clone())?;
-        let seed_active_model = self.database.get_seed_active_model(node_id.clone(), encrypted_seed);
+        let seed_active_model = self
+            .database
+            .get_seed_active_model(node_id.clone(), encrypted_seed);
         let result = self.database.insert_kv_store(seed_active_model).await;
 
         if let Err(e) = result {
@@ -446,6 +457,7 @@ impl AdminService {
         let node_pubkey = LightningNode::get_node_pubkey_from_seed(&secp_ctx, &seed);
 
         let (macaroon, macaroon_id) = LightningNode::generate_macaroon(&seed, node_pubkey.clone())?;
+        LightningNode::write_macaroon_to_file(macaroon_path, &macaroon).unwrap_or_default();
         let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.clone())?;
 
         let db_macaroon = entity::macaroon::ActiveModel {
