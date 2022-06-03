@@ -42,7 +42,7 @@ use tindercrypt::cryptors::RingCryptor;
 use bdk::template::DescriptorTemplateOut;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
+use bitcoin::secp256k1::{PublicKey, Secp256k1, All};
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
@@ -414,13 +414,24 @@ pub struct LightningNode {
 }
 
 impl LightningNode {
+
+    pub fn generate_seed() -> [u8; 32] {
+        let mut seed: [u8; 32] = [0; 32];
+        thread_rng().fill_bytes(&mut seed);
+        seed
+    }
+
+    pub fn encrypt_seed(seed: &[u8; 32], passphrase: String) -> Result<Vec<u8>, Error> {
+        let cryptor = RingCryptor::new();
+        Ok(cryptor.seal_with_passphrase(passphrase.as_bytes(), seed)?)
+    }
+
     async fn find_or_create_seed(
         node_id: String,
         passphrase: String,
         database: Arc<SenseiDatabase>,
     ) -> Result<[u8; 32], Error> {
         let cryptor = RingCryptor::new();
-
         let mut seed: [u8; 32] = [0; 32];
         match database.get_seed(node_id.clone()).await? {
             Some(encrypted_seed) => {
@@ -433,13 +444,57 @@ impl LightningNode {
                 seed.copy_from_slice(decrypted_seed.as_slice());
             }
             None => {
-                thread_rng().fill_bytes(&mut seed);
-                let encrypted_seed = cryptor.seal_with_passphrase(passphrase.as_bytes(), &seed)?;
-                database.set_seed(node_id.clone(), encrypted_seed).await?;
+                let seed = LightningNode::generate_seed();
+                let encrypted_seed = LightningNode::encrypt_seed(&seed, passphrase)?;
+                let seed_active_model = database.get_seed_active_model(node_id, encrypted_seed);
+                database.insert_kv_store(seed_active_model).await?;
+                return Ok(seed)
             }
         }
         Ok(seed)
     }
+
+    pub fn generate_macaroon(seed: &[u8], pubkey: String) -> Result<(Macaroon, String), Error> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let macaroon_data = MacaroonSession { id: id.clone(), pubkey };
+        let serialized_macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
+        let macaroon_key = macaroon::MacaroonKey::from(seed);
+        let macaroon_identifier = macaroon::ByteString::from(serialized_macaroon_data);
+        let macaroon = macaroon::Macaroon::create(
+            Some("senseid".to_string()),
+            &macaroon_key,
+            macaroon_identifier,
+        )?;
+
+        Ok((macaroon, id))
+    }
+
+    pub fn write_macaroon_to_file(
+        macaroon_path: String,
+        macaroon: &Macaroon
+    ) -> Result<(), Error> {
+        let macaroon_as_bytes = macaroon.serialize(macaroon::Format::V2)?;
+        Ok(match File::create(macaroon_path.clone()) {
+            Ok(mut f) => {
+                f.write_all(macaroon_as_bytes.as_slice())?;
+                f.sync_all()?;
+            }
+            Err(e) => {
+                println!(
+                    "ERROR: Unable to create admin.macaroon file {}: {}",
+                    macaroon_path, e
+                );
+            }
+        })
+    }
+
+    pub fn encrypt_macaroon(macaroon: &Macaroon, passphrase: String) -> Result<Vec<u8>, Error> {
+        let cryptor = RingCryptor::new();
+        let macaroon_as_bytes = macaroon.serialize(macaroon::Format::V2)?;
+        let encrypted_macaroon = cryptor.seal_with_passphrase(passphrase.as_bytes(), &macaroon_as_bytes)?;
+        Ok(encrypted_macaroon)
+    }
+
 
     async fn find_or_create_macaroon(
         node_id: String,
@@ -461,47 +516,22 @@ impl LightningNode {
                 Ok(macaroon)
             }
             None => {
-                let macaroon_data = MacaroonSession {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    pubkey,
-                };
+                let (macaroon, macaroon_id) = LightningNode::generate_macaroon(seed, pubkey)?;
+                let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.clone())?;
 
-                let serialized_macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
-                let macaroon_key = macaroon::MacaroonKey::from(seed);
-                let macaroon_identifier = macaroon::ByteString::from(serialized_macaroon_data);
-                let admin_macaroon = macaroon::Macaroon::create(
-                    Some("senseid".to_string()),
-                    &macaroon_key,
-                    macaroon_identifier,
-                )?;
-                let serialized_macaroon = admin_macaroon.serialize(macaroon::Format::V2)?;
-                let encrypted_macaroon =
-                    cryptor.seal_with_passphrase(passphrase.as_bytes(), &serialized_macaroon)?;
-
-                let macaroon = entity::macaroon::ActiveModel {
-                    id: ActiveValue::Set(macaroon_data.id.clone()),
+                let db_macaroon = entity::macaroon::ActiveModel {
+                    id: ActiveValue::Set(macaroon_id),
                     node_id: ActiveValue::Set(node_id.clone()),
                     encrypted_macaroon: ActiveValue::Set(encrypted_macaroon),
                     ..Default::default()
                 };
-                macaroon.insert(database.get_connection()).await?;
+                db_macaroon.insert(database.get_connection()).await?;
 
                 if let Some(macaroon_path) = macaroon_path {
-                    match File::create(macaroon_path.clone()) {
-                        Ok(mut f) => {
-                            f.write_all(serialized_macaroon.as_slice())?;
-                            f.sync_all()?;
-                        }
-                        Err(e) => {
-                            println!(
-                                "ERROR: Unable to create admin.macaroon file {}: {}",
-                                macaroon_path, e
-                            );
-                        }
-                    }
+                    LightningNode::write_macaroon_to_file(macaroon_path, &macaroon)?;
                 }
 
-                Ok(admin_macaroon)
+                Ok(macaroon)
             }
         }
     }
@@ -524,40 +554,11 @@ impl LightningNode {
             .map_err(|_e| Error::InvalidMacaroon)
     }
 
-    pub async fn get_node_pubkey_and_macaroon(
-        id: String,
-        passphrase: String,
-        database: Arc<SenseiDatabase>,
-    ) -> Result<(String, Macaroon), Error> {
-        let seed =
-            LightningNode::find_or_create_seed(id.clone(), passphrase.clone(), database.clone())
-                .await?;
-
-        let cur = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-
-        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
-
-        let mut secp_ctx = Secp256k1::new();
-        secp_ctx.seeded_randomize(&keys_manager.get_secure_random_bytes());
-
-        let node_pubkey = PublicKey::from_secret_key(
-            &secp_ctx,
-            &keys_manager.get_node_secret(Recipient::Node).unwrap(),
-        );
-
-        let macaroon = LightningNode::find_or_create_macaroon(
-            id.clone(),
-            passphrase.clone(),
-            &seed,
-            node_pubkey.to_string(),
-            database.clone(),
-            None,
-        )
-        .await?;
-
-        Ok((node_pubkey.to_string(), macaroon))
+    pub fn get_node_pubkey_from_seed(secp_ctx: &Secp256k1<All>, seed: &[u8; 32]) -> String {
+        let keys_manager = KeysManager::new(seed, 0, 0);
+        let node_secret = keys_manager.get_node_secret(Recipient::Node).unwrap();
+        let node_pubkey = PublicKey::from_secret_key(secp_ctx, &node_secret);
+        node_pubkey.to_string()
     }
 
     #[allow(clippy::too_many_arguments)]

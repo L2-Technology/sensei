@@ -427,6 +427,23 @@ impl SenseiDatabase {
         })
     }
 
+    pub async fn create_value(
+        &self,
+        node_id: String,
+        key: String,
+        value: Vec<u8>
+    ) -> Result<kv_store::Model, Error> {
+        let entry = kv_store::ActiveModel {
+            node_id: ActiveValue::Set(node_id),
+            k: ActiveValue::Set(key),
+            v: ActiveValue::Set(value),
+            ..Default::default()
+        }
+        .insert(&self.connection).await?;
+
+        Ok(entry)
+    }
+
     pub async fn set_value(
         &self,
         node_id: String,
@@ -472,6 +489,23 @@ impl SenseiDatabase {
 
     pub async fn set_seed(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
         self.set_value(node_id, String::from("seed"), seed).await
+    }
+
+    pub async fn create_seed(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
+        self.create_value(node_id, String::from("seed"), seed).await
+    }
+
+    pub fn get_seed_active_model(&self, node_id: String, seed: Vec<u8>) -> kv_store::ActiveModel {
+        kv_store::ActiveModel {
+            node_id: ActiveValue::Set(node_id),
+            k: ActiveValue::Set(String::from("seed")),
+            v: ActiveValue::Set(seed),
+            ..Default::default()
+        }
+    }
+
+    pub async fn insert_kv_store(&self, entity: kv_store::ActiveModel) -> Result<kv_store::Model, Error> {
+        Ok(entity.insert(&self.connection).await?)
     }
 
     // Note: today we assume there's only ever one macaroon for a user

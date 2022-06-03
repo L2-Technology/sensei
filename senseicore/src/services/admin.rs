@@ -14,6 +14,7 @@ use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
 
+use bitcoin::secp256k1::Secp256k1;
 use entity::access_token;
 use entity::node;
 use entity::sea_orm::{ActiveModelTrait, ActiveValue};
@@ -430,12 +431,10 @@ impl AdminService {
 
         let node_id = Uuid::new_v4().to_string();
 
-        let result = LightningNode::get_node_pubkey_and_macaroon(
-            node_id.clone(),
-            passphrase,
-            self.database.clone(),
-        )
-        .await;
+        let seed = LightningNode::generate_seed();
+        let encrypted_seed = LightningNode::encrypt_seed(&seed, passphrase.clone())?;
+        let seed_active_model = self.database.get_seed_active_model(node_id.clone(), encrypted_seed);
+        let result = self.database.insert_kv_store(seed_active_model).await;
 
         if let Err(e) = result {
             let mut available_ports = self.available_ports.lock().await;
@@ -443,7 +442,25 @@ impl AdminService {
             return Err(e);
         }
 
-        let (node_pubkey, macaroon) = result.unwrap();
+        let secp_ctx = Secp256k1::new();
+        let node_pubkey = LightningNode::get_node_pubkey_from_seed(&secp_ctx, &seed);
+
+        let (macaroon, macaroon_id) = LightningNode::generate_macaroon(&seed, node_pubkey.clone())?;
+        let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.clone())?;
+
+        let db_macaroon = entity::macaroon::ActiveModel {
+            id: ActiveValue::Set(macaroon_id),
+            node_id: ActiveValue::Set(node_id.clone()),
+            encrypted_macaroon: ActiveValue::Set(encrypted_macaroon),
+            ..Default::default()
+        };
+        let result = db_macaroon.insert(self.database.get_connection()).await;
+
+        if let Err(e) = result {
+            let mut available_ports = self.available_ports.lock().await;
+            available_ports.push_front(listen_port.try_into().unwrap());
+            return Err(e.into());
+        }
 
         let node = entity::node::ActiveModel {
             id: ActiveValue::Set(node_id),
