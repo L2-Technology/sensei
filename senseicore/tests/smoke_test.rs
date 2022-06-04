@@ -91,7 +91,7 @@ mod test {
 
         let directory = admin_service.node_directory.lock().await;
         let handle = directory.get(&node_pubkey).unwrap();
-        handle.node.clone()
+        handle.as_ref().unwrap().node.clone()
     }
 
     async fn create_root_node(
@@ -118,7 +118,7 @@ mod test {
                 role,
             } => {
                 let directory = admin_service.node_directory.lock().await;
-                let handle = directory.get(&pubkey).unwrap();
+                let handle = directory.get(&pubkey).unwrap().as_ref().unwrap();
                 Some(handle.node.clone())
             }
             _ => None,

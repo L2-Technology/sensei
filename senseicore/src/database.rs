@@ -19,6 +19,7 @@ use entity::payment::Entity as Payment;
 use entity::sea_orm;
 use entity::sea_orm::ActiveValue;
 use entity::sea_orm::QueryOrder;
+use entity::seconds_since_epoch;
 use migration::Condition;
 use migration::Expr;
 use rand::thread_rng;
@@ -501,10 +502,13 @@ impl SenseiDatabase {
     }
 
     pub fn get_seed_active_model(&self, node_id: String, seed: Vec<u8>) -> kv_store::ActiveModel {
+        let now = seconds_since_epoch();
         kv_store::ActiveModel {
             node_id: ActiveValue::Set(node_id),
             k: ActiveValue::Set(String::from("seed")),
             v: ActiveValue::Set(seed),
+            created_at: ActiveValue::Set(now),
+            updated_at: ActiveValue::Set(now),
             ..Default::default()
         }
     }
@@ -519,7 +523,7 @@ impl SenseiDatabase {
     // Note: today we assume there's only ever one macaroon for a user
     //       once there's some `bakery` functionality exposed we need to define
     //       which macaroon we return when a user unlocks their node
-    pub async fn get_macaroon(&self, node_id: String) -> Result<Option<macaroon::Model>, Error> {
+    pub async fn get_macaroon(&self, node_id: &str) -> Result<Option<macaroon::Model>, Error> {
         Ok(Macaroon::find()
             .filter(macaroon::Column::NodeId.eq(node_id))
             .one(&self.connection)

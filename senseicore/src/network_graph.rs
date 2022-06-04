@@ -10,11 +10,36 @@
 use bitcoin::secp256k1::PublicKey;
 use lightning::{
     ln::msgs::{self, Init, LightningError, RoutingMessageHandler},
+    routing::network_graph::NetworkGraph,
     util::events::{MessageSendEvent, MessageSendEventsProvider},
 };
 use std::{ops::Deref, sync::Arc};
 
 use crate::node::NetworkGraphMessageHandler;
+
+#[derive(Clone)]
+pub struct SenseiNetworkGraph {
+    pub graph: Option<Arc<NetworkGraph>>,
+    pub msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
+}
+
+impl SenseiNetworkGraph {
+    pub fn set_graph(&mut self, graph: Arc<NetworkGraph>) {
+        self.graph = Some(graph);
+    }
+
+    pub fn get_graph(&self) -> Option<Arc<NetworkGraph>> {
+        self.graph.clone()
+    }
+
+    pub fn set_msg_handler(&mut self, msg_handler: Arc<NetworkGraphMessageHandler>) {
+        self.msg_handler = Some(msg_handler);
+    }
+
+    pub fn get_msg_handler(&self) -> Option<Arc<NetworkGraphMessageHandler>> {
+        self.msg_handler.clone()
+    }
+}
 
 pub struct OptionalNetworkGraphMsgHandler {
     pub network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,

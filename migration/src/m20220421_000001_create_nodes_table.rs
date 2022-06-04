@@ -27,12 +27,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Node::Network).string().not_null())
                     .col(ColumnDef::new(Node::ListenAddr).string().not_null())
                     .col(ColumnDef::new(Node::ListenPort).integer().not_null())
-                    .col(
-                        ColumnDef::new(Node::Pubkey)
-                            .string()
-                            .unique_key()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Node::Pubkey).string().not_null())
                     .col(ColumnDef::new(Node::CreatedAt).big_integer().not_null())
                     .col(ColumnDef::new(Node::UpdatedAt).big_integer().not_null())
                     .col(ColumnDef::new(Node::Status).small_integer().not_null())

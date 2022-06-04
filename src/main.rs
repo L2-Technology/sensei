@@ -81,6 +81,8 @@ struct SenseiArgs {
     port_range_min: Option<u16>,
     #[clap(long, env = "PORT_RANGE_MAX")]
     port_range_max: Option<u16>,
+    #[clap(long, env = "API_HOST")]
+    api_host: Option<String>,
     #[clap(long, env = "API_PORT")]
     api_port: Option<u16>,
     #[clap(long, env = "DATABASE_URL")]
@@ -138,6 +140,9 @@ fn main() {
     if let Some(api_port) = args.api_port {
         config.api_port = api_port;
     }
+    if let Some(api_host) = args.api_host {
+        config.api_host = api_host;
+    }
     if let Some(database_url) = args.database_url {
         config.database_url = database_url;
     }
@@ -148,7 +153,7 @@ fn main() {
     }
 
     let persistence_runtime = Builder::new_multi_thread()
-        .worker_threads(4)
+        .worker_threads(20)
         .thread_name("persistence")
         .enable_all()
         .build()
@@ -156,7 +161,7 @@ fn main() {
     let persistence_runtime_handle = persistence_runtime.handle().clone();
 
     let sensei_runtime = Builder::new_multi_thread()
-        .worker_threads(10)
+        .worker_threads(20)
         .thread_name("sensei")
         .enable_all()
         .build()
@@ -166,12 +171,12 @@ fn main() {
         let (event_sender, _event_receiver): (
             broadcast::Sender<SenseiEvent>,
             broadcast::Receiver<SenseiEvent>,
-        ) = broadcast::channel(256);
+        ) = broadcast::channel(1024);
 
         let mut db_connection_options = ConnectOptions::new(config.database_url.clone());
         db_connection_options
-            .max_connections(50)
-            .min_connections(5)
+            .max_connections(100)
+            .min_connections(10)
             .connect_timeout(Duration::new(30, 0));
         let db_connection = Database::connect(db_connection_options).await.unwrap();
         Migrator::up(&db_connection, None)
@@ -269,7 +274,8 @@ fn main() {
         let server = hyper::Server::bind(&addr).serve(hybrid_service);
 
         println!(
-            "manage your sensei node at http://localhost:{}/admin/nodes",
+            "manage your sensei node at http://{}:{}/admin/nodes",
+            config.api_host.clone(),
             port
         );
 

@@ -55,7 +55,7 @@ impl NodeService {
         let node_directory = self.admin_service.node_directory.lock().await;
 
         match node_directory.get(&session.pubkey) {
-            Some(handle) => {
+            Some(Some(handle)) => {
                 handle
                     .node
                     .verify_macaroon(macaroon, session)
@@ -80,6 +80,7 @@ impl NodeService {
                         .map_err(|_e| Status::unknown("error")),
                 }
             }
+            Some(None) => Err(Status::not_found("node is in process of being started")),
             None => match request {
                 NodeRequest::StartNode { passphrase } => {
                     drop(node_directory);
