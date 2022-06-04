@@ -242,7 +242,7 @@ impl EventHandler for LightningNodeEventHandler {
                     let res = self.database.update_payment_sync(payment);
 
                     match res {
-                        Ok(()) => {}
+                        Ok(_payment) => {}
                         Err(_e) => {
                             println!("failed to update payment");
                         }
@@ -334,9 +334,5 @@ impl EventHandler for LightningNodeEventHandler {
                 // the funding transaction either confirms, or this event is generated.
             }
         }
-
-        self.event_sender
-            .send(SenseiEvent::Ldk(Box::new(event.clone())))
-            .unwrap_or_default();
     }
 }

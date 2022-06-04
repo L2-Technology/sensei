@@ -248,12 +248,13 @@ impl SenseiDatabase {
         })
     }
 
-    pub fn update_payment_sync(&self, payment: payment::ActiveModel) -> Result<(), Error> {
+    pub fn update_payment_sync(
+        &self,
+        payment: payment::ActiveModel,
+    ) -> Result<payment::Model, Error> {
         tokio::task::block_in_place(move || {
-            self.runtime_handle.block_on(async move {
-                let _update = payment.update(&self.connection).await?;
-                Ok(())
-            })
+            self.runtime_handle
+                .block_on(async move { Ok(payment.update(&self.connection).await?) })
         })
     }
 
