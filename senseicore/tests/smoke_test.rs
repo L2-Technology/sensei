@@ -8,8 +8,9 @@ mod test {
     use migration::{Migrator, MigratorTrait};
     use senseicore::events::SenseiEvent;
     use senseicore::node::{HTLCStatus, LightningNode};
-    use senseicore::services::node::Channel;
+    use senseicore::services::node::{Channel, OpenChannelInfo};
     use senseicore::services::{PaginationRequest, PaymentsFilter};
+    use serial_test::serial;
     use std::{str::FromStr, sync::Arc, time::Duration};
     use tokio::runtime::{Builder, Handle};
     use tokio::sync::broadcast;
@@ -283,6 +284,122 @@ mod test {
         .unwrap()
     }
 
+    async fn open_channels(
+        bitcoind: &BitcoinD,
+        from: Arc<LightningNode>,
+        to: Vec<Arc<LightningNode>>,
+        amt_sat: u64,
+    ) -> Vec<(Channel, Arc<LightningNode>)> {
+        let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
+
+        let channel_infos = to
+            .iter()
+            .map(|to| {
+                let node_connection_string = format!(
+                    "{}@{}:{}",
+                    to.get_pubkey(),
+                    to.listen_addresses.first().unwrap(),
+                    to.listen_port
+                );
+
+                OpenChannelInfo {
+                    node_connection_string,
+                    amt_satoshis: amt_sat,
+                    public: true,
+                }
+            })
+            .collect::<Vec<OpenChannelInfo>>();
+
+        let mut event_receiver = from.event_sender.subscribe();
+
+        from.call(NodeRequest::OpenChannels {
+            channels: channel_infos,
+        })
+        .await
+        .unwrap();
+
+        let from_node_id = from.id.clone();
+        let filter = move |event| {
+            if let SenseiEvent::TransactionBroadcast { node_id, .. } = event {
+                if *node_id == from_node_id {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        let event = wait_for_event(&mut event_receiver, filter, 15000, 250).await;
+        assert!(event.is_some());
+
+        let funding_txid = match event.unwrap() {
+            SenseiEvent::TransactionBroadcast { txid, .. } => Some(txid),
+            _ => None,
+        }
+        .unwrap();
+
+        bitcoind
+            .client
+            .generate_to_address(10, &miner_address)
+            .unwrap();
+
+        let usable_from = from.clone();
+        let expected_channels = to.len();
+        let has_usable_channels = move || {
+            let usable_channels = usable_from
+                .list_channels(PaginationRequest {
+                    page: 0,
+                    take: 5,
+                    query: None,
+                })
+                .unwrap()
+                .0
+                .into_iter()
+                .filter(|channel| channel.is_usable)
+                .collect::<Vec<Channel>>();
+
+            usable_channels.len() >= expected_channels
+        };
+        assert!(wait_until(Box::new(has_usable_channels), 15000, 250).await);
+
+        for to_node in &to {
+            let usable_to = to_node.clone();
+
+            let has_usable_channels = move || {
+                let usable_channels = usable_to
+                    .list_channels(PaginationRequest {
+                        page: 0,
+                        take: 5,
+                        query: None,
+                    })
+                    .unwrap()
+                    .0
+                    .into_iter()
+                    .filter(|channel| channel.is_usable)
+                    .collect::<Vec<Channel>>();
+
+                usable_channels.len() == 1
+            };
+            assert!(wait_until(Box::new(has_usable_channels), 15000, 250).await);
+        }
+
+        from.list_channels(PaginationRequest {
+            page: 0,
+            take: to.len() as u32,
+            query: None,
+        })
+        .unwrap()
+        .0
+        .into_iter()
+        .map(|channel| {
+            let counterparty = to
+                .iter()
+                .find(|to| to.node_info().unwrap().node_pubkey == channel.counterparty_pubkey)
+                .unwrap();
+            (channel, counterparty.clone())
+        })
+        .collect()
+    }
+
     async fn open_channel(
         bitcoind: &BitcoinD,
         from: Arc<LightningNode>,
@@ -299,10 +416,12 @@ mod test {
 
         let mut event_receiver = from.event_sender.subscribe();
 
-        from.call(NodeRequest::OpenChannel {
-            node_connection_string: node_connection_string,
-            amt_satoshis: amt_sat,
-            public: true,
+        from.call(NodeRequest::OpenChannels {
+            channels: vec![OpenChannelInfo {
+                node_connection_string: node_connection_string,
+                amt_satoshis: amt_sat,
+                public: true,
+            }],
         })
         .await
         .unwrap();
@@ -484,7 +603,7 @@ mod test {
         .await
     }
 
-    fn run_test<F>(test: fn(BitcoinD, AdminService) -> F) -> F::Output
+    fn run_test<F>(name: &str, test: fn(BitcoinD, AdminService) -> F) -> F::Output
     where
         F: Future,
     {
@@ -504,7 +623,7 @@ mod test {
             .build()
             .unwrap()
             .block_on(async move {
-                let sensei_dir = String::from("./.sensei-tests");
+                let sensei_dir = format!("./.sensei-tests/{}", name);
                 let bitcoind = setup_bitcoind();
                 let admin_service =
                     setup_sensei(&sensei_dir, &bitcoind, persistence_runtime_handle).await;
@@ -621,8 +740,75 @@ mod test {
         ));
     }
 
+    async fn batch_open_channels_test(bitcoind: BitcoinD, admin_service: AdminService) {
+        let alice = create_root_node(&admin_service, "alice", "alice", true).await;
+        let bob = create_node(&admin_service, "bob", "bob", true).await;
+        let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
+        let doug = create_node(&admin_service, "doug", "doug", true).await;
+        fund_node(&bitcoind, alice.clone()).await;
+
+        let alice_channels_with_counterparties = open_channels(
+            &bitcoind,
+            alice.clone(),
+            vec![bob.clone(), charlie.clone(), doug.clone()],
+            1_000_000,
+        )
+        .await;
+
+        let num_invoices = 5;
+        let invoice_amt = 3500;
+        let mut bob_invoices = batch_create_invoices(bob.clone(), invoice_amt, num_invoices).await;
+        let mut charlie_invoices =
+            batch_create_invoices(charlie.clone(), invoice_amt, num_invoices).await;
+        let mut doug_invoices =
+            batch_create_invoices(doug.clone(), invoice_amt, num_invoices).await;
+        let mut invoices = vec![];
+        invoices.append(&mut bob_invoices);
+        invoices.append(&mut charlie_invoices);
+        invoices.append(&mut doug_invoices);
+        future::try_join_all(
+            invoices
+                .into_iter()
+                .map(|invoice| pay_invoice(alice.clone(), invoice))
+                .map(tokio::spawn),
+        )
+        .await
+        .unwrap();
+
+        let alice_test = alice.clone();
+        let has_payments = move || {
+            let pagination = PaginationRequest {
+                page: 0,
+                take: 1,
+                query: None,
+            };
+            let filter = PaymentsFilter {
+                status: Some(HTLCStatus::Succeeded.to_string()),
+                origin: None,
+            };
+            let (_payments, pagination) = alice_test
+                .database
+                .list_payments_sync(alice_test.id.clone(), pagination, filter)
+                .unwrap();
+            pagination.total == (num_invoices * 3) as u64
+        };
+
+        assert!(wait_until(has_payments, 60000, 500).await);
+
+        for (channel, counterparty) in alice_channels_with_counterparties {
+            close_channel(&bitcoind, alice.clone(), counterparty, channel, false).await
+        }
+    }
+
     #[test]
+    #[serial]
+    fn run_batch_open_channel_test() {
+        run_test("batch_open_channels", batch_open_channels_test)
+    }
+
+    #[test]
+    #[serial]
     fn run_smoke_test() {
-        run_test(smoke_test)
+        run_test("smoke_test", smoke_test)
     }
 }

@@ -20,7 +20,7 @@ use entity::sea_orm::{ActiveModelTrait, ActiveValue};
 use lightning_background_processor::BackgroundProcessor;
 use macaroon::Macaroon;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
@@ -141,6 +141,7 @@ pub struct AdminService {
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub event_sender: broadcast::Sender<SenseiEvent>,
+    pub available_ports: Arc<Mutex<VecDeque<u16>>>,
 }
 
 impl AdminService {
@@ -151,6 +152,23 @@ impl AdminService {
         chain_manager: Arc<SenseiChainManager>,
         event_sender: broadcast::Sender<SenseiEvent>,
     ) -> Self {
+        let mut used_ports = HashSet::new();
+        let mut available_ports = VecDeque::new();
+        database
+            .list_ports_in_use()
+            .await
+            .unwrap()
+            .into_iter()
+            .for_each(|port| {
+                used_ports.insert(port);
+            });
+
+        for port in config.port_range_min..config.port_range_max {
+            if !used_ports.contains(&port) {
+                available_ports.push_back(port);
+            }
+        }
+
         Self {
             data_dir: String::from(data_dir),
             config: Arc::new(config),
@@ -158,6 +176,7 @@ impl AdminService {
             database: Arc::new(database),
             chain_manager,
             event_sender,
+            available_ports: Arc::new(Mutex::new(available_ports)),
         }
     }
 }
@@ -400,34 +419,31 @@ impl AdminService {
         role: node::NodeRole,
     ) -> Result<(node::Model, Macaroon), crate::error::Error> {
         let listen_addr = public_ip::addr().await.unwrap().to_string();
+
         let listen_port: i32 = match role {
             node::NodeRole::Root => 9735,
             node::NodeRole::Default => {
-                let mut port = self.config.port_range_min;
-                let mut port_used_by_system = !portpicker::is_free(port);
-                let mut port_used_by_sensei =
-                    self.database.port_in_use(&listen_addr, port.into()).await?;
-
-                while port <= self.config.port_range_max
-                    && (port_used_by_system || port_used_by_sensei)
-                {
-                    port += 1;
-                    port_used_by_system = !portpicker::is_free(port);
-                    port_used_by_sensei =
-                        self.database.port_in_use(&listen_addr, port.into()).await?;
-                }
-
-                port.into()
+                let mut available_ports = self.available_ports.lock().await;
+                available_ports.pop_front().unwrap().into()
             }
         };
 
         let node_id = Uuid::new_v4().to_string();
-        let (node_pubkey, node_macaroon) = LightningNode::get_node_pubkey_and_macaroon(
+
+        let result = LightningNode::get_node_pubkey_and_macaroon(
             node_id.clone(),
             passphrase,
             self.database.clone(),
         )
-        .await?;
+        .await;
+
+        if let Err(e) = result {
+            let mut available_ports = self.available_ports.lock().await;
+            available_ports.push_front(listen_port.try_into().unwrap());
+            return Err(e);
+        }
+
+        let (node_pubkey, macaroon) = result.unwrap();
 
         let node = entity::node::ActiveModel {
             id: ActiveValue::Set(node_id),
@@ -442,12 +458,22 @@ impl AdminService {
             ..Default::default()
         };
 
-        let node = node.insert(self.database.get_connection()).await.unwrap();
+        let result = node.insert(self.database.get_connection()).await;
 
-        Ok((node, node_macaroon))
+        if let Err(e) = result {
+            let mut available_ports = self.available_ports.lock().await;
+            available_ports.push_front(listen_port.try_into().unwrap());
+            return Err(e.into());
+        }
+
+        let node = result.unwrap();
+
+        Ok((node, macaroon))
     }
 
     // note: please be sure to stop the node first? maybe?
+    // TODO: this was never updated with the DB rewrite
+    //       need to release the port and actually delete the node
     async fn delete_node(&self, node: node::Model) -> Result<(), crate::error::Error> {
         let data_dir = format!("{}/{}/{}", self.data_dir, self.config.network, node.id);
         Ok(fs::remove_dir_all(&data_dir)?)

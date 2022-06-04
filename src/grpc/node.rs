@@ -19,7 +19,7 @@ use super::{
         GetUnusedAddressRequest, GetUnusedAddressResponse, InfoRequest, InfoResponse,
         KeysendRequest, KeysendResponse, LabelPaymentRequest, LabelPaymentResponse,
         ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse,
-        ListPeersRequest, ListPeersResponse, OpenChannelRequest, OpenChannelResponse,
+        ListPeersRequest, ListPeersResponse, OpenChannelsRequest, OpenChannelsResponse,
         PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest, SignMessageResponse,
         StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse,
         VerifyMessageRequest, VerifyMessageResponse,
@@ -143,10 +143,10 @@ impl Node for NodeService {
             .map(Response::new)
             .map_err(|_e| Status::unknown("unknown error"))
     }
-    async fn open_channel(
+    async fn open_channels(
         &self,
-        request: tonic::Request<OpenChannelRequest>,
-    ) -> Result<tonic::Response<OpenChannelResponse>, tonic::Status> {
+        request: tonic::Request<OpenChannelsRequest>,
+    ) -> Result<tonic::Response<OpenChannelsResponse>, tonic::Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

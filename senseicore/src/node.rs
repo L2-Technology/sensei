@@ -11,6 +11,7 @@ use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::database::WalletDatabase;
 use crate::chain::fee_estimator::SenseiFeeEstimator;
 use crate::chain::manager::SenseiChainManager;
+use crate::channels::{ChannelOpenRequest, ChannelOpener};
 use crate::config::SenseiConfig;
 use crate::database::SenseiDatabase;
 use crate::disk::FilesystemLogger;
@@ -19,7 +20,9 @@ use crate::event_handler::LightningNodeEventHandler;
 use crate::events::SenseiEvent;
 use crate::network_graph::OptionalNetworkGraphMsgHandler;
 use crate::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
-use crate::services::node::{Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, Peer};
+use crate::services::node::{
+    Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, OpenChannelResult, Peer,
+};
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
 use crate::{hex_utils, version};
@@ -55,14 +58,14 @@ use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId, RoutingFees};
 use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
-use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
+use lightning::util::config::UserConfig;
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
 use lightning_net_tokio::SocketDescriptor;
 use macaroon::Macaroon;
-use rand::{thread_rng, Rng};
+use rand::{thread_rng, Rng, RngCore};
 use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
 use std::fmt::Display;
 use std::fs::File;
@@ -407,6 +410,7 @@ pub struct LightningNode {
     pub stop_listen: Arc<AtomicBool>,
     pub persister: Arc<SenseiPersister>,
     pub event_sender: broadcast::Sender<SenseiEvent>,
+    pub broadcaster: Arc<SenseiBroadcaster>,
 }
 
 impl LightningNode {
@@ -634,12 +638,12 @@ impl LightningNode {
             fee_estimator: chain_manager.fee_estimator.clone(),
         });
 
-        let broadcaster = Arc::new(SenseiBroadcaster {
-            node_id: id.clone(),
-            broadcaster: chain_manager.broadcaster.clone(),
-            wallet_database: Arc::new(Mutex::new(wallet_database.clone())),
-            event_sender: event_sender.clone(),
-        });
+        let broadcaster = Arc::new(SenseiBroadcaster::new(
+            id.clone(),
+            chain_manager.broadcaster.clone(),
+            Arc::new(Mutex::new(wallet_database.clone())),
+            event_sender.clone(),
+        ));
 
         let persistence_store =
             AnyKVStore::Database(DatabaseStore::new(database.clone(), id.clone()));
@@ -880,6 +884,7 @@ impl LightningNode {
             stop_listen,
             persister,
             event_sender,
+            broadcaster,
         })
     }
 
@@ -1021,46 +1026,28 @@ impl LightningNode {
         (handles, background_processor)
     }
 
+    pub async fn open_channels(
+        &self,
+        requests: Vec<ChannelOpenRequest>,
+    ) -> Vec<(ChannelOpenRequest, Result<[u8; 32], Error>)> {
+        let mut opener = ChannelOpener::new(
+            self.id.clone(),
+            self.channel_manager.clone(),
+            self.chain_manager.clone(),
+            self.wallet.clone(),
+            self.event_sender.subscribe(),
+            self.broadcaster.clone(),
+        );
+        opener.open_batch(requests).await
+    }
+
     // `custom_id` will be user_channel_id in FundingGenerated event
     // allows use to tie the create_channel call with the event
-    pub fn open_channel(
-        &self,
-        peer_pubkey: PublicKey,
-        channel_amt_sat: u64,
-        push_amt_msat: u64,
-        custom_id: u64,
-        announced_channel: bool,
-    ) -> Result<[u8; 32], Error> {
-        let config = UserConfig {
-            peer_channel_config_limits: ChannelHandshakeLimits {
-                // lnd's max to_self_delay is 2016, so we want to be compatible.
-                their_to_self_delay: 2016,
-                ..Default::default()
-            },
-            channel_options: ChannelConfig {
-                announced_channel,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-
-        // TODO: want to be logging channels in db for matching forwarded payments
-        match self.channel_manager.create_channel(
-            peer_pubkey,
-            channel_amt_sat,
-            push_amt_msat,
-            custom_id,
-            Some(config),
-        ) {
-            Ok(short_channel_id) => {
-                println!("EVENT: initiated channel with peer {}. ", peer_pubkey);
-                Ok(short_channel_id)
-            }
-            Err(e) => {
-                println!("ERROR: failed to open channel: {:?}", e);
-                Err(e.into())
-            }
-        }
+    pub async fn open_channel(&self, request: ChannelOpenRequest) -> Result<[u8; 32], Error> {
+        let requests = vec![request];
+        let mut responses = self.open_channels(requests).await;
+        let (_request, result) = responses.pop().unwrap();
+        result
     }
 
     pub async fn connect_to_peer(&self, pubkey: PublicKey, addr: SocketAddr) -> Result<(), Error> {
@@ -1470,37 +1457,59 @@ impl LightningNode {
                     balance_satoshis: balance,
                 })
             }
-            NodeRequest::OpenChannel {
-                node_connection_string,
-                amt_satoshis,
-                public,
-            } => {
-                let (pubkey, addr) = parse_peer_info(node_connection_string.clone()).await?;
+            NodeRequest::OpenChannels { channels } => {
+                let mut requests = vec![];
 
-                let found_peer = self
-                    .peer_manager
-                    .get_peer_node_ids()
-                    .into_iter()
-                    .find(|node_pubkey| *node_pubkey == pubkey);
-
-                if found_peer.is_none() {
-                    self.connect_to_peer(pubkey, addr).await?;
+                // TODO: i guess we need to filter out peers we couldn't connect to instead of unwrap()
+                for channel in &channels {
+                    let (pubkey, addr) = parse_peer_info(channel.node_connection_string.clone())
+                        .await
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "failed to parse connection string: {}",
+                                channel.node_connection_string
+                            )
+                        });
+                    connect_peer_if_necessary(pubkey, addr, self.peer_manager.clone())
+                        .await
+                        .unwrap_or_else(|_| {
+                            panic!("failed to connect to peer {}@{}", pubkey, addr)
+                        });
+                    requests.push(ChannelOpenRequest {
+                        node_connection_string: channel.node_connection_string.clone(),
+                        peer_pubkey: pubkey,
+                        channel_amt_sat: channel.amt_satoshis,
+                        push_amt_msat: 0,
+                        custom_id: thread_rng().gen_range(1..u64::MAX),
+                        announced_channel: channel.public,
+                    });
                 }
 
-                let res = self.open_channel(pubkey, amt_satoshis, 0, 0, public);
+                let responses = self.open_channels(requests).await;
 
-                match res {
-                    Ok(temp_channel_id) => {
-                        let _ = self.persister.persist_channel_peer(&node_connection_string);
-                        Ok(NodeResponse::OpenChannel {
-                            temp_channel_id: hex_utils::hex_str(&temp_channel_id),
+                Ok(NodeResponse::OpenChannels {
+                    channels,
+                    results: responses
+                        .into_iter()
+                        .map(|(request, result)| match result {
+                            Ok(temp_channel_id) => {
+                                let _ = self
+                                    .persister
+                                    .persist_channel_peer(&request.node_connection_string);
+                                OpenChannelResult {
+                                    error: false,
+                                    error_message: None,
+                                    temp_channel_id: Some(hex_utils::hex_str(&temp_channel_id)),
+                                }
+                            }
+                            Err(e) => OpenChannelResult {
+                                error: true,
+                                error_message: Some(e.to_string()),
+                                temp_channel_id: None,
+                            },
                         })
-                    }
-                    Err(e) => Ok(NodeResponse::Error(NodeRequestError::Sensei(format!(
-                        "Failed to open channel: {:?}",
-                        e
-                    )))),
-                }
+                        .collect::<Vec<_>>(),
+                })
             }
             NodeRequest::SendPayment { invoice } => {
                 let invoice = self.get_invoice_from_str(&invoice)?;

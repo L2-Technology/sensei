@@ -22,7 +22,7 @@ use entity::sea_orm::QueryOrder;
 use migration::Condition;
 use migration::Expr;
 use rand::thread_rng;
-use rand::Rng;
+use rand::RngCore;
 use sea_orm::entity::EntityTrait;
 use sea_orm::{prelude::*, DatabaseConnection};
 use serde::Deserialize;
@@ -112,6 +112,15 @@ impl SenseiDatabase {
             .filter(node::Column::ListenPort.eq(listen_port))
             .one(&self.connection)
             .await?)
+    }
+
+    pub async fn list_ports_in_use(&self) -> Result<Vec<u16>, Error> {
+        Ok(Node::find()
+            .all(&self.connection)
+            .await?
+            .into_iter()
+            .map(|node| node.listen_port as u16)
+            .collect())
     }
 
     pub async fn list_nodes(

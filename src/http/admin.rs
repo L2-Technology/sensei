@@ -372,13 +372,16 @@ pub async fn login(
                             .http_only(true)
                             .finish();
                         cookies.add(macaroon_cookie);
-                        let token_cookie = Cookie::build("token", token).http_only(true).finish();
+                        let token_cookie = Cookie::build("token", token.clone())
+                            .http_only(true)
+                            .finish();
                         cookies.add(token_cookie);
                         Ok(Json(json!({
                             "pubkey": node.pubkey,
                             "alias": node.alias,
                             "macaroon": macaroon,
                             "role": node.role as u16,
+                            "token": token
                         })))
                     }
                     _ => Err(StatusCode::UNPROCESSABLE_ENTITY),

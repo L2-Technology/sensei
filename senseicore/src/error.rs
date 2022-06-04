@@ -32,6 +32,7 @@ pub enum Error {
     InvalidMacaroon,
     AdminNodeNotStarted,
     AdminNodeNotCreated,
+    FundingGenerationNeverHappened,
 }
 
 impl Display for Error {
@@ -55,6 +56,9 @@ impl Display for Error {
             Error::InvalidMacaroon => String::from("invalid macaroon"),
             Error::AdminNodeNotCreated => String::from("admin node not created"),
             Error::AdminNodeNotStarted => String::from("admin node not started"),
+            Error::FundingGenerationNeverHappened => {
+                String::from("funding generation for request never happened")
+            }
         };
         write!(f, "{}", str)
     }
