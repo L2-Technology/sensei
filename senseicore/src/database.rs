@@ -19,6 +19,7 @@ use entity::payment::Entity as Payment;
 use entity::sea_orm;
 use entity::sea_orm::ActiveValue;
 use entity::sea_orm::QueryOrder;
+use entity::seconds_since_epoch;
 use migration::Condition;
 use migration::Expr;
 use rand::thread_rng;
@@ -427,6 +428,24 @@ impl SenseiDatabase {
         })
     }
 
+    pub async fn create_value(
+        &self,
+        node_id: String,
+        key: String,
+        value: Vec<u8>,
+    ) -> Result<kv_store::Model, Error> {
+        let entry = kv_store::ActiveModel {
+            node_id: ActiveValue::Set(node_id),
+            k: ActiveValue::Set(key),
+            v: ActiveValue::Set(value),
+            ..Default::default()
+        }
+        .insert(&self.connection)
+        .await?;
+
+        Ok(entry)
+    }
+
     pub async fn set_value(
         &self,
         node_id: String,
@@ -474,10 +493,37 @@ impl SenseiDatabase {
         self.set_value(node_id, String::from("seed"), seed).await
     }
 
+    pub async fn create_seed(
+        &self,
+        node_id: String,
+        seed: Vec<u8>,
+    ) -> Result<kv_store::Model, Error> {
+        self.create_value(node_id, String::from("seed"), seed).await
+    }
+
+    pub fn get_seed_active_model(&self, node_id: String, seed: Vec<u8>) -> kv_store::ActiveModel {
+        let now = seconds_since_epoch();
+        kv_store::ActiveModel {
+            node_id: ActiveValue::Set(node_id),
+            k: ActiveValue::Set(String::from("seed")),
+            v: ActiveValue::Set(seed),
+            created_at: ActiveValue::Set(now),
+            updated_at: ActiveValue::Set(now),
+            ..Default::default()
+        }
+    }
+
+    pub async fn insert_kv_store(
+        &self,
+        entity: kv_store::ActiveModel,
+    ) -> Result<kv_store::Model, Error> {
+        Ok(entity.insert(&self.connection).await?)
+    }
+
     // Note: today we assume there's only ever one macaroon for a user
     //       once there's some `bakery` functionality exposed we need to define
     //       which macaroon we return when a user unlocks their node
-    pub async fn get_macaroon(&self, node_id: String) -> Result<Option<macaroon::Model>, Error> {
+    pub async fn get_macaroon(&self, node_id: &str) -> Result<Option<macaroon::Model>, Error> {
         Ok(Macaroon::find()
             .filter(macaroon::Column::NodeId.eq(node_id))
             .one(&self.connection)

@@ -76,7 +76,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
-use std::{convert::From, fmt, fs};
+use std::{convert::From, fmt};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
@@ -389,11 +389,9 @@ impl MacaroonSession {
 #[derive(Clone)]
 pub struct LightningNode {
     pub config: Arc<SenseiConfig>,
-    pub macaroon: Macaroon,
     pub id: String,
-    pub listen_addresses: Vec<String>,
     pub listen_port: u16,
-    pub alias: String,
+    pub listen_addresses: Vec<String>,
     pub seed: [u8; 32],
     pub database: Arc<SenseiDatabase>,
     pub wallet: Arc<Mutex<bdk::Wallet<WalletDatabase>>>,
@@ -414,13 +412,23 @@ pub struct LightningNode {
 }
 
 impl LightningNode {
-    async fn find_or_create_seed(
+    pub fn generate_seed() -> [u8; 32] {
+        let mut seed: [u8; 32] = [0; 32];
+        thread_rng().fill_bytes(&mut seed);
+        seed
+    }
+
+    pub fn encrypt_seed(seed: &[u8; 32], passphrase: &[u8]) -> Result<Vec<u8>, Error> {
+        let cryptor = RingCryptor::new();
+        Ok(cryptor.seal_with_passphrase(passphrase, seed)?)
+    }
+
+    async fn get_seed_for_node(
         node_id: String,
         passphrase: String,
         database: Arc<SenseiDatabase>,
     ) -> Result<[u8; 32], Error> {
         let cryptor = RingCryptor::new();
-
         let mut seed: [u8; 32] = [0; 32];
         match database.get_seed(node_id.clone()).await? {
             Some(encrypted_seed) => {
@@ -431,27 +439,63 @@ impl LightningNode {
                     return Err(Error::InvalidSeedLength);
                 }
                 seed.copy_from_slice(decrypted_seed.as_slice());
+                Ok(seed)
             }
-            None => {
-                thread_rng().fill_bytes(&mut seed);
-                let encrypted_seed = cryptor.seal_with_passphrase(passphrase.as_bytes(), &seed)?;
-                database.set_seed(node_id.clone(), encrypted_seed).await?;
-            }
+            None => Err(Error::SeedNotFound),
         }
-        Ok(seed)
     }
 
-    async fn find_or_create_macaroon(
-        node_id: String,
-        passphrase: String,
-        seed: &[u8],
-        pubkey: String,
+    pub fn generate_macaroon(seed: &[u8], pubkey: String) -> Result<(Macaroon, String), Error> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let macaroon_data = MacaroonSession {
+            id: id.clone(),
+            pubkey,
+        };
+        let serialized_macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
+        let macaroon_key = macaroon::MacaroonKey::from(seed);
+        let macaroon_identifier = macaroon::ByteString::from(serialized_macaroon_data);
+        let macaroon = macaroon::Macaroon::create(
+            Some("senseid".to_string()),
+            &macaroon_key,
+            macaroon_identifier,
+        )?;
+
+        Ok((macaroon, id))
+    }
+
+    pub fn write_macaroon_to_file(macaroon_path: String, macaroon: &Macaroon) -> Result<(), Error> {
+        let macaroon_as_bytes = macaroon.serialize(macaroon::Format::V2)?;
+        match File::create(macaroon_path.clone()) {
+            Ok(mut f) => {
+                f.write_all(macaroon_as_bytes.as_slice())?;
+                f.sync_all()?;
+            }
+            Err(e) => {
+                println!(
+                    "ERROR: Unable to create admin.macaroon file {}: {}",
+                    macaroon_path, e
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn encrypt_macaroon(macaroon: &Macaroon, passphrase: &[u8]) -> Result<Vec<u8>, Error> {
+        let cryptor = RingCryptor::new();
+        let macaroon_as_bytes = macaroon.serialize(macaroon::Format::V2)?;
+        let encrypted_macaroon = cryptor.seal_with_passphrase(passphrase, &macaroon_as_bytes)?;
+        Ok(encrypted_macaroon)
+    }
+
+    pub async fn get_macaroon_for_node(
+        node_id: &str,
+        passphrase: &str,
         database: Arc<SenseiDatabase>,
-        macaroon_path: Option<String>,
     ) -> Result<Macaroon, Error> {
         let cryptor = RingCryptor::new();
 
-        match database.get_macaroon(node_id.clone()).await? {
+        match database.get_macaroon(node_id).await? {
             Some(macaroon) => {
                 let decrypted_macaroon = cryptor.open(
                     passphrase.as_bytes(),
@@ -460,49 +504,7 @@ impl LightningNode {
                 let macaroon = macaroon::Macaroon::deserialize(decrypted_macaroon.as_slice())?;
                 Ok(macaroon)
             }
-            None => {
-                let macaroon_data = MacaroonSession {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    pubkey,
-                };
-
-                let serialized_macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
-                let macaroon_key = macaroon::MacaroonKey::from(seed);
-                let macaroon_identifier = macaroon::ByteString::from(serialized_macaroon_data);
-                let admin_macaroon = macaroon::Macaroon::create(
-                    Some("senseid".to_string()),
-                    &macaroon_key,
-                    macaroon_identifier,
-                )?;
-                let serialized_macaroon = admin_macaroon.serialize(macaroon::Format::V2)?;
-                let encrypted_macaroon =
-                    cryptor.seal_with_passphrase(passphrase.as_bytes(), &serialized_macaroon)?;
-
-                let macaroon = entity::macaroon::ActiveModel {
-                    id: ActiveValue::Set(macaroon_data.id.clone()),
-                    node_id: ActiveValue::Set(node_id.clone()),
-                    encrypted_macaroon: ActiveValue::Set(encrypted_macaroon),
-                    ..Default::default()
-                };
-                macaroon.insert(database.get_connection()).await?;
-
-                if let Some(macaroon_path) = macaroon_path {
-                    match File::create(macaroon_path.clone()) {
-                        Ok(mut f) => {
-                            f.write_all(serialized_macaroon.as_slice())?;
-                            f.sync_all()?;
-                        }
-                        Err(e) => {
-                            println!(
-                                "ERROR: Unable to create admin.macaroon file {}: {}",
-                                macaroon_path, e
-                            );
-                        }
-                    }
-                }
-
-                Ok(admin_macaroon)
-            }
+            None => Err(Error::MacaroonNotFound),
         }
     }
 
@@ -524,40 +526,12 @@ impl LightningNode {
             .map_err(|_e| Error::InvalidMacaroon)
     }
 
-    pub async fn get_node_pubkey_and_macaroon(
-        id: String,
-        passphrase: String,
-        database: Arc<SenseiDatabase>,
-    ) -> Result<(String, Macaroon), Error> {
-        let seed =
-            LightningNode::find_or_create_seed(id.clone(), passphrase.clone(), database.clone())
-                .await?;
-
-        let cur = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-
-        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
-
-        let mut secp_ctx = Secp256k1::new();
-        secp_ctx.seeded_randomize(&keys_manager.get_secure_random_bytes());
-
-        let node_pubkey = PublicKey::from_secret_key(
-            &secp_ctx,
-            &keys_manager.get_node_secret(Recipient::Node).unwrap(),
-        );
-
-        let macaroon = LightningNode::find_or_create_macaroon(
-            id.clone(),
-            passphrase.clone(),
-            &seed,
-            node_pubkey.to_string(),
-            database.clone(),
-            None,
-        )
-        .await?;
-
-        Ok((node_pubkey.to_string(), macaroon))
+    pub fn get_node_pubkey_from_seed(seed: &[u8; 32]) -> String {
+        let secp_ctx = Secp256k1::new();
+        let keys_manager = KeysManager::new(seed, 0, 0);
+        let node_secret = keys_manager.get_node_secret(Recipient::Node).unwrap();
+        let node_pubkey = PublicKey::from_secret_key(&secp_ctx, &node_secret);
+        node_pubkey.to_string()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -575,14 +549,11 @@ impl LightningNode {
         chain_manager: Arc<SenseiChainManager>,
         database: Arc<SenseiDatabase>,
         event_sender: broadcast::Sender<SenseiEvent>,
-    ) -> Result<Self, Error> {
-        fs::create_dir_all(data_dir.clone())?;
-
+    ) -> Result<(Self, Vec<JoinHandle<()>>, BackgroundProcessor), Error> {
         let network = config.network;
-        let admin_macaroon_path = format!("{}/admin.macaroon", data_dir.clone());
 
         let seed =
-            LightningNode::find_or_create_seed(id.clone(), passphrase.clone(), database.clone())
+            LightningNode::get_seed_for_node(id.clone(), passphrase.clone(), database.clone())
                 .await?;
 
         let cur = SystemTime::now()
@@ -590,22 +561,6 @@ impl LightningNode {
             .unwrap();
 
         let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
-        let mut secp_ctx = Secp256k1::new();
-        secp_ctx.seeded_randomize(&keys_manager.get_secure_random_bytes());
-        let node_pubkey = PublicKey::from_secret_key(
-            &secp_ctx,
-            &keys_manager.get_node_secret(Recipient::Node).unwrap(),
-        );
-
-        let macaroon = LightningNode::find_or_create_macaroon(
-            id.clone(),
-            passphrase.clone(),
-            &seed,
-            node_pubkey.to_string(),
-            database.clone(),
-            Some(admin_macaroon_path),
-        )
-        .await?;
 
         let xprivkey = ExtendedPrivKey::new_master(network, &seed).unwrap();
         let xkey = ExtendedKey::from(xprivkey);
@@ -629,6 +584,7 @@ impl LightningNode {
             bdk_database,
         )?;
 
+        // TODO: probably can do this later, assuming this is REALLY slow
         bdk_wallet.ensure_addresses_cached(100).unwrap();
 
         let bdk_wallet = Arc::new(Mutex::new(bdk_wallet));
@@ -647,6 +603,7 @@ impl LightningNode {
 
         let persistence_store =
             AnyKVStore::Database(DatabaseStore::new(database.clone(), id.clone()));
+
         let persister = Arc::new(SenseiPersister::new(
             persistence_store,
             config.network,
@@ -827,6 +784,7 @@ impl LightningNode {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
+        // need to move this to AdminService or root node only
         let scorer = Arc::new(Mutex::new(
             persister.read_scorer(Arc::clone(&network_graph)),
         ));
@@ -861,41 +819,13 @@ impl LightningNode {
 
         let stop_listen = Arc::new(AtomicBool::new(false));
 
-        Ok(LightningNode {
-            config,
-            id,
-            listen_addresses,
-            listen_port,
-            alias,
-            database,
-            seed,
-            macaroon,
-            wallet: bdk_wallet,
-            channel_manager,
-            chain_monitor,
-            chain_manager,
-            peer_manager,
-            network_graph,
-            network_graph_msg_handler,
-            keys_manager,
-            logger,
-            scorer,
-            invoice_payer,
-            stop_listen,
-            persister,
-            event_sender,
-            broadcaster,
-        })
-    }
-
-    pub async fn start(self) -> (Vec<JoinHandle<()>>, BackgroundProcessor) {
         let mut handles = vec![];
 
-        let peer_manager_connection_handler = self.peer_manager.clone();
+        let peer_manager_connection_handler = peer_manager.clone();
 
-        let stop_listen_ref = Arc::clone(&self.stop_listen);
+        let stop_listen_ref = Arc::clone(&stop_listen);
         handles.push(tokio::spawn(async move {
-            let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", self.listen_port))
+            let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", listen_port))
                 .await
                 .expect(
                     "Failed to bind to listen port - is something else already listening on it?",
@@ -916,8 +846,8 @@ impl LightningNode {
             }
         }));
 
-        let scorer_persister = Arc::clone(&self.persister);
-        let scorer_persist = Arc::clone(&self.scorer);
+        let scorer_persister = Arc::clone(&persister);
+        let scorer_persist = Arc::clone(&scorer);
 
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(600));
@@ -934,26 +864,26 @@ impl LightningNode {
             }
         }));
 
-        let bg_persister = Arc::clone(&self.persister);
+        let bg_persister = Arc::clone(&persister);
 
         // TODO: should we allow 'child' nodes to update NetworkGraph based on payment failures?
         //       feels like probably but depends on exactly what is updated
         let background_processor = BackgroundProcessor::start(
             bg_persister,
-            self.invoice_payer.clone(),
-            self.chain_monitor.clone(),
-            self.channel_manager.clone(),
-            Some(self.network_graph_msg_handler.clone()),
-            self.peer_manager.clone(),
-            self.logger.clone(),
-            Some(self.scorer.clone()),
+            invoice_payer.clone(),
+            chain_monitor.clone(),
+            channel_manager.clone(),
+            Some(network_graph_msg_handler.clone()),
+            peer_manager.clone(),
+            logger.clone(),
+            Some(scorer.clone()),
         );
 
         // Reconnect to channel peers if possible.
 
-        let channel_manager_reconnect = self.channel_manager.clone();
-        let peer_manager_reconnect = self.peer_manager.clone();
-        let persister_peer = self.persister.clone();
+        let channel_manager_reconnect = channel_manager.clone();
+        let peer_manager_reconnect = peer_manager.clone();
+        let persister_peer = persister.clone();
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
@@ -985,18 +915,17 @@ impl LightningNode {
         // some public channels, and is only useful if we have public listen address(es) to announce.
         // In a production environment, this should occur only after the announcement of new channels
         // to avoid churn in the global network graph.
-        let chan_manager = Arc::clone(&self.channel_manager);
-        let listen_addresses = self
-            .listen_addresses
+        let chan_manager = Arc::clone(&channel_manager);
+        let broadcast_listen_addresses = listen_addresses
             .iter()
             .filter_map(|addr| match IpAddr::from_str(addr) {
                 Ok(IpAddr::V4(a)) => Some(NetAddress::IPv4 {
                     addr: a.octets(),
-                    port: self.listen_port,
+                    port: listen_port,
                 }),
                 Ok(IpAddr::V6(a)) => Some(NetAddress::IPv6 {
                     addr: a.octets(),
-                    port: self.listen_port,
+                    port: listen_port,
                 }),
                 Err(_) => {
                     println!("Failed to parse announced-listen-addr into an IP address");
@@ -1006,24 +935,48 @@ impl LightningNode {
             .collect::<Vec<NetAddress>>();
 
         let mut alias_bytes = [0; 32];
-        alias_bytes[..self.alias.len()].copy_from_slice(self.alias.as_bytes());
+        alias_bytes[..alias.len()].copy_from_slice(alias.as_bytes());
 
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             loop {
                 interval.tick().await;
 
-                if !listen_addresses.is_empty() {
+                if !broadcast_listen_addresses.is_empty() {
                     chan_manager.broadcast_node_announcement(
                         [0; 3],
                         alias_bytes,
-                        listen_addresses.clone(),
+                        broadcast_listen_addresses.clone(),
                     );
                 }
             }
         }));
 
-        (handles, background_processor)
+        let lightning_node = LightningNode {
+            config,
+            id,
+            listen_port,
+            listen_addresses,
+            database,
+            seed,
+            wallet: bdk_wallet,
+            channel_manager,
+            chain_monitor,
+            chain_manager,
+            peer_manager,
+            network_graph,
+            network_graph_msg_handler,
+            keys_manager,
+            logger,
+            scorer,
+            invoice_payer,
+            stop_listen,
+            persister,
+            event_sender,
+            broadcaster,
+        };
+
+        Ok((lightning_node, handles, background_processor))
     }
 
     pub async fn open_channels(

@@ -22,7 +22,7 @@ use serde_json::{json, Value};
 
 use senseicore::{
     services::{
-        admin::{AdminRequest, AdminResponse, AdminService},
+        admin::{AdminRequest, AdminResponse, AdminService, NodeCreateInfo},
         PaginationRequest,
     },
     utils,
@@ -75,6 +75,28 @@ impl From<StopNodeParams> for AdminRequest {
 pub struct LoginNodeParams {
     pub username: String,
     pub passphrase: String,
+}
+
+#[derive(Deserialize)]
+pub struct BatchCreateNodeParams {
+    nodes: Vec<CreateNodeParams>,
+}
+
+impl From<BatchCreateNodeParams> for AdminRequest {
+    fn from(params: BatchCreateNodeParams) -> Self {
+        Self::BatchCreateNode {
+            nodes: params
+                .nodes
+                .into_iter()
+                .map(|node| NodeCreateInfo {
+                    username: node.username,
+                    alias: node.alias,
+                    passphrase: node.passphrase,
+                    start: node.start,
+                })
+                .collect::<Vec<_>>(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -218,6 +240,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/init", post(init_sensei))
         .route("/v1/nodes", get(list_nodes))
         .route("/v1/nodes", post(create_node))
+        .route("/v1/nodes/batch", post(batch_create_nodes))
         .route("/v1/nodes/start", post(start_node))
         .route("/v1/nodes/stop", post(stop_node))
         .route("/v1/nodes/delete", post(delete_node))
@@ -526,6 +549,32 @@ pub async fn create_node(
         authenticate_request(&admin_service, "nodes/create", &cookies, token).await?;
     let request = {
         let params: Result<CreateNodeParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+
+    if authenticated {
+        match admin_service.call(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+pub async fn batch_create_nodes(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Json(payload): Json<Value>,
+    cookies: Cookies,
+    AuthHeader { macaroon: _, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated =
+        authenticate_request(&admin_service, "nodes/create/batch", &cookies, token).await?;
+    let request = {
+        let params: Result<BatchCreateNodeParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),

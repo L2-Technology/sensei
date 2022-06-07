@@ -317,7 +317,7 @@ pub async fn handle_authenticated_request(
     let node = node_directory.get(&session.pubkey);
 
     match node {
-        Some(handle) => {
+        Some(Some(handle)) => {
             handle
                 .node
                 .verify_macaroon(macaroon, session)
@@ -338,6 +338,12 @@ pub async fn handle_authenticated_request(
                     Err(err) => Ok(Json(NodeResponse::Error(err))),
                 },
             }
+        }
+        Some(None) => {
+            // TODO: rethink this Some(None) business
+            let err = senseicore::error::Error::Unauthenticated;
+            let node_request_error: NodeRequestError = err.into();
+            Ok(Json(NodeResponse::Error(node_request_error)))
         }
         None => match request {
             NodeRequest::StartNode { passphrase } => {

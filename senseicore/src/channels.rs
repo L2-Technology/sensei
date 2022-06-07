@@ -123,7 +123,7 @@ impl ChannelOpener {
             .collect::<Vec<EventFilter<_>>>();
 
         // TODO: is this appropriate timeout? maybe should accept as param
-        let events = self.wait_for_events(filters, 15000, 500).await;
+        let events = self.wait_for_events(filters, 30000, 500).await;
 
         // set error state for requests we didn't get an event for
         let requests_with_results = requests_with_results

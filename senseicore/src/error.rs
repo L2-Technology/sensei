@@ -28,11 +28,14 @@ pub enum Error {
     LdkInvoiceParse(lightning_invoice::ParseOrSemanticError),
     InvalidSeedLength,
     FailedToWriteSeed,
+    SeedNotFound,
+    MacaroonNotFound,
     Unauthenticated,
     InvalidMacaroon,
     AdminNodeNotStarted,
     AdminNodeNotCreated,
     FundingGenerationNeverHappened,
+    NodeBeingStartedAlready,
 }
 
 impl Display for Error {
@@ -51,11 +54,14 @@ impl Display for Error {
             Error::LdkInvoiceSign(e) => e.to_string(),
             Error::LdkInvoiceParse(e) => e.to_string(),
             Error::InvalidSeedLength => String::from("invalid seed length"),
+            Error::SeedNotFound => String::from("seed not found for node"),
+            Error::MacaroonNotFound => String::from("macaroon not found for node"),
             Error::FailedToWriteSeed => String::from("failed to write seed"),
             Error::Unauthenticated => String::from("unauthenticated"),
             Error::InvalidMacaroon => String::from("invalid macaroon"),
             Error::AdminNodeNotCreated => String::from("admin node not created"),
             Error::AdminNodeNotStarted => String::from("admin node not started"),
+            Error::NodeBeingStartedAlready => String::from("node already being started"),
             Error::FundingGenerationNeverHappened => {
                 String::from("funding generation for request never happened")
             }

@@ -12,14 +12,16 @@ use crate::chain::manager::SenseiChainManager;
 use crate::database::SenseiDatabase;
 use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
+use crate::network_graph::SenseiNetworkGraph;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
 
-use entity::access_token;
-use entity::node;
-use entity::sea_orm::{ActiveModelTrait, ActiveValue};
+use entity::node::{self, NodeRole};
+use entity::sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait};
+use entity::{access_token, seconds_since_epoch};
+use futures::stream::{self, StreamExt};
 use lightning_background_processor::BackgroundProcessor;
 use macaroon::Macaroon;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
@@ -31,6 +33,23 @@ pub struct NodeHandle {
     pub node: Arc<LightningNode>,
     pub background_processor: BackgroundProcessor,
     pub handles: Vec<JoinHandle<()>>,
+}
+
+#[derive(Clone)]
+pub struct NodeCreateInfo {
+    pub username: String,
+    pub alias: String,
+    pub passphrase: String,
+    pub start: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct NodeCreateResult {
+    pubkey: String,
+    macaroon: String,
+    listen_addr: String,
+    listen_port: i32,
+    id: String,
 }
 
 pub enum AdminRequest {
@@ -51,6 +70,9 @@ pub enum AdminRequest {
         alias: String,
         passphrase: String,
         start: bool,
+    },
+    BatchCreateNode {
+        nodes: Vec<NodeCreateInfo>,
     },
     ListNodes {
         pagination: PaginationRequest,
@@ -111,6 +133,9 @@ pub enum AdminResponse {
         listen_port: i32,
         id: String,
     },
+    BatchCreateNode {
+        nodes: Vec<NodeCreateResult>,
+    },
     ListNodes {
         nodes: Vec<node::Model>,
         pagination: PaginationResponse,
@@ -131,7 +156,7 @@ pub enum AdminResponse {
     Error(Error),
 }
 
-pub type NodeDirectory = Arc<Mutex<HashMap<String, NodeHandle>>>;
+pub type NodeDirectory = Arc<Mutex<HashMap<String, Option<NodeHandle>>>>;
 
 #[derive(Clone)]
 pub struct AdminService {
@@ -142,6 +167,7 @@ pub struct AdminService {
     pub chain_manager: Arc<SenseiChainManager>,
     pub event_sender: broadcast::Sender<SenseiEvent>,
     pub available_ports: Arc<Mutex<VecDeque<u16>>>,
+    pub network_graph: Arc<Mutex<SenseiNetworkGraph>>,
 }
 
 impl AdminService {
@@ -177,6 +203,10 @@ impl AdminService {
             chain_manager,
             event_sender,
             available_ports: Arc::new(Mutex::new(available_ports)),
+            network_graph: Arc::new(Mutex::new(SenseiNetworkGraph {
+                graph: None,
+                msg_handler: None,
+            })),
         }
     }
 }
@@ -290,7 +320,13 @@ impl AdminService {
 
                 match root_node {
                     Some(node) => {
-                        let macaroon = self.start_node(node.clone(), passphrase).await?;
+                        let macaroon = LightningNode::get_macaroon_for_node(
+                            &node.id,
+                            &passphrase,
+                            self.database.clone(),
+                        )
+                        .await?;
+                        self.start_node(node.clone(), passphrase).await?;
                         let macaroon = macaroon.serialize(macaroon::Format::V2)?;
                         Ok(AdminResponse::StartAdmin {
                             pubkey: node.pubkey,
@@ -307,8 +343,14 @@ impl AdminService {
                 let node = self.database.get_node_by_pubkey(&pubkey).await?;
                 match node {
                     Some(node) => {
-                        let macaroon = self.start_node(node, passphrase).await?;
+                        let macaroon = LightningNode::get_macaroon_for_node(
+                            &node.id,
+                            &passphrase,
+                            self.database.clone(),
+                        )
+                        .await?;
                         let macaroon = macaroon.serialize(macaroon::Format::V2)?;
+                        self.start_node(node, passphrase).await?;
                         Ok(AdminResponse::StartNode {
                             macaroon: hex_utils::hex_str(macaroon.as_slice()),
                         })
@@ -355,6 +397,34 @@ impl AdminService {
                     listen_addr: node.listen_addr,
                     listen_port: node.listen_port,
                     id: node.id,
+                })
+            }
+            AdminRequest::BatchCreateNode { nodes } => {
+                let nodes_and_macaroons = self.batch_create_nodes(nodes.clone()).await?;
+
+                for ((node, _macaroon), node_create_info) in
+                    nodes_and_macaroons.iter().zip(nodes.iter())
+                {
+                    if node_create_info.start {
+                        self.start_node(node.clone(), node_create_info.passphrase.clone())
+                            .await?;
+                    }
+                }
+
+                Ok(AdminResponse::BatchCreateNode {
+                    nodes: nodes_and_macaroons
+                        .into_iter()
+                        .map(|(node, macaroon)| {
+                            let macaroon = macaroon.serialize(macaroon::Format::V2).unwrap();
+                            NodeCreateResult {
+                                pubkey: node.pubkey,
+                                macaroon: hex_utils::hex_str(macaroon.as_slice()),
+                                listen_addr: node.listen_addr,
+                                listen_port: node.listen_port,
+                                id: node.id,
+                            }
+                        })
+                        .collect::<Vec<_>>(),
                 })
             }
             AdminRequest::ListNodes { pagination } => {
@@ -411,14 +481,74 @@ impl AdminService {
         self.database.list_nodes(pagination).await
     }
 
-    async fn create_node(
+    async fn batch_create_nodes(
+        &self,
+        nodes: Vec<NodeCreateInfo>,
+    ) -> Result<Vec<(node::Model, Macaroon)>, crate::error::Error> {
+        let built_node_futures = nodes
+            .into_iter()
+            .map(|info| {
+                self.build_node(
+                    info.username,
+                    info.alias,
+                    info.passphrase,
+                    NodeRole::Default,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let stream_of_futures = stream::iter(built_node_futures);
+        let buffered = stream_of_futures.buffer_unordered(10);
+        let mut built_nodes = buffered
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .map(|built_result| built_result.unwrap())
+            .collect::<Vec<_>>();
+
+        let mut nodes_with_macaroons = Vec::with_capacity(built_nodes.len());
+        let mut db_nodes = Vec::with_capacity(built_nodes.len());
+        let mut db_seeds = Vec::with_capacity(built_nodes.len());
+        let mut db_macaroons = Vec::with_capacity(built_nodes.len());
+
+        for (node, macaroon, db_node, db_seed, db_macaroon) in built_nodes.drain(..) {
+            nodes_with_macaroons.push((node, macaroon));
+            db_nodes.push(db_node);
+            db_seeds.push(db_seed);
+            db_macaroons.push(db_macaroon);
+        }
+
+        entity::node::Entity::insert_many(db_nodes)
+            .exec(self.database.get_connection())
+            .await?;
+        entity::kv_store::Entity::insert_many(db_seeds)
+            .exec(self.database.get_connection())
+            .await?;
+        entity::macaroon::Entity::insert_many(db_macaroons)
+            .exec(self.database.get_connection())
+            .await?;
+
+        Ok(nodes_with_macaroons)
+    }
+
+    async fn build_node(
         &self,
         username: String,
         alias: String,
         passphrase: String,
         role: node::NodeRole,
-    ) -> Result<(node::Model, Macaroon), crate::error::Error> {
-        let listen_addr = public_ip::addr().await.unwrap().to_string();
+    ) -> Result<
+        (
+            entity::node::Model,
+            Macaroon,
+            entity::node::ActiveModel,
+            entity::kv_store::ActiveModel,
+            entity::macaroon::ActiveModel,
+        ),
+        crate::error::Error,
+    > {
+        // IP/PORT
+        let listen_addr = self.config.api_host.clone();
 
         let listen_port: i32 = match role {
             node::NodeRole::Root => 9735,
@@ -428,45 +558,84 @@ impl AdminService {
             }
         };
 
+        // NODE ID
         let node_id = Uuid::new_v4().to_string();
 
-        let result = LightningNode::get_node_pubkey_and_macaroon(
-            node_id.clone(),
-            passphrase,
-            self.database.clone(),
-        )
-        .await;
+        // NODE DIRECTORY
+        let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
+        fs::create_dir_all(node_directory)?;
 
-        if let Err(e) = result {
-            let mut available_ports = self.available_ports.lock().await;
-            available_ports.push_front(listen_port.try_into().unwrap());
-            return Err(e);
-        }
+        // NODE SEED
+        let seed = LightningNode::generate_seed();
+        let encrypted_seed = LightningNode::encrypt_seed(&seed, passphrase.as_bytes())?;
 
-        let (node_pubkey, macaroon) = result.unwrap();
+        let seed_active_model = self
+            .database
+            .get_seed_active_model(node_id.clone(), encrypted_seed);
 
-        let node = entity::node::ActiveModel {
-            id: ActiveValue::Set(node_id),
-            pubkey: ActiveValue::Set(node_pubkey),
-            username: ActiveValue::Set(username),
-            alias: ActiveValue::Set(alias),
-            network: ActiveValue::Set(self.config.network.to_string()),
-            listen_addr: ActiveValue::Set(listen_addr),
-            listen_port: ActiveValue::Set(listen_port),
-            role: ActiveValue::Set(role.into()),
-            status: ActiveValue::Set(node::NodeStatus::Stopped.into()),
-            ..Default::default()
+        // NODE PUBKEY
+        let node_pubkey = LightningNode::get_node_pubkey_from_seed(&seed);
+
+        // NODE MACAROON
+        let (macaroon, macaroon_id) = LightningNode::generate_macaroon(&seed, node_pubkey.clone())?;
+
+        let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.as_bytes())?;
+
+        let now = seconds_since_epoch();
+
+        let db_macaroon = entity::macaroon::ActiveModel {
+            id: ActiveValue::Set(macaroon_id),
+            node_id: ActiveValue::Set(node_id.clone()),
+            encrypted_macaroon: ActiveValue::Set(encrypted_macaroon),
+            created_at: ActiveValue::Set(now),
+            updated_at: ActiveValue::Set(now),
         };
 
-        let result = node.insert(self.database.get_connection()).await;
+        // NODE
+        let active_node = entity::node::ActiveModel {
+            id: ActiveValue::Set(node_id.clone()),
+            pubkey: ActiveValue::Set(node_pubkey.clone()),
+            username: ActiveValue::Set(username.clone()),
+            alias: ActiveValue::Set(alias.clone()),
+            network: ActiveValue::Set(self.config.network.to_string()),
+            listen_addr: ActiveValue::Set(listen_addr.clone()),
+            listen_port: ActiveValue::Set(listen_port),
+            role: ActiveValue::Set(role.clone().into()),
+            status: ActiveValue::Set(node::NodeStatus::Stopped.into()),
+            created_at: ActiveValue::Set(now),
+            updated_at: ActiveValue::Set(now),
+        };
 
-        if let Err(e) = result {
-            let mut available_ports = self.available_ports.lock().await;
-            available_ports.push_front(listen_port.try_into().unwrap());
-            return Err(e.into());
-        }
+        let node = node::Model {
+            id: node_id,
+            role: role.into(),
+            username,
+            alias,
+            network: self.config.network.to_string(),
+            listen_addr,
+            listen_port,
+            pubkey: node_pubkey,
+            created_at: now,
+            updated_at: now,
+            status: node::NodeStatus::Stopped.into(),
+        };
 
-        let node = result.unwrap();
+        Ok((node, macaroon, active_node, seed_active_model, db_macaroon))
+    }
+
+    async fn create_node(
+        &self,
+        username: String,
+        alias: String,
+        passphrase: String,
+        role: node::NodeRole,
+    ) -> Result<(node::Model, Macaroon), crate::error::Error> {
+        let (node, macaroon, db_node, db_seed, db_macaroon) =
+            self.build_node(username, alias, passphrase, role).await?;
+
+        db_seed.insert(self.database.get_connection()).await?;
+        db_macaroon.insert(self.database.get_connection()).await?;
+        db_node.insert(self.database.get_connection()).await?;
 
         Ok((node, macaroon))
     }
@@ -483,36 +652,33 @@ impl AdminService {
         &self,
         node: node::Model,
         passphrase: String,
-    ) -> Result<Macaroon, crate::error::Error> {
-        let mut node_directory = self.node_directory.lock().await;
-
-        let (network_graph, network_graph_msg_handler, external_router) = match node.get_role() {
-            node::NodeRole::Root => (None, None, false),
-            node::NodeRole::Default => {
-                if let Some(root_node) = self.database.get_root_node().await? {
-                    let root_pubkey = root_node.pubkey;
-                    if let Entry::Occupied(entry) = node_directory.entry(root_pubkey) {
-                        let root_node_handle = entry.get();
-                        let network_graph = root_node_handle.node.network_graph.clone();
-                        let network_graph_message_handler =
-                            root_node_handle.node.network_graph_msg_handler.clone();
-                        (
-                            Some(network_graph),
-                            Some(network_graph_message_handler),
-                            true,
-                        )
-                    } else {
-                        return Err(crate::error::Error::AdminNodeNotStarted);
+    ) -> Result<(), crate::error::Error> {
+        let status = {
+            let mut node_directory = self.node_directory.lock().await;
+            match node_directory.entry(node.pubkey.clone()) {
+                Entry::Vacant(entry) => {
+                    entry.insert(None);
+                    None
+                }
+                Entry::Occupied(entry) => {
+                    // TODO: verify passphrase
+                    match entry.get() {
+                        Some(_handle) => Some(Some(())),
+                        None => Some(None),
                     }
-                } else {
-                    return Err(crate::error::Error::AdminNodeNotCreated);
                 }
             }
         };
 
-        match node_directory.entry(node.pubkey.clone()) {
-            Entry::Vacant(entry) => {
-                let lightning_node = LightningNode::new(
+        let external_router = node.get_role() == node::NodeRole::Default;
+        let (network_graph, network_graph_msg_handler) = {
+            let ng = self.network_graph.lock().await;
+            (ng.get_graph(), ng.get_msg_handler())
+        };
+
+        match status {
+            None => {
+                let (lightning_node, handles, background_processor) = LightningNode::new(
                     self.config.clone(),
                     node.id.clone(),
                     vec![node.listen_addr.clone()],
@@ -535,29 +701,38 @@ impl AdminService {
                 .await?;
 
                 println!(
-                    "starting node {} on port {}",
+                    "starting {}@{}:{}",
                     node.pubkey.clone(),
+                    self.config.api_host.clone(),
                     node.listen_port
                 );
 
-                let (handles, background_processor) = lightning_node.clone().start().await;
+                if !external_router {
+                    let mut ng = self.network_graph.lock().await;
+                    ng.set_graph(lightning_node.network_graph.clone());
+                    ng.set_msg_handler(lightning_node.network_graph_msg_handler.clone());
+                }
 
-                entry.insert(NodeHandle {
-                    node: Arc::new(lightning_node.clone()),
-                    background_processor,
-                    handles,
-                });
+                {
+                    let mut node_directory = self.node_directory.lock().await;
+                    if let Entry::Occupied(mut entry) = node_directory.entry(node.pubkey.clone()) {
+                        entry.insert(Some(NodeHandle {
+                            node: Arc::new(lightning_node.clone()),
+                            background_processor,
+                            handles,
+                        }));
+                    }
+                }
 
                 let mut node: node::ActiveModel = node.into();
                 node.status = ActiveValue::Set(node::NodeStatus::Running.into());
-                node.listen_addr = ActiveValue::Set(public_ip::addr().await.unwrap().to_string());
+                node.listen_addr = ActiveValue::Set(self.config.api_host.clone());
                 node.save(self.database.get_connection()).await?;
-                Ok(lightning_node.macaroon)
+
+                Ok(())
             }
-            Entry::Occupied(entry) => {
-                // TODO: verify passphrase
-                Ok(entry.get().node.macaroon.clone())
-            }
+            Some(None) => Ok(()),
+            Some(Some(_)) => Ok(()),
         }
     }
 
@@ -566,15 +741,15 @@ impl AdminService {
         let entry = node_directory.entry(pubkey.clone());
 
         if let Entry::Occupied(entry) = entry {
-            let node_handle = entry.remove();
-
-            // Disconnect our peers and stop accepting new connections. This ensures we don't continue
-            // updating our channel data after we've stopped the background processor.
-            node_handle.node.peer_manager.disconnect_all_peers();
-            node_handle.node.stop_listen.store(true, Ordering::Release);
-            let _res = node_handle.background_processor.stop();
-            for handle in node_handle.handles {
-                handle.abort();
+            if let Some(node_handle) = entry.remove() {
+                // Disconnect our peers and stop accepting new connections. This ensures we don't continue
+                // updating our channel data after we've stopped the background processor.
+                node_handle.node.peer_manager.disconnect_all_peers();
+                node_handle.node.stop_listen.store(true, Ordering::Release);
+                let _res = node_handle.background_processor.stop();
+                for handle in node_handle.handles {
+                    handle.abort();
+                }
             }
         }
 
