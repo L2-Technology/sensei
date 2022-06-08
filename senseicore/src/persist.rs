@@ -222,6 +222,15 @@ impl SenseiPersister {
         String::new()
     }
 
+    pub fn batch_persist_channel_peers(&self, peer_infos: &[&str]) -> std::io::Result<()> {
+        let mut peer_data = self.get_raw_channel_peer_data();
+        for peer_info in peer_infos {
+            peer_data.push_str(peer_info);
+            peer_data.push('\n');
+        }
+        self.store.persist("channel_peer_data", &peer_data)
+    }
+
     pub fn persist_channel_peer(&self, peer_info: &str) -> std::io::Result<()> {
         let mut peer_data = self.get_raw_channel_peer_data();
         peer_data.push_str(peer_info);
@@ -239,7 +248,11 @@ impl SenseiPersister {
                 Ok((pubkey, socket_addr)) => {
                     peer_data.insert(pubkey, socket_addr);
                 }
-                Err(e) => return Err(e),
+                Err(_e) => {
+                    // ignore these errors for now
+                    // might need a way to lock reads while writing to this key
+                    // or use separate table for peers
+                }
             }
         }
         Ok(peer_data)

@@ -129,6 +129,7 @@ const ChannelRow = ({ result, extraClass, attributes }) => {
   let columnKeyComponentMap = {
     inboundCapacityMsat: AmountColumn,
     outboundCapacityMsat: AmountColumn,
+    balanceMsat: AmountColumn,
     isPublic: VisibilityColumn,
     status: StatusColumn,
     alias: AliasColumn,
@@ -164,6 +165,10 @@ const ChannelsList = () => {
     {
       key: "displayChannelId",
       label: "Channel Id",
+    },
+    {
+      key: "balanceMsat",
+      label: "Balance (sats)",
     },
     {
       key: "inboundCapacityMsat",

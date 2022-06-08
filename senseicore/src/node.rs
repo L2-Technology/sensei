@@ -1440,21 +1440,25 @@ impl LightningNode {
 
                 let responses = self.open_channels(requests).await;
 
+                let peer_connection_infos = responses
+                    .iter()
+                    .map(|(request, _result)| &request.node_connection_string[..])
+                    .collect::<Vec<_>>();
+
+                let _ = self
+                    .persister
+                    .batch_persist_channel_peers(&peer_connection_infos);
+
                 Ok(NodeResponse::OpenChannels {
                     channels,
                     results: responses
                         .into_iter()
-                        .map(|(request, result)| match result {
-                            Ok(temp_channel_id) => {
-                                let _ = self
-                                    .persister
-                                    .persist_channel_peer(&request.node_connection_string);
-                                OpenChannelResult {
-                                    error: false,
-                                    error_message: None,
-                                    temp_channel_id: Some(hex_utils::hex_str(&temp_channel_id)),
-                                }
-                            }
+                        .map(|(_request, result)| match result {
+                            Ok(temp_channel_id) => OpenChannelResult {
+                                error: false,
+                                error_message: None,
+                                temp_channel_id: Some(hex_utils::hex_str(&temp_channel_id)),
+                            },
                             Err(e) => OpenChannelResult {
                                 error: true,
                                 error_message: Some(e.to_string()),
