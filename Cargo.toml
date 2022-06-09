@@ -15,12 +15,13 @@ name = "senseid"
 path = "src/main.rs"
 
 [dependencies]
-lightning = { version = "0.0.106", features = ["max_level_trace"], git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
-lightning-block-sync = { version = "0.0.106", features = [ "rpc-client" ], git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
-lightning-invoice = { version = "0.14.0", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
-lightning-net-tokio = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
-lightning-persister = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
-lightning-background-processor = { version = "0.0.106", git = "https://github.com/lightningdevkit/rust-lightning", rev = "08ab6581f1c6254a7765340c5c7a553db58d3a89" }
+lightning = { version = "0.0.107", features = ["max_level_trace"] }
+lightning-block-sync = { version = "0.0.107", features = [ "rpc-client" ] }
+lightning-invoice = { version = "0.15.0" }
+lightning-net-tokio = { version = "0.0.107" }
+lightning-persister = { version = "0.0.107" }
+lightning-background-processor = { version = "0.0.107" }
+lightning-rapid-gossip-sync = { version = "0.0.107" }
 base64 = "0.13.0"
 bitcoin = "0.28.1"
 bitcoin-bech32 = "0.12"

@@ -10,12 +10,11 @@
 use bitcoin::secp256k1::PublicKey;
 use lightning::{
     ln::msgs::{self, Init, LightningError, RoutingMessageHandler},
-    routing::network_graph::NetworkGraph,
     util::events::{MessageSendEvent, MessageSendEventsProvider},
 };
 use std::{ops::Deref, sync::Arc};
 
-use crate::node::NetworkGraphMessageHandler;
+use crate::node::{NetworkGraph, NetworkGraphMessageHandler};
 
 #[derive(Clone)]
 pub struct SenseiNetworkGraph {

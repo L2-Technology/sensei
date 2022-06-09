@@ -75,7 +75,7 @@ impl From<Channel> for ChannelMessage {
             confirmations_required: channel.confirmations_required,
             force_close_spend_delay: channel.force_close_spend_delay,
             is_outbound: channel.is_outbound,
-            is_funding_locked: channel.is_funding_locked,
+            is_channel_ready: channel.is_channel_ready,
             is_usable: channel.is_usable,
             is_public: channel.is_public,
             counterparty_pubkey: channel.counterparty_pubkey,

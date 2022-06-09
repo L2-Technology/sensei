@@ -14,13 +14,14 @@ use crate::config::SenseiConfig;
 use crate::database::SenseiDatabase;
 use crate::events::SenseiEvent;
 use crate::hex_utils;
-use crate::node::{ChannelManager, HTLCStatus, PaymentOrigin};
+use crate::node::{ChannelManager, HTLCStatus, NetworkGraph, PaymentOrigin};
 
 use bdk::wallet::AddressIndex;
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use entity::sea_orm::ActiveValue;
 use lightning::chain::chaininterface::BroadcasterInterface;
+use lightning::routing::gossip::NodeId;
 use lightning::{
     chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
     util::events::{Event, EventHandler, PaymentPurpose},
@@ -42,6 +43,7 @@ pub struct LightningNodeEventHandler {
     pub tokio_handle: Handle,
     pub event_sender: broadcast::Sender<SenseiEvent>,
     pub broadcaster: Arc<SenseiBroadcaster>,
+    pub network_graph: Arc<NetworkGraph>,
 }
 
 impl EventHandler for LightningNodeEventHandler {
@@ -86,9 +88,39 @@ impl EventHandler for LightningNodeEventHandler {
             Event::PaymentReceived {
                 payment_hash,
                 purpose,
-                amt,
+                amount_msat,
                 ..
             } => {
+                println!(
+                    "\nEVENT: received payment from payment hash {} of {} millisatoshis",
+                    hex_utils::hex_str(&payment_hash.0),
+                    amount_msat
+                );
+
+                let payment_preimage = match purpose {
+                    PaymentPurpose::InvoicePayment {
+                        payment_preimage, ..
+                    } => *payment_preimage,
+                    PaymentPurpose::SpontaneousPayment(preimage) => Some(*preimage),
+                };
+
+                // TODO: if we want 'hodl invoices' we should have user set a flag on the invoice when they create it
+                //       then when we receive this event we can store the preimage + flag in db for this payment
+                //       user can then manually accept it
+                //        or maybe defines some custom logic on if/when to accept it
+                self.channel_manager.claim_funds(payment_preimage.unwrap());
+            }
+            Event::PaymentClaimed {
+                payment_hash,
+                purpose,
+                amount_msat,
+            } => {
+                println!(
+                    "\nEVENT: claimed payment from payment hash {} of {} millisatoshis",
+                    hex_utils::hex_str(&payment_hash.0),
+                    amount_msat,
+                );
+
                 let (payment_preimage, payment_secret) = match purpose {
                     PaymentPurpose::InvoicePayment {
                         payment_preimage,
@@ -96,23 +128,6 @@ impl EventHandler for LightningNodeEventHandler {
                         ..
                     } => (*payment_preimage, Some(*payment_secret)),
                     PaymentPurpose::SpontaneousPayment(preimage) => (Some(*preimage), None),
-                };
-
-                // TODO: if we want 'hodl invoices' we should have user set a flag on the invoice when they create it
-                //       then when we receive this event we can store the preimage + flag in db for this payment
-                //       user can then manually accept it
-                //        or maybe defines some custom logic on if/when to accept it
-                let status = match self.channel_manager.claim_funds(payment_preimage.unwrap()) {
-                    true => {
-                        println!(
-                            "\nEVENT: received payment from payment hash {} of {} millisatoshis",
-                            hex_utils::hex_str(&payment_hash.0),
-                            amt
-                        );
-
-                        HTLCStatus::Succeeded
-                    }
-                    _ => HTLCStatus::Failed,
                 };
 
                 let payment_hash = hex_utils::hex_str(&payment_hash.0);
@@ -124,12 +139,12 @@ impl EventHandler for LightningNodeEventHandler {
 
                 let preimage = payment_preimage.map(|preimage| hex_utils::hex_str(&preimage.0));
                 let secret = payment_secret.map(|secret| hex_utils::hex_str(&secret.0));
-                let amt_msat: Option<i64> = Some((*amt).try_into().unwrap());
+                let amt_msat: Option<i64> = Some((*amount_msat).try_into().unwrap());
 
                 match existing_payment {
                     Some(payment) => {
                         let mut payment: entity::payment::ActiveModel = payment.into();
-                        payment.status = ActiveValue::Set(status.to_string());
+                        payment.status = ActiveValue::Set(HTLCStatus::Succeeded.to_string());
                         payment.preimage = ActiveValue::Set(preimage);
                         payment.secret = ActiveValue::Set(secret);
                         payment.amt_msat = ActiveValue::Set(amt_msat);
@@ -139,7 +154,7 @@ impl EventHandler for LightningNodeEventHandler {
                     None => {
                         let payment = entity::payment::ActiveModel {
                             payment_hash: ActiveValue::Set(payment_hash),
-                            status: ActiveValue::Set(status.to_string()),
+                            status: ActiveValue::Set(HTLCStatus::Succeeded.to_string()),
                             preimage: ActiveValue::Set(preimage),
                             secret: ActiveValue::Set(secret),
                             amt_msat: ActiveValue::Set(amt_msat),
@@ -218,11 +233,54 @@ impl EventHandler for LightningNodeEventHandler {
                 }
             }
             Event::PaymentForwarded {
+                prev_channel_id,
+                next_channel_id,
                 fee_earned_msat,
                 claim_from_onchain_tx,
-                prev_channel_id: _,
-                next_channel_id: _,
             } => {
+                let read_only_network_graph = self.network_graph.read_only();
+                let nodes = read_only_network_graph.nodes();
+                let channels = self.channel_manager.list_channels();
+
+                let node_str = |channel_id: &Option<[u8; 32]>| match channel_id {
+                    None => String::new(),
+                    Some(channel_id) => match channels.iter().find(|c| c.channel_id == *channel_id)
+                    {
+                        None => String::new(),
+                        Some(channel) => {
+                            match nodes.get(&NodeId::from_pubkey(&channel.counterparty.node_id)) {
+                                None => " from private node".to_string(),
+                                Some(node) => match &node.announcement_info {
+                                    None => " from unnamed node".to_string(),
+                                    Some(info) => {
+                                        format!(
+                                            " from node {}",
+                                            String::from_utf8_lossy(&info.alias)
+                                        )
+                                    }
+                                },
+                            }
+                        }
+                    },
+                };
+                let channel_str = |channel_id: &Option<[u8; 32]>| {
+                    channel_id
+                        .map(|channel_id| {
+                            format!(" with channel {}", hex_utils::hex_str(&channel_id))
+                        })
+                        .unwrap_or_default()
+                };
+                let from_prev_str = format!(
+                    "{}{}",
+                    node_str(prev_channel_id),
+                    channel_str(prev_channel_id)
+                );
+                let to_next_str = format!(
+                    "{}{}",
+                    node_str(next_channel_id),
+                    channel_str(next_channel_id)
+                );
+
                 let from_onchain_str = if *claim_from_onchain_tx {
                     "from onchain downstream claim"
                 } else {
@@ -230,8 +288,8 @@ impl EventHandler for LightningNodeEventHandler {
                 };
                 if let Some(fee_earned) = fee_earned_msat {
                     println!(
-                        "\nEVENT: Forwarded payment, earning {} msat {}",
-                        fee_earned, from_onchain_str
+                        "\nEVENT: Forwarded payment{}{}, earning {} msat {}",
+                        from_prev_str, to_next_str, fee_earned, from_onchain_str
                     );
 
                     // let forwarded_payment = ForwardedPayment {
@@ -248,8 +306,8 @@ impl EventHandler for LightningNodeEventHandler {
                     //     .unwrap();
                 } else {
                     println!(
-                        "\nEVENT: Forwarded payment, claiming onchain {}",
-                        from_onchain_str
+                        "\nEVENT: Forwarded payment{}{}, claiming onchain {}",
+                        from_prev_str, to_next_str, from_onchain_str
                     );
                 }
             }

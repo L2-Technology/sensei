@@ -8,7 +8,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::disk::FilesystemLogger;
+use crate::{disk::FilesystemLogger, node::NetworkGraph};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{
     blockdata::constants::genesis_block, hashes::hex::FromHex, BlockHash, Network, Txid,
@@ -19,10 +19,7 @@ use lightning::{
         channelmonitor::ChannelMonitor,
         keysinterface::{KeysInterface, Sign},
     },
-    routing::{
-        network_graph::NetworkGraph,
-        scoring::{ProbabilisticScorer, ProbabilisticScoringParameters},
-    },
+    routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters},
     util::{
         persist::KVStorePersister,
         ser::{Readable, Writeable},
@@ -179,13 +176,13 @@ impl SenseiPersister {
     pub fn read_network_graph(&self) -> NetworkGraph {
         if let Ok(Some(contents)) = self.store.read("network_graph") {
             let mut cursor = Cursor::new(contents);
-            if let Ok(graph) = NetworkGraph::read(&mut cursor) {
+            if let Ok(graph) = NetworkGraph::read(&mut cursor, self.logger.clone()) {
                 return graph;
             }
         }
 
         let genesis_hash = genesis_block(self.network).header.block_hash();
-        NetworkGraph::new(genesis_hash)
+        NetworkGraph::new(genesis_hash, self.logger.clone())
     }
 
     pub fn read_scorer(

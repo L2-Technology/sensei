@@ -79,11 +79,11 @@ mod test {
             .unwrap()
         {
             AdminResponse::CreateNode {
-                id,
-                listen_addr,
-                listen_port,
+                id: _,
+                listen_addr: _,
+                listen_port: _,
                 pubkey,
-                macaroon,
+                macaroon: _,
             } => Some(pubkey),
             _ => None,
         }
@@ -112,10 +112,10 @@ mod test {
         {
             AdminResponse::CreateAdmin {
                 pubkey,
-                macaroon,
-                id,
-                token,
-                role,
+                macaroon: _,
+                id: _,
+                token: _,
+                role: _,
             } => {
                 let directory = admin_service.node_directory.lock().await;
                 let handle = directory.get(&pubkey).unwrap().as_ref().unwrap();
@@ -149,23 +149,6 @@ mod test {
         let mut current_ms = 0;
         while current_ms < timeout_ms {
             if func() {
-                return true;
-            }
-            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
-            current_ms += interval_ms;
-        }
-
-        return false;
-    }
-
-    async fn wait_until_async<F: Future<Output = bool>, G: Fn() -> F>(
-        func: G,
-        timeout_ms: u64,
-        interval_ms: u64,
-    ) -> bool {
-        let mut current_ms = 0;
-        while current_ms < timeout_ms {
-            if func().await {
                 return true;
             }
             tokio::time::sleep(Duration::from_millis(interval_ms)).await;
@@ -331,7 +314,8 @@ mod test {
         let event = wait_for_event(&mut event_receiver, filter, 15000, 250).await;
         assert!(event.is_some());
 
-        let funding_txid = match event.unwrap() {
+        // TODO: looks like I can just remove this?
+        let _funding_txid = match event.unwrap() {
             SenseiEvent::TransactionBroadcast { txid, .. } => Some(txid),
             _ => None,
         }
@@ -551,7 +535,7 @@ mod test {
         bitcoind: &BitcoinD,
         persistence_handle: Handle,
     ) -> AdminService {
-        let (event_sender, event_receiver): (
+        let (event_sender, _event_receiver): (
             broadcast::Sender<SenseiEvent>,
             broadcast::Receiver<SenseiEvent>,
         ) = broadcast::channel(256);

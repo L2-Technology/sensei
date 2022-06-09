@@ -81,7 +81,7 @@ pub struct Channel {
     pub confirmations_required: Option<u32>,
     pub force_close_spend_delay: Option<u32>,
     pub is_outbound: bool,
-    pub is_funding_locked: bool,
+    pub is_channel_ready: bool,
     pub is_usable: bool,
     pub is_public: bool,
     pub counterparty_pubkey: String,
@@ -106,7 +106,7 @@ impl From<ChannelDetails> for Channel {
                 .force_close_spend_delay
                 .map(|delay| delay as u32),
             is_outbound: channel_detail.is_outbound,
-            is_funding_locked: channel_detail.is_funding_locked,
+            is_channel_ready: channel_detail.is_channel_ready,
             is_usable: channel_detail.is_usable,
             is_public: channel_detail.is_public,
             counterparty_pubkey: channel_detail.counterparty.node_id.to_string(),

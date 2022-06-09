@@ -56,7 +56,9 @@ use lightning::ln::peer_handler::{
     IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
-use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId, RoutingFees};
+use lightning::routing::gossip::{
+    NetworkGraph as LdkNetworkGraph, NodeId, P2PGossipSync, RoutingFees,
+};
 use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
 use lightning::util::config::UserConfig;
@@ -65,6 +67,7 @@ use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
 use lightning_net_tokio::SocketDescriptor;
+use lightning_rapid_gossip_sync::RapidGossipSync;
 use macaroon::Macaroon;
 use rand::{thread_rng, Rng, RngCore};
 use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
@@ -283,6 +286,11 @@ pub struct PaymentInfo {
     pub invoice: Option<String>,
 }
 
+pub type NetworkGraph = LdkNetworkGraph<Arc<FilesystemLogger>>;
+
+pub type GossipSync<P, G, A, L> =
+    lightning_background_processor::GossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
+
 pub type ChainMonitor = chainmonitor::ChainMonitor<
     InMemorySigner,
     Arc<dyn Filter + Send + Sync>,
@@ -335,11 +343,8 @@ pub type SyncableMonitor = (
     Arc<FilesystemLogger>,
 );
 
-pub type NetworkGraphMessageHandler = NetGraphMsgHandler<
-    Arc<NetworkGraph>,
-    Arc<dyn chain::Access + Send + Sync>,
-    Arc<FilesystemLogger>,
->;
+pub type NetworkGraphMessageHandler =
+    P2PGossipSync<Arc<NetworkGraph>, Arc<dyn chain::Access + Send + Sync>, Arc<FilesystemLogger>>;
 
 fn get_wpkh_descriptors_for_extended_key(
     xkey: ExtendedKey,
@@ -807,6 +812,7 @@ impl LightningNode {
             chain_manager: chain_manager.clone(),
             event_sender: event_sender.clone(),
             broadcaster: broadcaster.clone(),
+            network_graph: network_graph.clone(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -874,7 +880,7 @@ impl LightningNode {
             invoice_payer.clone(),
             chain_monitor.clone(),
             channel_manager.clone(),
-            Some(network_graph_msg_handler.clone()),
+            GossipSync::P2P(network_graph_msg_handler.clone()),
             peer_manager.clone(),
             logger.clone(),
             Some(scorer.clone()),
@@ -1633,7 +1639,9 @@ pub async fn parse_peer_info(
 
     let addr = peer_addr.unwrap().unwrap();
 
-    let listen_addr = public_ip::addr().await.unwrap();
+    let listen_addr = public_ip::addr()
+        .await
+        .unwrap_or_else(|| [127, 0, 0, 1].into());
 
     let connect_address = match listen_addr == addr.ip() {
         true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),

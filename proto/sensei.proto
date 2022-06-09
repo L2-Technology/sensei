@@ -298,7 +298,7 @@ message Channel {
     optional uint32 confirmations_required = 11;
     optional uint32 force_close_spend_delay = 12;
     bool is_outbound = 13;
-    bool is_funding_locked = 14;
+    bool is_channel_ready = 14;
     bool is_usable = 15;
     bool is_public = 16;
     string counterparty_pubkey = 17;
