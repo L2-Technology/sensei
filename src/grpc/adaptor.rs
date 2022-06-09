@@ -195,7 +195,21 @@ impl TryFrom<NodeResponse> for GetBalanceResponse {
 
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
-            NodeResponse::GetBalance { balance_satoshis } => Ok(Self { balance_satoshis }),
+            NodeResponse::GetBalance {
+                onchain_balance_sats,
+                channel_balance_msats,
+                channel_outbound_capacity_msats,
+                channel_inbound_capacity_msats,
+                usable_channel_outbound_capacity_msats,
+                usable_channel_inbound_capacity_msats,
+            } => Ok(Self {
+                onchain_balance_sats,
+                channel_balance_msats,
+                channel_outbound_capacity_msats,
+                channel_inbound_capacity_msats,
+                usable_channel_outbound_capacity_msats,
+                usable_channel_inbound_capacity_msats,
+            }),
             _ => Err("impossible".to_string()),
         }
     }

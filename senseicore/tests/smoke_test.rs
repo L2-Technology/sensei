@@ -259,9 +259,12 @@ mod test {
             .unwrap();
     }
 
-    async fn get_balance(node: Arc<LightningNode>) -> u64 {
+    async fn get_onchain_balance_sats(node: Arc<LightningNode>) -> u64 {
         match node.call(NodeRequest::GetBalance {}).await.unwrap() {
-            NodeResponse::GetBalance { balance_satoshis } => Some(balance_satoshis),
+            NodeResponse::GetBalance {
+                onchain_balance_sats,
+                ..
+            } => Some(onchain_balance_sats),
             _ => None,
         }
         .unwrap()
@@ -678,9 +681,9 @@ mod test {
         )
         .await;
 
-        let alice_balance = get_balance(alice.clone()).await;
-        let bob_balance = get_balance(bob.clone()).await;
-        let charlie_balance = get_balance(charlie.clone()).await;
+        let alice_balance = get_onchain_balance_sats(alice.clone()).await;
+        let bob_balance = get_onchain_balance_sats(bob.clone()).await;
+        let charlie_balance = get_onchain_balance_sats(charlie.clone()).await;
 
         let alice_initial_balance = 100_000_000 as u64;
         let bob_initial_balance = 100_000_000 as u64;

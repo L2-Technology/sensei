@@ -187,7 +187,12 @@ message GetUnusedAddressResponse {
 
 message GetBalanceRequest {}
 message GetBalanceResponse {
-    uint64 balance_satoshis = 1;
+    uint64 onchain_balance_sats = 1;
+    uint64 channel_balance_msats = 2;
+    uint64 channel_outbound_capacity_msats = 3;
+    uint64 channel_inbound_capacity_msats = 4;
+    uint64 usable_channel_outbound_capacity_msats = 5;
+    uint64 usable_channel_inbound_capacity_msats = 6;
 }
 
 message OpenChannelInfo {

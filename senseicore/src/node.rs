@@ -873,7 +873,7 @@ impl LightningNode {
 
         let bg_persister = Arc::clone(&persister);
 
-        // TODO: should we allow 'child' nodes to update NetworkGraph based on payment failures?
+        // TODO: should we allow all nodes to update NetworkGraph based on payment failures?
         //       feels like probably but depends on exactly what is updated
         let background_processor = BackgroundProcessor::start(
             bg_persister,
@@ -1427,10 +1427,40 @@ impl LightningNode {
                 })
             }
             NodeRequest::GetBalance {} => {
-                let wallet = self.wallet.lock().unwrap();
-                let balance = wallet.get_balance().map_err(Error::Bdk)?;
+                // TODO: split confirmed vs uncofirmed chain balance
+                //       we currently only have 'unconfirmed' utxos from transactions we broadcast
+                //       we never hear about transactions that enter the mempool
+                let onchain_balance_sats = {
+                    let wallet = self.wallet.lock().unwrap();
+                    wallet.get_balance().map_err(Error::Bdk)?
+                };
+
+                let channels = self.channel_manager.list_channels();
+
+                let mut channel_balance_msats = 0;
+                let mut channel_outbound_capacity_msats = 0;
+                let mut channel_inbound_capacity_msats = 0;
+                let mut usable_channel_outbound_capacity_msats = 0;
+                let mut usable_channel_inbound_capacity_msats = 0;
+
+                for channel in channels {
+                    channel_balance_msats += channel.balance_msat;
+                    channel_outbound_capacity_msats += channel.outbound_capacity_msat;
+                    channel_inbound_capacity_msats += channel.inbound_capacity_msat;
+
+                    if channel.is_usable {
+                        usable_channel_outbound_capacity_msats += channel.outbound_capacity_msat;
+                        usable_channel_inbound_capacity_msats += channel.inbound_capacity_msat;
+                    }
+                }
+
                 Ok(NodeResponse::GetBalance {
-                    balance_satoshis: balance,
+                    onchain_balance_sats,
+                    channel_balance_msats,
+                    channel_outbound_capacity_msats,
+                    channel_inbound_capacity_msats,
+                    usable_channel_outbound_capacity_msats,
+                    usable_channel_inbound_capacity_msats,
                 })
             }
             NodeRequest::OpenChannels { channels } => {

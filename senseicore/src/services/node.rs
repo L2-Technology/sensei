@@ -206,7 +206,12 @@ pub enum NodeResponse {
         address: String,
     },
     GetBalance {
-        balance_satoshis: u64,
+        onchain_balance_sats: u64,
+        channel_balance_msats: u64,
+        channel_outbound_capacity_msats: u64,
+        channel_inbound_capacity_msats: u64,
+        usable_channel_outbound_capacity_msats: u64,
+        usable_channel_inbound_capacity_msats: u64,
     },
     OpenChannels {
         channels: Vec<OpenChannelInfo>,
