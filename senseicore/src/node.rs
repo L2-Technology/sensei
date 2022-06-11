@@ -21,7 +21,7 @@ use crate::events::SenseiEvent;
 use crate::network_graph::OptionalNetworkGraphMsgHandler;
 use crate::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
 use crate::services::node::{
-    Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, OpenChannelResult, Peer,
+    Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, OpenChannelResult, Peer, Utxo,
 };
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
@@ -40,6 +40,7 @@ use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
 
 use bdk::template::DescriptorTemplateOut;
+use bitcoin::hashes::hex::ToHex;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
@@ -1380,6 +1381,22 @@ impl LightningNode {
         Ok((valid, pubkey.to_string()))
     }
 
+    pub fn list_unspent(&self) -> Result<Vec<Utxo>, Error> {
+        let wallet = self.wallet.lock().unwrap();
+        let local_utxos = wallet.list_unspent()?;
+        let utxos = local_utxos
+            .into_iter()
+            .map(|u| Utxo {
+                amount_sat: u.txout.value,
+                spk: u.txout.script_pubkey.to_hex(),
+                txid: u.outpoint.txid.to_hex(),
+                output_index: u.outpoint.vout,
+            })
+            .collect();
+
+        Ok(utxos)
+    }
+
     pub async fn delete_payment(&self, payment_hash: String) -> Result<(), Error> {
         self.database
             .delete_payment(self.id.clone(), payment_hash)
@@ -1573,6 +1590,10 @@ impl LightningNode {
             NodeRequest::VerifyMessage { message, signature } => {
                 let (valid, pubkey) = self.verify_message(message, signature)?;
                 Ok(NodeResponse::VerifyMessage { valid, pubkey })
+            }
+            NodeRequest::ListUnspent {} => {
+                let utxos = self.list_unspent()?;
+                Ok(NodeResponse::ListUnspent { utxos })
             }
         }
     }

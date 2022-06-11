@@ -35,6 +35,7 @@ service Node {
     rpc ListPeers (ListPeersRequest) returns (ListPeersResponse);
     rpc SignMessage (SignMessageRequest) returns (SignMessageResponse);
     rpc VerifyMessage (VerifyMessageRequest) returns (VerifyMessageResponse);
+    rpc ListUnspent (ListUnspentRequest) returns (ListUnspentResponse);
 }
 
 message ListNode {
@@ -381,4 +382,16 @@ message VerifyMessageRequest {
 message VerifyMessageResponse {
     bool valid = 1;
     string pubkey = 2;
+}
+message ListUnspentRequest {}
+
+message Utxo {
+    uint64 amount_sat = 1;
+    string spk = 2;
+    string txid = 3;
+    uint32 output_index = 4;
+}
+
+message ListUnspentResponse {
+    repeated Utxo utxos = 1;
 }

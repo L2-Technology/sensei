@@ -21,8 +21,9 @@ use tonic::{metadata::MetadataValue, transport::Channel, Request};
 use crate::sensei::{
     CloseChannelRequest, ConnectPeerRequest, CreateAdminRequest, CreateInvoiceRequest,
     CreateNodeRequest, GetUnusedAddressRequest, InfoRequest, KeysendRequest, ListChannelsRequest,
-    ListNodesRequest, ListPaymentsRequest, ListPeersRequest, OpenChannelInfo, OpenChannelsRequest,
-    PayInvoiceRequest, SignMessageRequest, StartAdminRequest, StartNodeRequest,
+    ListNodesRequest, ListPaymentsRequest, ListPeersRequest, ListUnspentRequest, OpenChannelInfo,
+    OpenChannelsRequest, PayInvoiceRequest, SignMessageRequest, StartAdminRequest,
+    StartNodeRequest,
 };
 
 pub mod sensei {
@@ -443,6 +444,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "listpeers" => {
                 let request = tonic::Request::new(ListPeersRequest {});
                 let response = client.list_peers(request).await?;
+                println!("{:?}", response.into_inner());
+            }
+            "listunspent" => {
+                let request = tonic::Request::new(ListUnspentRequest {});
+                let response = client.list_unspent(request).await?;
                 println!("{:?}", response.into_inner());
             }
             "nodeinfo" => {
