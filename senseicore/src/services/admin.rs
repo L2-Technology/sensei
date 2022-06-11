@@ -676,7 +676,7 @@ impl AdminService {
             (ng.get_graph(), ng.get_msg_handler())
         };
 
-        match status {
+        match status.flatten() {
             None => {
                 let (lightning_node, handles, background_processor) = LightningNode::new(
                     self.config.clone(),
@@ -731,8 +731,7 @@ impl AdminService {
 
                 Ok(())
             }
-            Some(None) => Ok(()),
-            Some(Some(_)) => Ok(()),
+            Some(_) => Ok(()),
         }
     }
 
