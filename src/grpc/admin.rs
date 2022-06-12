@@ -385,17 +385,15 @@ impl AdminService {
     }
 
     fn raw_token_from_metadata(&self, metadata: MetadataMap) -> Result<String, Status> {
-        let token = metadata.get("token");
+        let token_opt = metadata.get("token");
 
-        if token.is_none() {
-            return Err(Status::unauthenticated("token is required"));
+        match token_opt {
+            Some(token) => token
+                .to_str()
+                .map(String::from)
+                .map_err(|_e| Status::unauthenticated("invalid token: must be ascii")),
+            None => Err(Status::unauthenticated("token is required")),
         }
-
-        token
-            .unwrap()
-            .to_str()
-            .map(String::from)
-            .map_err(|_e| Status::unauthenticated("invalid token: must be ascii"))
     }
 }
 
