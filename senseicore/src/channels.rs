@@ -166,11 +166,7 @@ impl ChannelOpener {
             .fee_estimator
             .get_est_sat_per_1000_weight(ConfirmationTarget::Normal);
 
-        // TODO: is this the correct conversion??
-        let sat_per_vb = match fee_sats_per_1000_wu {
-            253 => 1.0,
-            _ => fee_sats_per_1000_wu as f32 / 250.0,
-        } as f32;
+        let sat_per_vb = std::cmp::min(1.0, fee_sats_per_1000_wu as f32 / 250.0);
 
         let fee_rate = FeeRate::from_sat_per_vb(sat_per_vb);
 
