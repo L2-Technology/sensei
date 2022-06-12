@@ -65,7 +65,7 @@ impl EventHandler for LightningNodeEventHandler {
                         Network::Bitcoin => bitcoin_bech32::constants::Network::Bitcoin,
                         Network::Testnet => bitcoin_bech32::constants::Network::Testnet,
                         Network::Regtest => bitcoin_bech32::constants::Network::Regtest,
-                        Network::Signet => panic!("Signet unsupported"),
+                        Network::Signet => bitcoin_bech32::constants::Network::Signet,
                     },
                 )
                 .expect("Lightning funding tx should always be to a SegWit output")
