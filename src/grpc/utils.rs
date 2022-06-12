@@ -1,6 +1,6 @@
 use tonic::{metadata::MetadataMap, Status};
 
-pub fn raw_macaroon_from_metadata(metadata: MetadataMap) -> Result<String, tonic::Status> {
+pub fn raw_macaroon_from_metadata(metadata: MetadataMap) -> Result<String, Status> {
     let macaroon = metadata.get("macaroon");
 
     if macaroon.is_none() {
