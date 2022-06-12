@@ -44,12 +44,11 @@ impl NodeService {
         &self,
         metadata: MetadataMap,
         request: NodeRequest,
-    ) -> Result<NodeResponse, tonic::Status> {
+    ) -> Result<NodeResponse, Status> {
         let macaroon_hex_string = raw_macaroon_from_metadata(metadata)?;
 
-        let (macaroon, session) =
-            utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
-                .map_err(|_e| tonic::Status::unauthenticated("invalid macaroon"))?;
+        let (macaroon, session) = utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
+            .map_err(|_e| Status::unauthenticated("invalid macaroon"))?;
         let pubkey = session.pubkey.clone();
 
         let node_directory = self.admin_service.node_directory.lock().await;
@@ -104,7 +103,7 @@ impl Node for NodeService {
     async fn start_node(
         &self,
         request: tonic::Request<StartNodeRequest>,
-    ) -> Result<tonic::Response<StartNodeResponse>, tonic::Status> {
+    ) -> Result<Response<StartNodeResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -115,7 +114,7 @@ impl Node for NodeService {
     async fn stop_node(
         &self,
         request: tonic::Request<StopNodeRequest>,
-    ) -> Result<tonic::Response<StopNodeResponse>, tonic::Status> {
+    ) -> Result<Response<StopNodeResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -126,7 +125,7 @@ impl Node for NodeService {
     async fn get_unused_address(
         &self,
         request: tonic::Request<GetUnusedAddressRequest>,
-    ) -> Result<tonic::Response<GetUnusedAddressResponse>, tonic::Status> {
+    ) -> Result<Response<GetUnusedAddressResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -137,7 +136,7 @@ impl Node for NodeService {
     async fn get_balance(
         &self,
         request: tonic::Request<GetBalanceRequest>,
-    ) -> Result<tonic::Response<GetBalanceResponse>, tonic::Status> {
+    ) -> Result<Response<GetBalanceResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -147,7 +146,7 @@ impl Node for NodeService {
     async fn open_channels(
         &self,
         request: tonic::Request<OpenChannelsRequest>,
-    ) -> Result<tonic::Response<OpenChannelsResponse>, tonic::Status> {
+    ) -> Result<Response<OpenChannelsResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -157,7 +156,7 @@ impl Node for NodeService {
     async fn pay_invoice(
         &self,
         request: tonic::Request<PayInvoiceRequest>,
-    ) -> Result<tonic::Response<PayInvoiceResponse>, tonic::Status> {
+    ) -> Result<Response<PayInvoiceResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -167,7 +166,7 @@ impl Node for NodeService {
     async fn decode_invoice(
         &self,
         request: tonic::Request<DecodeInvoiceRequest>,
-    ) -> Result<tonic::Response<DecodeInvoiceResponse>, tonic::Status> {
+    ) -> Result<Response<DecodeInvoiceResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -177,7 +176,7 @@ impl Node for NodeService {
     async fn keysend(
         &self,
         request: tonic::Request<KeysendRequest>,
-    ) -> Result<tonic::Response<KeysendResponse>, tonic::Status> {
+    ) -> Result<Response<KeysendResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -187,7 +186,7 @@ impl Node for NodeService {
     async fn create_invoice(
         &self,
         request: tonic::Request<CreateInvoiceRequest>,
-    ) -> Result<tonic::Response<CreateInvoiceResponse>, tonic::Status> {
+    ) -> Result<Response<CreateInvoiceResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -197,7 +196,7 @@ impl Node for NodeService {
     async fn label_payment(
         &self,
         request: tonic::Request<LabelPaymentRequest>,
-    ) -> Result<tonic::Response<LabelPaymentResponse>, tonic::Status> {
+    ) -> Result<Response<LabelPaymentResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -207,7 +206,7 @@ impl Node for NodeService {
     async fn delete_payment(
         &self,
         request: tonic::Request<DeletePaymentRequest>,
-    ) -> Result<tonic::Response<DeletePaymentResponse>, tonic::Status> {
+    ) -> Result<Response<DeletePaymentResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -217,7 +216,7 @@ impl Node for NodeService {
     async fn connect_peer(
         &self,
         request: tonic::Request<ConnectPeerRequest>,
-    ) -> Result<tonic::Response<ConnectPeerResponse>, tonic::Status> {
+    ) -> Result<Response<ConnectPeerResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -227,7 +226,7 @@ impl Node for NodeService {
     async fn list_channels(
         &self,
         request: tonic::Request<ListChannelsRequest>,
-    ) -> Result<tonic::Response<ListChannelsResponse>, tonic::Status> {
+    ) -> Result<Response<ListChannelsResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -237,7 +236,7 @@ impl Node for NodeService {
     async fn list_payments(
         &self,
         request: tonic::Request<ListPaymentsRequest>,
-    ) -> Result<tonic::Response<ListPaymentsResponse>, tonic::Status> {
+    ) -> Result<Response<ListPaymentsResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -247,7 +246,7 @@ impl Node for NodeService {
     async fn close_channel(
         &self,
         request: tonic::Request<CloseChannelRequest>,
-    ) -> Result<tonic::Response<CloseChannelResponse>, tonic::Status> {
+    ) -> Result<Response<CloseChannelResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -257,7 +256,7 @@ impl Node for NodeService {
     async fn info(
         &self,
         request: tonic::Request<InfoRequest>,
-    ) -> Result<tonic::Response<InfoResponse>, tonic::Status> {
+    ) -> Result<Response<InfoResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -267,7 +266,7 @@ impl Node for NodeService {
     async fn list_peers(
         &self,
         request: tonic::Request<ListPeersRequest>,
-    ) -> Result<tonic::Response<ListPeersResponse>, tonic::Status> {
+    ) -> Result<Response<ListPeersResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -277,7 +276,7 @@ impl Node for NodeService {
     async fn sign_message(
         &self,
         request: tonic::Request<SignMessageRequest>,
-    ) -> Result<tonic::Response<SignMessageResponse>, tonic::Status> {
+    ) -> Result<Response<SignMessageResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -287,7 +286,7 @@ impl Node for NodeService {
     async fn verify_message(
         &self,
         request: tonic::Request<VerifyMessageRequest>,
-    ) -> Result<tonic::Response<VerifyMessageResponse>, tonic::Status> {
+    ) -> Result<Response<VerifyMessageResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

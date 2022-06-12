@@ -369,7 +369,7 @@ impl AdminService {
         &self,
         metadata: MetadataMap,
         request: AdminRequest,
-    ) -> Result<AdminResponse, tonic::Status> {
+    ) -> Result<AdminResponse, Status> {
         let required_scope = get_scope_from_request(&request);
 
         let token = self.raw_token_from_metadata(metadata)?;
@@ -384,7 +384,7 @@ impl AdminService {
         }
     }
 
-    fn raw_token_from_metadata(&self, metadata: MetadataMap) -> Result<String, tonic::Status> {
+    fn raw_token_from_metadata(&self, metadata: MetadataMap) -> Result<String, Status> {
         let token = metadata.get("token");
 
         if token.is_none() {
@@ -404,11 +404,11 @@ impl Admin for AdminService {
     async fn get_status(
         &self,
         request: tonic::Request<GetStatusRequest>,
-    ) -> Result<tonic::Response<GetStatusResponse>, tonic::Status> {
+    ) -> Result<Response<GetStatusResponse>, Status> {
         let macaroon_hex_string = raw_macaroon_from_metadata(request.metadata().clone())?;
 
         let (_macaroon, session) = utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
-            .map_err(|_e| tonic::Status::unauthenticated("invalid macaroon"))?;
+            .map_err(|_e| Status::unauthenticated("invalid macaroon"))?;
         let pubkey = session.pubkey.clone();
 
         let request = AdminRequest::GetStatus { pubkey };
@@ -417,45 +417,45 @@ impl Admin for AdminService {
                 let response: Result<GetStatusResponse, String> = response.try_into();
                 response
                     .map(Response::new)
-                    .map_err(|_err| tonic::Status::unknown("err"))
+                    .map_err(|_err| Status::unknown("err"))
             }
-            Err(_err) => Err(tonic::Status::unknown("error")),
+            Err(_err) => Err(Status::unknown("error")),
         }
     }
     async fn create_admin(
         &self,
         request: tonic::Request<CreateAdminRequest>,
-    ) -> Result<tonic::Response<CreateAdminResponse>, tonic::Status> {
+    ) -> Result<Response<CreateAdminResponse>, Status> {
         let request: AdminRequest = request.into_inner().into();
         match self.admin_service.call(request).await {
             Ok(response) => {
                 let response: Result<CreateAdminResponse, String> = response.try_into();
                 response
                     .map(Response::new)
-                    .map_err(|_err| tonic::Status::unknown("err"))
+                    .map_err(|_err| Status::unknown("err"))
             }
-            Err(_err) => Err(tonic::Status::unknown("error")),
+            Err(_err) => Err(Status::unknown("error")),
         }
     }
     async fn start_admin(
         &self,
         request: tonic::Request<StartAdminRequest>,
-    ) -> Result<tonic::Response<StartAdminResponse>, tonic::Status> {
+    ) -> Result<Response<StartAdminResponse>, Status> {
         let request: AdminRequest = request.into_inner().into();
         match self.admin_service.call(request).await {
             Ok(response) => {
                 let response: Result<StartAdminResponse, String> = response.try_into();
                 response
                     .map(Response::new)
-                    .map_err(|_err| tonic::Status::unknown("err"))
+                    .map_err(|_err| Status::unknown("err"))
             }
-            Err(_err) => Err(tonic::Status::unknown("error")),
+            Err(_err) => Err(Status::unknown("error")),
         }
     }
     async fn start_node(
         &self,
         request: tonic::Request<AdminStartNodeRequest>,
-    ) -> Result<tonic::Response<AdminStartNodeResponse>, tonic::Status> {
+    ) -> Result<Response<AdminStartNodeResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -465,7 +465,7 @@ impl Admin for AdminService {
     async fn stop_node(
         &self,
         request: tonic::Request<AdminStopNodeRequest>,
-    ) -> Result<tonic::Response<AdminStopNodeResponse>, tonic::Status> {
+    ) -> Result<Response<AdminStopNodeResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -475,7 +475,7 @@ impl Admin for AdminService {
     async fn list_nodes(
         &self,
         request: tonic::Request<ListNodesRequest>,
-    ) -> Result<tonic::Response<ListNodesResponse>, tonic::Status> {
+    ) -> Result<Response<ListNodesResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -485,7 +485,7 @@ impl Admin for AdminService {
     async fn create_node(
         &self,
         request: tonic::Request<CreateNodeRequest>,
-    ) -> Result<tonic::Response<CreateNodeResponse>, tonic::Status> {
+    ) -> Result<Response<CreateNodeResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -496,7 +496,7 @@ impl Admin for AdminService {
     async fn delete_node(
         &self,
         request: tonic::Request<DeleteNodeRequest>,
-    ) -> Result<tonic::Response<DeleteNodeResponse>, tonic::Status> {
+    ) -> Result<Response<DeleteNodeResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -506,7 +506,7 @@ impl Admin for AdminService {
     async fn list_tokens(
         &self,
         request: tonic::Request<ListTokensRequest>,
-    ) -> Result<tonic::Response<ListTokensResponse>, tonic::Status> {
+    ) -> Result<Response<ListTokensResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -516,7 +516,7 @@ impl Admin for AdminService {
     async fn create_token(
         &self,
         request: tonic::Request<CreateTokenRequest>,
-    ) -> Result<tonic::Response<Token>, tonic::Status> {
+    ) -> Result<Response<Token>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
@@ -527,7 +527,7 @@ impl Admin for AdminService {
     async fn delete_token(
         &self,
         request: tonic::Request<DeleteTokenRequest>,
-    ) -> Result<tonic::Response<DeleteTokenResponse>, tonic::Status> {
+    ) -> Result<Response<DeleteTokenResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

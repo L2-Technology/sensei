@@ -207,7 +207,7 @@ impl From<OpenChannelsRequest> for NodeRequest {
             channels: req
                 .channels
                 .into_iter()
-                .map(|channel| senseicore::services::node::OpenChannelInfo {
+                .map(|channel| services::node::OpenChannelInfo {
                     node_connection_string: channel.node_connection_string,
                     amt_satoshis: channel.amt_satoshis,
                     public: channel.public,
