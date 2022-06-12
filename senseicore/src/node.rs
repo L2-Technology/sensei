@@ -1155,7 +1155,7 @@ impl LightningNode {
             Network::Bitcoin => Currency::Bitcoin,
             Network::Testnet => Currency::BitcoinTestnet,
             Network::Regtest => Currency::Regtest,
-            Network::Signet => panic!("Signet unsupported"),
+            Network::Signet => Currency::Signet,
         };
 
         let invoice = utils::create_invoice_from_channelmanager(
