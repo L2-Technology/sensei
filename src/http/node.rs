@@ -196,6 +196,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/payments", get(handle_get_payments))
         .route("/v1/node/wallet/address", get(get_unused_address))
         .route("/v1/node/wallet/balance", get(get_wallet_balance))
+        .route("/v1/node/wallet/utxos", get(list_unspent))
         .route("/v1/node/channels", get(get_channels))
         .route("/v1/node/transactions", get(get_transactions))
         .route("/v1/node/info", get(get_info))
@@ -557,4 +558,18 @@ pub async fn verify_message(
         }
     }?;
     handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn list_unspent(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, StatusCode> {
+    handle_authenticated_request(
+        admin_service,
+        NodeRequest::ListUnspent {},
+        macaroon,
+        cookies,
+    )
+    .await
 }

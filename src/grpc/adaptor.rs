@@ -12,7 +12,7 @@ use super::sensei::{
     Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse, OpenChannelsRequest,
     OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
     PaymentsFilter, Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-    StopNodeResponse,
+    StopNodeResponse, Utxo as UtxoMessage,
 };
 
 use super::sensei::{
@@ -21,13 +21,14 @@ use super::sensei::{
     GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
     InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, ListChannelsRequest,
     ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
-    ListPeersResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
-    SignMessageResponse, VerifyMessageRequest, VerifyMessageResponse,
+    ListPeersResponse, ListUnspentRequest, ListUnspentResponse, PayInvoiceRequest,
+    PayInvoiceResponse, SignMessageRequest, SignMessageResponse, VerifyMessageRequest,
+    VerifyMessageResponse,
 };
 
 use senseicore::services::{
     self,
-    node::{Channel, NodeInfo, NodeRequest, NodeResponse, Peer},
+    node::{Channel, NodeInfo, NodeRequest, NodeResponse, Peer, Utxo},
 };
 
 impl From<PaymentsFilter> for services::PaymentsFilter {
@@ -115,6 +116,17 @@ impl From<Peer> for PeerMessage {
     fn from(peer: Peer) -> Self {
         Self {
             node_pubkey: peer.node_pubkey,
+        }
+    }
+}
+
+impl From<Utxo> for UtxoMessage {
+    fn from(utxo: Utxo) -> Self {
+        Self {
+            amount_sat: utxo.amount_sat,
+            spk: utxo.spk,
+            txid: utxo.txid,
+            output_index: utxo.output_index,
         }
     }
 }
@@ -529,6 +541,28 @@ impl TryFrom<NodeResponse> for VerifyMessageResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::VerifyMessage { valid, pubkey } => Ok(Self { valid, pubkey }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<ListUnspentRequest> for NodeRequest {
+    fn from(_req: ListUnspentRequest) -> Self {
+        NodeRequest::ListUnspent {}
+    }
+}
+
+impl TryFrom<NodeResponse> for ListUnspentResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::ListUnspent { utxos } => Ok(Self {
+                utxos: utxos
+                    .into_iter()
+                    .map(|utxo| utxo.into())
+                    .collect::<Vec<UtxoMessage>>(),
+            }),
             _ => Err("impossible".to_string()),
         }
     }

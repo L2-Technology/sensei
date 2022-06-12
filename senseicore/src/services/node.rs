@@ -129,6 +129,14 @@ pub struct OpenChannelResult {
     pub temp_channel_id: Option<String>,
 }
 
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Utxo {
+    pub amount_sat: u64,
+    pub spk: String,
+    pub txid: String,
+    pub output_index: u32,
+}
+
 pub enum NodeRequest {
     StartNode {
         passphrase: String,
@@ -186,6 +194,7 @@ pub enum NodeRequest {
         message: String,
         signature: String,
     },
+    ListUnspent {},
 }
 
 #[derive(Serialize)]
@@ -239,6 +248,9 @@ pub enum NodeResponse {
     VerifyMessage {
         valid: bool,
         pubkey: String,
+    },
+    ListUnspent {
+        utxos: Vec<Utxo>,
     },
     Error(NodeRequestError),
 }

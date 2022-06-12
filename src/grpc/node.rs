@@ -19,10 +19,10 @@ use super::{
         GetUnusedAddressRequest, GetUnusedAddressResponse, InfoRequest, InfoResponse,
         KeysendRequest, KeysendResponse, LabelPaymentRequest, LabelPaymentResponse,
         ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse,
-        ListPeersRequest, ListPeersResponse, OpenChannelsRequest, OpenChannelsResponse,
-        PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest, SignMessageResponse,
-        StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse,
-        VerifyMessageRequest, VerifyMessageResponse,
+        ListPeersRequest, ListPeersResponse, ListUnspentRequest, ListUnspentResponse,
+        OpenChannelsRequest, OpenChannelsResponse, PayInvoiceRequest, PayInvoiceResponse,
+        SignMessageRequest, SignMessageResponse, StartNodeRequest, StartNodeResponse,
+        StopNodeRequest, StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse,
     },
     utils::raw_macaroon_from_metadata,
 };
@@ -288,6 +288,16 @@ impl Node for NodeService {
         &self,
         request: tonic::Request<VerifyMessageRequest>,
     ) -> Result<tonic::Response<VerifyMessageResponse>, tonic::Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn list_unspent(
+        &self,
+        request: tonic::Request<ListUnspentRequest>,
+    ) -> Result<tonic::Response<ListUnspentResponse>, tonic::Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()
