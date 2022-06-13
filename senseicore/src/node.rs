@@ -1646,6 +1646,26 @@ impl LightningNode {
                 let utxos = self.list_unspent()?;
                 Ok(NodeResponse::ListUnspent { utxos })
             }
+            NodeRequest::NetworkGraphInfo {} => {
+                let graph = self.network_graph.read_only();
+                let channels = graph.channels();
+
+                let mut num_known_edge_policies: u64 = 0;
+                for (_key, channel_info) in channels.iter() {
+                    if channel_info.one_to_two.is_some() {
+                        num_known_edge_policies += 1;
+                    }
+                    if channel_info.two_to_one.is_some() {
+                        num_known_edge_policies += 1;
+                    }
+                }
+
+                Ok(NodeResponse::NetworkGraphInfo {
+                    num_channels: graph.channels().len() as u64,
+                    num_nodes: graph.nodes().len() as u64,
+                    num_known_edge_policies,
+                })
+            }
         }
     }
 }

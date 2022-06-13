@@ -237,6 +237,7 @@ pub enum NodeRequest {
         signature: String,
     },
     ListUnspent {},
+    NetworkGraphInfo {},
 }
 
 #[derive(Serialize)]
@@ -298,6 +299,11 @@ pub enum NodeResponse {
     },
     ListUnspent {
         utxos: Vec<Utxo>,
+    },
+    NetworkGraphInfo {
+        num_channels: u64,
+        num_nodes: u64,
+        num_known_edge_policies: u64,
     },
     Error(NodeRequestError),
 }

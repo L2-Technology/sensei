@@ -36,6 +36,7 @@ service Node {
     rpc SignMessage (SignMessageRequest) returns (SignMessageResponse);
     rpc VerifyMessage (VerifyMessageRequest) returns (VerifyMessageResponse);
     rpc ListUnspent (ListUnspentRequest) returns (ListUnspentResponse);
+    rpc NetworkGraphInfo (NetworkGraphInfoRequest) returns (NetworkGraphInfoResponse);
 }
 
 message ListNode {
@@ -408,4 +409,11 @@ message Utxo {
 
 message ListUnspentResponse {
     repeated Utxo utxos = 1;
+}
+
+message NetworkGraphInfoRequest {}
+message NetworkGraphInfoResponse {
+    uint64 num_channels = 1;
+    uint64 num_nodes = 2;
+    uint64 num_known_edge_policies = 3;
 }

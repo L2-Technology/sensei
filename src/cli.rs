@@ -22,8 +22,8 @@ use crate::sensei::{
     CloseChannelRequest, ConnectPeerRequest, CreateAdminRequest, CreateInvoiceRequest,
     CreateNodeRequest, GetUnusedAddressRequest, InfoRequest, KeysendRequest, ListChannelsRequest,
     ListNodesRequest, ListPaymentsRequest, ListPeersRequest, ListUnspentRequest,
-    OpenChannelRequest, OpenChannelsRequest, PayInvoiceRequest, SignMessageRequest,
-    StartAdminRequest, StartNodeRequest,
+    NetworkGraphInfoRequest, OpenChannelRequest, OpenChannelsRequest, PayInvoiceRequest,
+    SignMessageRequest, StartAdminRequest, StartNodeRequest,
 };
 
 pub mod sensei {
@@ -460,6 +460,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "listunspent" => {
                 let request = tonic::Request::new(ListUnspentRequest {});
                 let response = client.list_unspent(request).await?;
+                println!("{:?}", response.into_inner());
+            }
+            "networkgraphinfo" => {
+                let request = tonic::Request::new(NetworkGraphInfoRequest {});
+                let response = client.network_graph_info(request).await?;
                 println!("{:?}", response.into_inner());
             }
             "nodeinfo" => {

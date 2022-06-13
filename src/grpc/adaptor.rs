@@ -9,11 +9,11 @@
 
 use super::sensei::{
     self, Channel as ChannelMessage, DeletePaymentRequest, DeletePaymentResponse,
-    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse,
-    OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest, OpenChannelsResponse,
-    PaginationRequest, PaginationResponse, Payment as PaymentMessage, PaymentsFilter,
-    Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse,
-    Utxo as UtxoMessage,
+    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse, NetworkGraphInfoRequest,
+    NetworkGraphInfoResponse, OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest,
+    OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
+    PaymentsFilter, Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest,
+    StopNodeResponse, Utxo as UtxoMessage,
 };
 
 use super::sensei::{
@@ -602,6 +602,31 @@ impl TryFrom<NodeResponse> for ListUnspentResponse {
                     .into_iter()
                     .map(|utxo| utxo.into())
                     .collect::<Vec<UtxoMessage>>(),
+            }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<NetworkGraphInfoRequest> for NodeRequest {
+    fn from(_req: NetworkGraphInfoRequest) -> Self {
+        NodeRequest::NetworkGraphInfo {}
+    }
+}
+
+impl TryFrom<NodeResponse> for NetworkGraphInfoResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::NetworkGraphInfo {
+                num_channels,
+                num_nodes,
+                num_known_edge_policies,
+            } => Ok(Self {
+                num_channels,
+                num_nodes,
+                num_known_edge_policies,
             }),
             _ => Err("impossible".to_string()),
         }
