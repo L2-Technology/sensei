@@ -38,7 +38,7 @@ tokio = { version = "1.17", features = [ "io-util", "macros", "rt", "rt-multi-th
 log = "0.4.16"
 env_logger = "0.9.0"
 bitcoincore-rpc = "0.15"
-bdk = { git = "https://github.com/bitcoindevkit/bdk", rev = "fbd98b4c5a88a10f8dfc22b4c54187eba4d68afe" }
+bdk = "0.19"
 tonic = "0.6"
 prost = "0.9"
 pin-project = "1.0"
