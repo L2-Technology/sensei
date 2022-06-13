@@ -5,7 +5,13 @@ const openChannel = async (
   amtSatoshis: number,
   isPublic: boolean
 ) => {
-  return await sensei.openChannel(nodeConnectionString, amtSatoshis, isPublic);
+  const connectionParts = nodeConnectionString.split("@");
+  return await sensei.openChannel({
+    counterpartyPubkey: connectionParts[0],
+    counterpartyHostPort: connectionParts[1],
+    amountSats: amtSatoshis,
+    public: isPublic
+  });
 };
 
 export default openChannel;

@@ -195,10 +195,19 @@ message GetBalanceResponse {
     uint64 usable_channel_inbound_capacity_msats = 6;
 }
 
-message OpenChannelInfo {
-    string node_connection_string = 1;
-    uint64 amt_satoshis = 2;
+
+message OpenChannelRequest {
+    string counterparty_pubkey = 1;
+    uint64 amount_sats = 2;
     bool public = 3;
+    optional uint64 push_amount_msats = 4;
+    optional uint64 custom_id = 5;
+    optional string counterparty_host_port = 6;
+    optional uint32 forwarding_fee_proportional_millionths = 7;
+    optional uint32 forwarding_fee_base_msat = 8;
+    optional uint32 cltv_expiry_delta = 9;
+    optional uint64 max_dust_htlc_exposure_msat = 10;
+    optional uint64 force_close_avoidance_max_fee_satoshis = 11;
 }
 
 message OpenChannelResult {
@@ -208,10 +217,10 @@ message OpenChannelResult {
 }
 
 message OpenChannelsRequest {
-    repeated OpenChannelInfo channels = 1;
+    repeated OpenChannelRequest requests = 1;
 }
 message OpenChannelsResponse {
-    repeated OpenChannelInfo channels = 1;
+    repeated OpenChannelRequest requests = 1;
     repeated OpenChannelResult results = 2;
 }
 

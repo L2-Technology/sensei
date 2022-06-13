@@ -8,7 +8,7 @@ mod test {
     use migration::{Migrator, MigratorTrait};
     use senseicore::events::SenseiEvent;
     use senseicore::node::{HTLCStatus, LightningNode};
-    use senseicore::services::node::{Channel, OpenChannelInfo};
+    use senseicore::services::node::{Channel, OpenChannelRequest};
     use senseicore::services::{PaginationRequest, PaymentsFilter};
     use serial_test::serial;
     use std::{str::FromStr, sync::Arc, time::Duration};
@@ -278,28 +278,31 @@ mod test {
     ) -> Vec<(Channel, Arc<LightningNode>)> {
         let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
 
-        let channel_infos = to
+        let channel_requests = to
             .iter()
-            .map(|to| {
-                let node_connection_string = format!(
-                    "{}@{}:{}",
-                    to.get_pubkey(),
+            .map(|to| OpenChannelRequest {
+                counterparty_pubkey: to.get_pubkey(),
+                counterparty_host_port: Some(format!(
+                    "{}:{}",
                     to.listen_addresses.first().unwrap(),
                     to.listen_port
-                );
-
-                OpenChannelInfo {
-                    node_connection_string,
-                    amt_satoshis: amt_sat,
-                    public: true,
-                }
+                )),
+                amount_sats: amt_sat,
+                public: true,
+                custom_id: None,
+                push_amount_msats: None,
+                forwarding_fee_proportional_millionths: None,
+                forwarding_fee_base_msat: None,
+                cltv_expiry_delta: None,
+                max_dust_htlc_exposure_msat: None,
+                force_close_avoidance_max_fee_satoshis: None,
             })
-            .collect::<Vec<OpenChannelInfo>>();
+            .collect::<Vec<OpenChannelRequest>>();
 
         let mut event_receiver = from.event_sender.subscribe();
 
         from.call(NodeRequest::OpenChannels {
-            channels: channel_infos,
+            requests: channel_requests,
         })
         .await
         .unwrap();
@@ -394,20 +397,25 @@ mod test {
         amt_sat: u64,
     ) -> Channel {
         let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
-        let node_connection_string = format!(
-            "{}@{}:{}",
-            to.get_pubkey(),
-            to.listen_addresses.first().unwrap(),
-            to.listen_port
-        );
-
         let mut event_receiver = from.event_sender.subscribe();
 
         from.call(NodeRequest::OpenChannels {
-            channels: vec![OpenChannelInfo {
-                node_connection_string: node_connection_string,
-                amt_satoshis: amt_sat,
+            requests: vec![OpenChannelRequest {
+                counterparty_pubkey: to.get_pubkey(),
+                counterparty_host_port: Some(format!(
+                    "{}:{}",
+                    to.listen_addresses.first().unwrap(),
+                    to.listen_port
+                )),
+                amount_sats: amt_sat,
                 public: true,
+                custom_id: None,
+                push_amount_msats: None,
+                forwarding_fee_proportional_millionths: None,
+                forwarding_fee_base_msat: None,
+                cltv_expiry_delta: None,
+                max_dust_htlc_exposure_msat: None,
+                force_close_avoidance_max_fee_satoshis: None,
             }],
         })
         .await

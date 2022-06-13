@@ -15,13 +15,13 @@ name = "senseid"
 path = "src/main.rs"
 
 [dependencies]
-lightning = { version = "0.0.107", features = ["max_level_trace"] }
-lightning-block-sync = { version = "0.0.107", features = [ "rpc-client" ] }
-lightning-invoice = { version = "0.15.0" }
-lightning-net-tokio = { version = "0.0.107" }
-lightning-persister = { version = "0.0.107" }
-lightning-background-processor = { version = "0.0.107" }
-lightning-rapid-gossip-sync = { version = "0.0.107" }
+lightning = { version = "0.0.108", features = ["max_level_trace"] }
+lightning-block-sync = { version = "0.0.108", features = [ "rpc-client" ] }
+lightning-invoice = { version = "0.16.0" }
+lightning-net-tokio = { version = "0.0.108" }
+lightning-persister = { version = "0.0.108" }
+lightning-background-processor = { version = "0.0.108" }
+lightning-rapid-gossip-sync = { version = "0.0.108" }
 base64 = "0.13.0"
 bitcoin = "0.28.1"
 bitcoin-bech32 = "0.12"

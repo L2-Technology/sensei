@@ -198,7 +198,7 @@ const ChannelsList = () => {
 
   const transformResults = (channels: Channel[]) => {
     return channels.map((channel) => {
-      let status = channel.isFundingLocked
+      let status = channel.isChannelReady
         ? channel.isUsable
           ? "ready"
           : "counterparty_offline"

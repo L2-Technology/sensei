@@ -16,7 +16,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use http::{HeaderValue, StatusCode};
 use senseicore::services::admin::AdminRequest;
-use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelInfo};
+use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest};
 use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
 use senseicore::utils;
 use serde::Deserialize;
@@ -70,13 +70,13 @@ impl From<DeletePaymentParams> for NodeRequest {
 
 #[derive(Deserialize)]
 pub struct BatchOpenChannelParams {
-    channels: Vec<OpenChannelInfo>,
+    requests: Vec<OpenChannelRequest>,
 }
 
 impl From<BatchOpenChannelParams> for NodeRequest {
     fn from(params: BatchOpenChannelParams) -> Self {
         Self::OpenChannels {
-            channels: params.channels,
+            requests: params.requests,
         }
     }
 }

@@ -9,10 +9,11 @@
 
 use super::sensei::{
     self, Channel as ChannelMessage, DeletePaymentRequest, DeletePaymentResponse,
-    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse, OpenChannelsRequest,
-    OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
-    PaymentsFilter, Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-    StopNodeResponse, Utxo as UtxoMessage,
+    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse,
+    OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest, OpenChannelsResponse,
+    PaginationRequest, PaginationResponse, Payment as PaymentMessage, PaymentsFilter,
+    Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse,
+    Utxo as UtxoMessage,
 };
 
 use super::sensei::{
@@ -26,6 +27,7 @@ use super::sensei::{
     VerifyMessageResponse,
 };
 
+use senseicore::services::node::OpenChannelRequest;
 use senseicore::services::{
     self,
     node::{Channel, NodeInfo, NodeRequest, NodeResponse, Peer, Utxo},
@@ -218,13 +220,25 @@ impl TryFrom<NodeResponse> for GetBalanceResponse {
 impl From<OpenChannelsRequest> for NodeRequest {
     fn from(req: OpenChannelsRequest) -> Self {
         NodeRequest::OpenChannels {
-            channels: req
-                .channels
+            requests: req
+                .requests
                 .into_iter()
-                .map(|channel| services::node::OpenChannelInfo {
-                    node_connection_string: channel.node_connection_string,
-                    amt_satoshis: channel.amt_satoshis,
-                    public: channel.public,
+                .map(|request| OpenChannelRequest {
+                    counterparty_pubkey: request.counterparty_pubkey,
+                    amount_sats: request.amount_sats,
+                    public: request.public,
+                    custom_id: request.custom_id,
+                    push_amount_msats: request.push_amount_msats,
+                    counterparty_host_port: request.counterparty_host_port,
+                    forwarding_fee_proportional_millionths: request
+                        .forwarding_fee_proportional_millionths,
+                    forwarding_fee_base_msat: request.forwarding_fee_base_msat,
+                    cltv_expiry_delta: request
+                        .cltv_expiry_delta
+                        .map(|cltv_delta| cltv_delta as u16),
+                    max_dust_htlc_exposure_msat: request.max_dust_htlc_exposure_msat,
+                    force_close_avoidance_max_fee_satoshis: request
+                        .force_close_avoidance_max_fee_satoshis,
                 })
                 .collect::<Vec<_>>(),
         }
@@ -236,13 +250,25 @@ impl TryFrom<NodeResponse> for OpenChannelsResponse {
 
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
-            NodeResponse::OpenChannels { channels, results } => Ok(Self {
-                channels: channels
+            NodeResponse::OpenChannels { requests, results } => Ok(Self {
+                requests: requests
                     .into_iter()
-                    .map(|channel| sensei::OpenChannelInfo {
-                        node_connection_string: channel.node_connection_string,
-                        amt_satoshis: channel.amt_satoshis,
-                        public: channel.public,
+                    .map(|request| GrpcOpenChannelRequest {
+                        counterparty_pubkey: request.counterparty_pubkey,
+                        amount_sats: request.amount_sats,
+                        public: request.public,
+                        custom_id: request.custom_id,
+                        push_amount_msats: request.push_amount_msats,
+                        counterparty_host_port: request.counterparty_host_port,
+                        forwarding_fee_proportional_millionths: request
+                            .forwarding_fee_proportional_millionths,
+                        forwarding_fee_base_msat: request.forwarding_fee_base_msat,
+                        cltv_expiry_delta: request
+                            .cltv_expiry_delta
+                            .map(|cltv_delta| cltv_delta.try_into().unwrap()),
+                        max_dust_htlc_exposure_msat: request.max_dust_htlc_exposure_msat,
+                        force_close_avoidance_max_fee_satoshis: request
+                            .force_close_avoidance_max_fee_satoshis,
                     })
                     .collect::<Vec<_>>(),
                 results: results
