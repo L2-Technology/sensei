@@ -1,11 +1,12 @@
 use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::manager::SenseiChainManager;
 use crate::error::Error;
+use crate::node::{connect_peer_if_necessary, parse_peer_addr, parse_pubkey, PeerManager};
+use crate::services::node::OpenChannelRequest;
 use crate::{chain::database::WalletDatabase, events::SenseiEvent, node::ChannelManager};
 use bdk::{FeeRate, SignOptions};
-use bitcoin::secp256k1::PublicKey;
 use lightning::chain::chaininterface::ConfirmationTarget;
-use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
+use rand::{thread_rng, Rng};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -17,15 +18,6 @@ where
     pub f: F,
 }
 
-pub struct ChannelOpenRequest {
-    pub node_connection_string: String,
-    pub peer_pubkey: PublicKey,
-    pub channel_amt_sat: u64,
-    pub push_amt_msat: u64,
-    pub custom_id: u64,
-    pub announced_channel: bool,
-}
-
 pub struct ChannelOpener {
     node_id: String,
     channel_manager: Arc<ChannelManager>,
@@ -33,6 +25,7 @@ pub struct ChannelOpener {
     chain_manager: Arc<SenseiChainManager>,
     event_receiver: broadcast::Receiver<SenseiEvent>,
     broadcaster: Arc<SenseiBroadcaster>,
+    peer_manager: Arc<PeerManager>,
 }
 
 impl ChannelOpener {
@@ -43,6 +36,7 @@ impl ChannelOpener {
         wallet: Arc<Mutex<bdk::Wallet<WalletDatabase>>>,
         event_receiver: broadcast::Receiver<SenseiEvent>,
         broadcaster: Arc<SenseiBroadcaster>,
+        peer_manager: Arc<PeerManager>,
     ) -> Self {
         Self {
             node_id,
@@ -51,6 +45,7 @@ impl ChannelOpener {
             wallet,
             event_receiver,
             broadcaster,
+            peer_manager,
         }
     }
 
@@ -87,23 +82,28 @@ impl ChannelOpener {
 
     pub async fn open_batch(
         &mut self,
-        requests: Vec<ChannelOpenRequest>,
-    ) -> Vec<(ChannelOpenRequest, Result<[u8; 32], Error>)> {
-        let mut requests_with_results = requests
+        requests: Vec<OpenChannelRequest>,
+    ) -> Vec<(OpenChannelRequest, Result<[u8; 32], Error>)> {
+        let requests = requests
             .into_iter()
-            .map(|request| {
-                let result = self.initiate_channel_open(&request);
-
-                (request, result)
+            .map(|request| OpenChannelRequest {
+                custom_id: Some(
+                    request
+                        .custom_id
+                        .unwrap_or_else(|| thread_rng().gen_range(1..u64::MAX)),
+                ),
+                ..request
             })
             .collect::<Vec<_>>();
+        let mut requests_with_results = vec![];
+        let mut filters = vec![];
 
-        let filters = requests_with_results
-            .iter()
-            .filter(|(_request, result)| result.is_ok())
-            .map(|(request, _result)| {
+        for request in requests {
+            let result = self.initiate_channel_open(&request).await;
+
+            if result.is_ok() {
                 let filter_node_id = self.node_id.clone();
-                let request_user_channel_id = request.custom_id;
+                let request_user_channel_id = request.custom_id.unwrap();
                 let filter = move |event| {
                     if let SenseiEvent::FundingGenerationReady {
                         node_id,
@@ -118,9 +118,11 @@ impl ChannelOpener {
                     }
                     false
                 };
-                EventFilter { f: filter }
-            })
-            .collect::<Vec<EventFilter<_>>>();
+
+                filters.push(EventFilter { f: filter })
+            }
+            requests_with_results.push((request, result));
+        }
 
         // TODO: is this appropriate timeout? maybe should accept as param
         let events = self.wait_for_events(filters, 30000, 500).await;
@@ -138,7 +140,7 @@ impl ChannelOpener {
                             ..
                         } = event
                         {
-                            if *user_channel_id == request.custom_id {
+                            if *user_channel_id == request.custom_id.unwrap() {
                                 channel_counterparty_node_id = Some(*counterparty_node_id);
                                 return true;
                             }
@@ -218,32 +220,44 @@ impl ChannelOpener {
             .collect()
     }
 
-    fn initiate_channel_open(&self, request: &ChannelOpenRequest) -> Result<[u8; 32], Error> {
-        let config = UserConfig {
-            peer_channel_config_limits: ChannelHandshakeLimits {
-                // lnd's max to_self_delay is 2016, so we want to be compatible.
-                their_to_self_delay: 2016,
-                ..Default::default()
-            },
-            channel_options: ChannelConfig {
-                announced_channel: request.announced_channel,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+    async fn initiate_channel_open(&self, request: &OpenChannelRequest) -> Result<[u8; 32], Error> {
+        let counterparty_pubkey =
+            parse_pubkey(&request.counterparty_pubkey).expect("failed to parse pubkey");
+        let already_connected = self
+            .peer_manager
+            .get_peer_node_ids()
+            .contains(&counterparty_pubkey);
+        if !already_connected {
+            let counterparty_host_port = request.counterparty_host_port.as_ref().expect("you must provide connection information if you are not already connected to a peer");
+            let counterparty_addr = parse_peer_addr(counterparty_host_port)
+                .await
+                .expect("failed to parse host port for counterparty");
+            connect_peer_if_necessary(
+                counterparty_pubkey,
+                counterparty_addr,
+                self.peer_manager.clone(),
+            )
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "failed to connect to peer {}@{}",
+                    counterparty_pubkey, counterparty_addr
+                )
+            });
+        }
 
         // TODO: want to be logging channels in db for matching forwarded payments
         match self.channel_manager.create_channel(
-            request.peer_pubkey,
-            request.channel_amt_sat,
-            request.push_amt_msat,
-            request.custom_id,
-            Some(config),
+            counterparty_pubkey,
+            request.amount_sats,
+            request.push_amount_msats.unwrap_or(0),
+            request.custom_id.unwrap(),
+            Some(request.into()),
         ) {
             Ok(short_channel_id) => {
                 println!(
                     "EVENT: initiated channel with peer {}. ",
-                    request.peer_pubkey
+                    request.counterparty_pubkey
                 );
                 Ok(short_channel_id)
             }

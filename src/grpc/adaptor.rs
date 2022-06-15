@@ -9,7 +9,8 @@
 
 use super::sensei::{
     self, Channel as ChannelMessage, DeletePaymentRequest, DeletePaymentResponse,
-    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse, OpenChannelsRequest,
+    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse, NetworkGraphInfoRequest,
+    NetworkGraphInfoResponse, OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest,
     OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
     PaymentsFilter, Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest,
     StopNodeResponse, Utxo as UtxoMessage,
@@ -26,6 +27,7 @@ use super::sensei::{
     VerifyMessageResponse,
 };
 
+use senseicore::services::node::OpenChannelRequest;
 use senseicore::services::{
     self,
     node::{Channel, NodeInfo, NodeRequest, NodeResponse, Peer, Utxo},
@@ -75,7 +77,7 @@ impl From<Channel> for ChannelMessage {
             confirmations_required: channel.confirmations_required,
             force_close_spend_delay: channel.force_close_spend_delay,
             is_outbound: channel.is_outbound,
-            is_funding_locked: channel.is_funding_locked,
+            is_channel_ready: channel.is_channel_ready,
             is_usable: channel.is_usable,
             is_public: channel.is_public,
             counterparty_pubkey: channel.counterparty_pubkey,
@@ -195,7 +197,21 @@ impl TryFrom<NodeResponse> for GetBalanceResponse {
 
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
-            NodeResponse::GetBalance { balance_satoshis } => Ok(Self { balance_satoshis }),
+            NodeResponse::GetBalance {
+                onchain_balance_sats,
+                channel_balance_msats,
+                channel_outbound_capacity_msats,
+                channel_inbound_capacity_msats,
+                usable_channel_outbound_capacity_msats,
+                usable_channel_inbound_capacity_msats,
+            } => Ok(Self {
+                onchain_balance_sats,
+                channel_balance_msats,
+                channel_outbound_capacity_msats,
+                channel_inbound_capacity_msats,
+                usable_channel_outbound_capacity_msats,
+                usable_channel_inbound_capacity_msats,
+            }),
             _ => Err("impossible".to_string()),
         }
     }
@@ -204,13 +220,25 @@ impl TryFrom<NodeResponse> for GetBalanceResponse {
 impl From<OpenChannelsRequest> for NodeRequest {
     fn from(req: OpenChannelsRequest) -> Self {
         NodeRequest::OpenChannels {
-            channels: req
-                .channels
+            requests: req
+                .requests
                 .into_iter()
-                .map(|channel| services::node::OpenChannelInfo {
-                    node_connection_string: channel.node_connection_string,
-                    amt_satoshis: channel.amt_satoshis,
-                    public: channel.public,
+                .map(|request| OpenChannelRequest {
+                    counterparty_pubkey: request.counterparty_pubkey,
+                    amount_sats: request.amount_sats,
+                    public: request.public,
+                    custom_id: request.custom_id,
+                    push_amount_msats: request.push_amount_msats,
+                    counterparty_host_port: request.counterparty_host_port,
+                    forwarding_fee_proportional_millionths: request
+                        .forwarding_fee_proportional_millionths,
+                    forwarding_fee_base_msat: request.forwarding_fee_base_msat,
+                    cltv_expiry_delta: request
+                        .cltv_expiry_delta
+                        .map(|cltv_delta| cltv_delta as u16),
+                    max_dust_htlc_exposure_msat: request.max_dust_htlc_exposure_msat,
+                    force_close_avoidance_max_fee_satoshis: request
+                        .force_close_avoidance_max_fee_satoshis,
                 })
                 .collect::<Vec<_>>(),
         }
@@ -222,13 +250,25 @@ impl TryFrom<NodeResponse> for OpenChannelsResponse {
 
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
-            NodeResponse::OpenChannels { channels, results } => Ok(Self {
-                channels: channels
+            NodeResponse::OpenChannels { requests, results } => Ok(Self {
+                requests: requests
                     .into_iter()
-                    .map(|channel| sensei::OpenChannelInfo {
-                        node_connection_string: channel.node_connection_string,
-                        amt_satoshis: channel.amt_satoshis,
-                        public: channel.public,
+                    .map(|request| GrpcOpenChannelRequest {
+                        counterparty_pubkey: request.counterparty_pubkey,
+                        amount_sats: request.amount_sats,
+                        public: request.public,
+                        custom_id: request.custom_id,
+                        push_amount_msats: request.push_amount_msats,
+                        counterparty_host_port: request.counterparty_host_port,
+                        forwarding_fee_proportional_millionths: request
+                            .forwarding_fee_proportional_millionths,
+                        forwarding_fee_base_msat: request.forwarding_fee_base_msat,
+                        cltv_expiry_delta: request
+                            .cltv_expiry_delta
+                            .map(|cltv_delta| cltv_delta.try_into().unwrap()),
+                        max_dust_htlc_exposure_msat: request.max_dust_htlc_exposure_msat,
+                        force_close_avoidance_max_fee_satoshis: request
+                            .force_close_avoidance_max_fee_satoshis,
                     })
                     .collect::<Vec<_>>(),
                 results: results
@@ -562,6 +602,31 @@ impl TryFrom<NodeResponse> for ListUnspentResponse {
                     .into_iter()
                     .map(|utxo| utxo.into())
                     .collect::<Vec<UtxoMessage>>(),
+            }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<NetworkGraphInfoRequest> for NodeRequest {
+    fn from(_req: NetworkGraphInfoRequest) -> Self {
+        NodeRequest::NetworkGraphInfo {}
+    }
+}
+
+impl TryFrom<NodeResponse> for NetworkGraphInfoResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::NetworkGraphInfo {
+                num_channels,
+                num_nodes,
+                num_known_edge_policies,
+            } => Ok(Self {
+                num_channels,
+                num_nodes,
+                num_known_edge_policies,
             }),
             _ => Err("impossible".to_string()),
         }

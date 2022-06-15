@@ -10,6 +10,7 @@
 use crate::node::{LightningNode, LocalInvoice};
 use bdk::TransactionDetails;
 use futures::Future;
+use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tower::Service;
@@ -81,7 +82,7 @@ pub struct Channel {
     pub confirmations_required: Option<u32>,
     pub force_close_spend_delay: Option<u32>,
     pub is_outbound: bool,
-    pub is_funding_locked: bool,
+    pub is_channel_ready: bool,
     pub is_usable: bool,
     pub is_public: bool,
     pub counterparty_pubkey: String,
@@ -106,7 +107,7 @@ impl From<ChannelDetails> for Channel {
                 .force_close_spend_delay
                 .map(|delay| delay as u32),
             is_outbound: channel_detail.is_outbound,
-            is_funding_locked: channel_detail.is_funding_locked,
+            is_channel_ready: channel_detail.is_channel_ready,
             is_usable: channel_detail.is_usable,
             is_public: channel_detail.is_public,
             counterparty_pubkey: channel_detail.counterparty.node_id.to_string(),
@@ -116,10 +117,51 @@ impl From<ChannelDetails> for Channel {
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct OpenChannelInfo {
-    pub node_connection_string: String,
-    pub amt_satoshis: u64,
+pub struct OpenChannelRequest {
+    pub counterparty_pubkey: String,
+    pub amount_sats: u64,
     pub public: bool,
+    pub custom_id: Option<u64>,
+    pub push_amount_msats: Option<u64>,
+    pub counterparty_host_port: Option<String>,
+    pub forwarding_fee_proportional_millionths: Option<u32>,
+    pub forwarding_fee_base_msat: Option<u32>,
+    pub cltv_expiry_delta: Option<u16>,
+    pub max_dust_htlc_exposure_msat: Option<u64>,
+    pub force_close_avoidance_max_fee_satoshis: Option<u64>,
+}
+
+impl From<&OpenChannelRequest> for UserConfig {
+    fn from(request: &OpenChannelRequest) -> Self {
+        let default_channel_config = ChannelConfig::default();
+        Self {
+            peer_channel_config_limits: ChannelHandshakeLimits {
+                // lnd's max to_self_delay is 2016, so we want to be compatible.
+                their_to_self_delay: 2016,
+                ..Default::default()
+            },
+            channel_options: ChannelConfig {
+                announced_channel: request.public,
+                forwarding_fee_proportional_millionths: request
+                    .forwarding_fee_proportional_millionths
+                    .unwrap_or(default_channel_config.forwarding_fee_proportional_millionths),
+                forwarding_fee_base_msat: request
+                    .forwarding_fee_base_msat
+                    .unwrap_or(default_channel_config.forwarding_fee_base_msat),
+                cltv_expiry_delta: request
+                    .cltv_expiry_delta
+                    .unwrap_or(default_channel_config.cltv_expiry_delta),
+                max_dust_htlc_exposure_msat: request
+                    .max_dust_htlc_exposure_msat
+                    .unwrap_or(default_channel_config.max_dust_htlc_exposure_msat),
+                force_close_avoidance_max_fee_satoshis: request
+                    .force_close_avoidance_max_fee_satoshis
+                    .unwrap_or(default_channel_config.force_close_avoidance_max_fee_satoshis),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -145,7 +187,7 @@ pub enum NodeRequest {
     GetUnusedAddress {},
     GetBalance {},
     OpenChannels {
-        channels: Vec<OpenChannelInfo>,
+        requests: Vec<OpenChannelRequest>,
     },
     SendPayment {
         invoice: String,
@@ -195,6 +237,7 @@ pub enum NodeRequest {
         signature: String,
     },
     ListUnspent {},
+    NetworkGraphInfo {},
 }
 
 #[derive(Serialize)]
@@ -206,10 +249,15 @@ pub enum NodeResponse {
         address: String,
     },
     GetBalance {
-        balance_satoshis: u64,
+        onchain_balance_sats: u64,
+        channel_balance_msats: u64,
+        channel_outbound_capacity_msats: u64,
+        channel_inbound_capacity_msats: u64,
+        usable_channel_outbound_capacity_msats: u64,
+        usable_channel_inbound_capacity_msats: u64,
     },
     OpenChannels {
-        channels: Vec<OpenChannelInfo>,
+        requests: Vec<OpenChannelRequest>,
         results: Vec<OpenChannelResult>,
     },
     SendPayment {},
@@ -251,6 +299,11 @@ pub enum NodeResponse {
     },
     ListUnspent {
         utxos: Vec<Utxo>,
+    },
+    NetworkGraphInfo {
+        num_channels: u64,
+        num_nodes: u64,
+        num_known_edge_policies: u64,
     },
     Error(NodeRequestError),
 }

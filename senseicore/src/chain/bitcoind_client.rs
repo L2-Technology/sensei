@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 
 use bitcoin::hashes::hex::FromHex;
 use lightning_block_sync::http::JsonResponse;
@@ -56,7 +55,7 @@ impl TryInto<BlockchainInfo> for JsonResponse {
     }
 }
 pub struct BitcoindClient {
-    bitcoind_rpc_client: Arc<Mutex<RpcClient>>,
+    bitcoind_rpc_client: Arc<RpcClient>,
     fees: Arc<HashMap<Target, AtomicU32>>,
     handle: tokio::runtime::Handle,
 }
@@ -75,23 +74,18 @@ impl BlockSource for BitcoindClient {
         height_hint: Option<u32>,
     ) -> AsyncBlockSourceResult<'a, BlockHeaderData> {
         Box::pin(async move {
-            let rpc = self.bitcoind_rpc_client.lock().await;
-            rpc.get_header(header_hash, height_hint).await
+            self.bitcoind_rpc_client
+                .get_header(header_hash, height_hint)
+                .await
         })
     }
 
     fn get_block<'a>(&'a self, header_hash: &'a BlockHash) -> AsyncBlockSourceResult<'a, Block> {
-        Box::pin(async move {
-            let rpc = self.bitcoind_rpc_client.lock().await;
-            rpc.get_block(header_hash).await
-        })
+        Box::pin(async move { self.bitcoind_rpc_client.get_block(header_hash).await })
     }
 
     fn get_best_block(&self) -> AsyncBlockSourceResult<(BlockHash, Option<u32>)> {
-        Box::pin(async move {
-            let rpc = self.bitcoind_rpc_client.lock().await;
-            rpc.get_best_block().await
-        })
+        Box::pin(async move { self.bitcoind_rpc_client.get_best_block().await })
     }
 }
 
@@ -122,7 +116,7 @@ impl BitcoindClient {
         fees.insert(Target::Normal, AtomicU32::new(2000)); // 8 sats per byte
         fees.insert(Target::HighPriority, AtomicU32::new(5000)); // 20 sats per byte
         let client = Self {
-            bitcoind_rpc_client: Arc::new(Mutex::new(bitcoind_rpc_client)),
+            bitcoind_rpc_client: Arc::new(bitcoind_rpc_client),
             fees: Arc::new(fees),
             handle: handle.clone(),
         };
@@ -136,16 +130,15 @@ impl BitcoindClient {
 
     fn poll_for_fee_estimates(
         fees: Arc<HashMap<Target, AtomicU32>>,
-        rpc_client: Arc<Mutex<RpcClient>>,
+        rpc_client: Arc<RpcClient>,
         handle: tokio::runtime::Handle,
     ) {
         handle.spawn(async move {
             loop {
                 let background_estimate = {
-                    let rpc = rpc_client.lock().await;
                     let background_conf_target = serde_json::json!(144);
                     let background_estimate_mode = serde_json::json!("ECONOMICAL");
-                    let resp = rpc
+                    let resp = rpc_client
                         .call_method::<FeeResponse>(
                             "estimatesmartfee",
                             &[background_conf_target, background_estimate_mode],
@@ -159,10 +152,9 @@ impl BitcoindClient {
                 };
 
                 let normal_estimate = {
-                    let rpc = rpc_client.lock().await;
                     let normal_conf_target = serde_json::json!(18);
                     let normal_estimate_mode = serde_json::json!("ECONOMICAL");
-                    let resp = rpc
+                    let resp = rpc_client
                         .call_method::<FeeResponse>(
                             "estimatesmartfee",
                             &[normal_conf_target, normal_estimate_mode],
@@ -176,10 +168,9 @@ impl BitcoindClient {
                 };
 
                 let high_prio_estimate = {
-                    let rpc = rpc_client.lock().await;
                     let high_prio_conf_target = serde_json::json!(6);
                     let high_prio_estimate_mode = serde_json::json!("CONSERVATIVE");
-                    let resp = rpc
+                    let resp = rpc_client
                         .call_method::<FeeResponse>(
                             "estimatesmartfee",
                             &[high_prio_conf_target, high_prio_estimate_mode],
@@ -235,10 +226,9 @@ impl BroadcasterInterface for BitcoindClient {
         let bitcoind_rpc_client = self.bitcoind_rpc_client.clone();
         let tx_serialized = serde_json::json!(encode::serialize_hex(tx));
         self.handle.spawn(async move {
-            let rpc = bitcoind_rpc_client.lock().await;
             // This may error due to RL calling `broadcast_transaction` with the same transaction
             // multiple times, but the error is safe to ignore.
-            match rpc
+            match bitcoind_rpc_client
                 .call_method::<Txid>("sendrawtransaction", &[tx_serialized])
                 .await
             {

@@ -16,7 +16,7 @@ use axum::routing::{get, post};
 use axum::Router;
 use http::{HeaderValue, StatusCode};
 use senseicore::services::admin::AdminRequest;
-use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelInfo};
+use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest};
 use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
 use senseicore::utils;
 use serde::Deserialize;
@@ -70,13 +70,13 @@ impl From<DeletePaymentParams> for NodeRequest {
 
 #[derive(Deserialize)]
 pub struct BatchOpenChannelParams {
-    channels: Vec<OpenChannelInfo>,
+    requests: Vec<OpenChannelRequest>,
 }
 
 impl From<BatchOpenChannelParams> for NodeRequest {
     fn from(params: BatchOpenChannelParams) -> Self {
         Self::OpenChannels {
-            channels: params.channels,
+            requests: params.requests,
         }
     }
 }
@@ -214,6 +214,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/peers/connect", post(connect_peer))
         .route("/v1/node/sign/message", post(sign_message))
         .route("/v1/node/verify/message", post(verify_message))
+        .route("/v1/node/network-graph/info", get(network_graph_info))
 }
 
 pub async fn get_unused_address(
@@ -568,6 +569,20 @@ pub async fn list_unspent(
     handle_authenticated_request(
         admin_service,
         NodeRequest::ListUnspent {},
+        macaroon,
+        cookies,
+    )
+    .await
+}
+
+pub async fn network_graph_info(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, StatusCode> {
+    handle_authenticated_request(
+        admin_service,
+        NodeRequest::NetworkGraphInfo {},
         macaroon,
         cookies,
     )

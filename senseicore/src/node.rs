@@ -11,7 +11,7 @@ use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::database::WalletDatabase;
 use crate::chain::fee_estimator::SenseiFeeEstimator;
 use crate::chain::manager::SenseiChainManager;
-use crate::channels::{ChannelOpenRequest, ChannelOpener};
+use crate::channels::ChannelOpener;
 use crate::config::SenseiConfig;
 use crate::database::SenseiDatabase;
 use crate::disk::FilesystemLogger;
@@ -21,7 +21,8 @@ use crate::events::SenseiEvent;
 use crate::network_graph::OptionalNetworkGraphMsgHandler;
 use crate::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
 use crate::services::node::{
-    Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, OpenChannelResult, Peer, Utxo,
+    Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest,
+    OpenChannelResult, Peer, Utxo,
 };
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::utils::PagedVec;
@@ -56,7 +57,9 @@ use lightning::ln::peer_handler::{
     IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
-use lightning::routing::network_graph::{NetGraphMsgHandler, NetworkGraph, NodeId, RoutingFees};
+use lightning::routing::gossip::{
+    NetworkGraph as LdkNetworkGraph, NodeId, P2PGossipSync, RoutingFees,
+};
 use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
 use lightning::util::config::UserConfig;
@@ -65,8 +68,9 @@ use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
 use lightning_net_tokio::SocketDescriptor;
+use lightning_rapid_gossip_sync::RapidGossipSync;
 use macaroon::Macaroon;
-use rand::{thread_rng, Rng, RngCore};
+use rand::{thread_rng, RngCore};
 use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
 use std::fmt::Display;
 use std::fs::File;
@@ -283,6 +287,11 @@ pub struct PaymentInfo {
     pub invoice: Option<String>,
 }
 
+pub type NetworkGraph = LdkNetworkGraph<Arc<FilesystemLogger>>;
+
+pub type GossipSync<P, G, A, L> =
+    lightning_background_processor::GossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
+
 pub type ChainMonitor = chainmonitor::ChainMonitor<
     InMemorySigner,
     Arc<dyn Filter + Send + Sync>,
@@ -335,11 +344,8 @@ pub type SyncableMonitor = (
     Arc<FilesystemLogger>,
 );
 
-pub type NetworkGraphMessageHandler = NetGraphMsgHandler<
-    Arc<NetworkGraph>,
-    Arc<dyn chain::Access + Send + Sync>,
-    Arc<FilesystemLogger>,
->;
+pub type NetworkGraphMessageHandler =
+    P2PGossipSync<Arc<NetworkGraph>, Arc<dyn chain::Access + Send + Sync>, Arc<FilesystemLogger>>;
 
 fn get_wpkh_descriptors_for_extended_key(
     xkey: ExtendedKey,
@@ -807,6 +813,7 @@ impl LightningNode {
             chain_manager: chain_manager.clone(),
             event_sender: event_sender.clone(),
             broadcaster: broadcaster.clone(),
+            network_graph: network_graph.clone(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -867,14 +874,14 @@ impl LightningNode {
 
         let bg_persister = Arc::clone(&persister);
 
-        // TODO: should we allow 'child' nodes to update NetworkGraph based on payment failures?
+        // TODO: should we allow all nodes to update NetworkGraph based on payment failures?
         //       feels like probably but depends on exactly what is updated
         let background_processor = BackgroundProcessor::start(
             bg_persister,
             invoice_payer.clone(),
             chain_monitor.clone(),
             channel_manager.clone(),
-            Some(network_graph_msg_handler.clone()),
+            GossipSync::P2P(network_graph_msg_handler.clone()),
             peer_manager.clone(),
             logger.clone(),
             Some(scorer.clone()),
@@ -884,31 +891,56 @@ impl LightningNode {
 
         let channel_manager_reconnect = channel_manager.clone();
         let peer_manager_reconnect = peer_manager.clone();
-        let persister_peer = persister.clone();
+        let _persister_peer = persister.clone();
+        let network_graph_reconnect = network_graph.clone();
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
                 interval.tick().await;
-                match persister_peer.read_channel_peer_data().await {
-                    Ok(mut info) => {
-                        for (pubkey, peer_addr) in info.drain() {
-                            for chan_info in channel_manager_reconnect.list_channels() {
-                                if pubkey == chan_info.counterparty.node_id {
-                                    let _ = connect_peer_if_necessary(
+
+                for chan_info in channel_manager_reconnect.list_channels() {
+                    let pubkey = chan_info.counterparty.node_id;
+                    if !chan_info.is_usable
+                        && !connected_to_peer(&pubkey, peer_manager_reconnect.clone())
+                    {
+                        let node_id = NodeId::from_pubkey(&pubkey);
+                        let addresses = {
+                            let network_graph = network_graph_reconnect.read_only();
+                            network_graph.nodes().get(&node_id).and_then(|info| {
+                                info.announcement_info
+                                    .as_ref()
+                                    .map(|info| info.addresses.clone())
+                            })
+                        };
+
+                        if let Some(addresses) = addresses {
+                            for address in addresses {
+                                let addr = match address {
+                                    NetAddress::IPv4 { addr, port } => {
+                                        Some(SocketAddr::new(IpAddr::from(addr), port))
+                                    }
+                                    NetAddress::IPv6 { addr, port } => {
+                                        Some(SocketAddr::new(IpAddr::from(addr), port))
+                                    }
+                                    NetAddress::OnionV2(_) => None,
+                                    NetAddress::OnionV3 { .. } => None,
+                                };
+
+                                if let Some(addr) = addr {
+                                    if let Ok(()) = connect_peer_if_necessary(
                                         pubkey,
-                                        peer_addr,
+                                        addr,
                                         peer_manager_reconnect.clone(),
                                     )
-                                    .await;
+                                    .await
+                                    {
+                                        break;
+                                    }
                                 }
                             }
                         }
                     }
-                    Err(e) => println!(
-                        "ERROR: errored reading channel peer info from disk: {:?}",
-                        e
-                    ),
-                };
+                }
             }
         }));
 
@@ -982,8 +1014,8 @@ impl LightningNode {
 
     pub async fn open_channels(
         &self,
-        requests: Vec<ChannelOpenRequest>,
-    ) -> Vec<(ChannelOpenRequest, Result<[u8; 32], Error>)> {
+        requests: Vec<OpenChannelRequest>,
+    ) -> Vec<(OpenChannelRequest, Result<[u8; 32], Error>)> {
         let mut opener = ChannelOpener::new(
             self.id.clone(),
             self.channel_manager.clone(),
@@ -991,13 +1023,14 @@ impl LightningNode {
             self.wallet.clone(),
             self.event_sender.subscribe(),
             self.broadcaster.clone(),
+            self.peer_manager.clone(),
         );
         opener.open_batch(requests).await
     }
 
     // `custom_id` will be user_channel_id in FundingGenerated event
     // allows use to tie the create_channel call with the event
-    pub async fn open_channel(&self, request: ChannelOpenRequest) -> Result<[u8; 32], Error> {
+    pub async fn open_channel(&self, request: OpenChannelRequest) -> Result<[u8; 32], Error> {
         let requests = vec![request];
         let mut responses = self.open_channels(requests).await;
         let (_request, result) = responses.pop().unwrap();
@@ -1421,53 +1454,71 @@ impl LightningNode {
                 })
             }
             NodeRequest::GetBalance {} => {
-                let wallet = self.wallet.lock().unwrap();
-                let balance = wallet.get_balance().map_err(Error::Bdk)?;
-                Ok(NodeResponse::GetBalance {
-                    balance_satoshis: balance,
-                })
-            }
-            NodeRequest::OpenChannels { channels } => {
-                let mut requests = vec![];
+                // TODO: split confirmed vs uncofirmed chain balance
+                //       we currently only have 'unconfirmed' utxos from transactions we broadcast
+                //       we never hear about transactions that enter the mempool
+                let onchain_balance_sats = {
+                    let wallet = self.wallet.lock().unwrap();
+                    wallet.get_balance().map_err(Error::Bdk)?
+                };
 
-                // TODO: i guess we need to filter out peers we couldn't connect to instead of unwrap()
-                for channel in &channels {
-                    let (pubkey, addr) = parse_peer_info(channel.node_connection_string.clone())
-                        .await
-                        .unwrap_or_else(|_| {
-                            panic!(
-                                "failed to parse connection string: {}",
-                                channel.node_connection_string
-                            )
-                        });
-                    connect_peer_if_necessary(pubkey, addr, self.peer_manager.clone())
-                        .await
-                        .unwrap_or_else(|_| {
-                            panic!("failed to connect to peer {}@{}", pubkey, addr)
-                        });
-                    requests.push(ChannelOpenRequest {
-                        node_connection_string: channel.node_connection_string.clone(),
-                        peer_pubkey: pubkey,
-                        channel_amt_sat: channel.amt_satoshis,
-                        push_amt_msat: 0,
-                        custom_id: thread_rng().gen_range(1..u64::MAX),
-                        announced_channel: channel.public,
-                    });
+                let channels = self.channel_manager.list_channels();
+
+                let mut channel_balance_msats = 0;
+                let mut channel_outbound_capacity_msats = 0;
+                let mut channel_inbound_capacity_msats = 0;
+                let mut usable_channel_outbound_capacity_msats = 0;
+                let mut usable_channel_inbound_capacity_msats = 0;
+
+                for channel in channels {
+                    channel_balance_msats += channel.balance_msat;
+                    channel_outbound_capacity_msats += channel.outbound_capacity_msat;
+                    channel_inbound_capacity_msats += channel.inbound_capacity_msat;
+
+                    if channel.is_usable {
+                        usable_channel_outbound_capacity_msats += channel.outbound_capacity_msat;
+                        usable_channel_inbound_capacity_msats += channel.inbound_capacity_msat;
+                    }
                 }
 
-                let responses = self.open_channels(requests).await;
+                Ok(NodeResponse::GetBalance {
+                    onchain_balance_sats,
+                    channel_balance_msats,
+                    channel_outbound_capacity_msats,
+                    channel_inbound_capacity_msats,
+                    usable_channel_outbound_capacity_msats,
+                    usable_channel_inbound_capacity_msats,
+                })
+            }
+            NodeRequest::OpenChannels { requests } => {
+                // for channel in &channels {
 
-                let peer_connection_infos = responses
-                    .iter()
-                    .map(|(request, _result)| &request.node_connection_string[..])
-                    .collect::<Vec<_>>();
+                //     // pub counterparty_pubkey: String,
+                //     // pub amount_sats: u64,
+                //     // pub public: bool,
+                //     // pub counterparty_host_port: Option<String>,
+                //     // pub push_amount_sats: Option<u64>,
+                //     // pub forwarding_fee_proportional_millionths: Option<u32>,
+                //     // pub forwarding_fee_base_msat: Option<u32>,
+                //     // pub cltv_expiry_delta: Option<u16>,
+                //     // pub max_dust_htlc_exposure_msat: Option<u64>,
+                //     // pub force_close_avoidance_max_fee_satoshis: Option<u64>
 
-                let _ = self
-                    .persister
-                    .batch_persist_channel_peers(&peer_connection_infos);
+                //     // TODO: these panics are terribile. need to filter them out of the requests instead.
+
+                //     requests.push(ChannelOpenRequest {
+                //         peer_pubkey: pubkey,
+                //         amount_sats: channel.amount_sats,
+                //         push_amount_msats: channel.push_amount_msats.unwrap_or(0),
+                //         custom_id: channel.custom_id.unwrap_or_else(|| { thread_rng().gen_range(1..u64::MAX)}),
+                //         announced_channel: channel.public,
+                //     });
+                // }
+
+                let responses = self.open_channels(requests.clone()).await;
 
                 Ok(NodeResponse::OpenChannels {
-                    channels,
+                    requests,
                     results: responses
                         .into_iter()
                         .map(|(_request, result)| match result {
@@ -1595,8 +1646,63 @@ impl LightningNode {
                 let utxos = self.list_unspent()?;
                 Ok(NodeResponse::ListUnspent { utxos })
             }
+            NodeRequest::NetworkGraphInfo {} => {
+                let graph = self.network_graph.read_only();
+                let channels = graph.channels();
+
+                let mut num_known_edge_policies: u64 = 0;
+                for (_key, channel_info) in channels.iter() {
+                    if channel_info.one_to_two.is_some() {
+                        num_known_edge_policies += 1;
+                    }
+                    if channel_info.two_to_one.is_some() {
+                        num_known_edge_policies += 1;
+                    }
+                }
+
+                Ok(NodeResponse::NetworkGraphInfo {
+                    num_channels: graph.channels().len() as u64,
+                    num_nodes: graph.nodes().len() as u64,
+                    num_known_edge_policies,
+                })
+            }
         }
     }
+}
+
+pub fn parse_pubkey(pubkey: &str) -> Result<PublicKey, std::io::Error> {
+    let pubkey = hex_utils::to_compressed_pubkey(pubkey);
+    if pubkey.is_none() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "ERROR: unable to parse given pubkey for node",
+        ));
+    }
+    Ok(pubkey.unwrap())
+}
+
+pub async fn parse_peer_addr(peer_addr_str: &str) -> Result<SocketAddr, std::io::Error> {
+    let peer_addr = peer_addr_str.to_socket_addrs().map(|mut r| r.next());
+
+    if peer_addr.is_err() || peer_addr.as_ref().unwrap().is_none() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "ERROR: couldn't parse host:port into a socket address",
+        ));
+    }
+
+    let addr = peer_addr.unwrap().unwrap();
+
+    let listen_addr = public_ip::addr()
+        .await
+        .unwrap_or_else(|| [127, 0, 0, 1].into());
+
+    let connect_address = match listen_addr == addr.ip() {
+        true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
+        false => addr,
+    };
+
+    Ok(connect_address)
 }
 
 pub async fn parse_peer_info(
@@ -1605,42 +1711,21 @@ pub async fn parse_peer_info(
     let mut pubkey_and_addr = peer_pubkey_and_ip_addr.split('@');
     let pubkey = pubkey_and_addr.next();
     let peer_addr_str = pubkey_and_addr.next();
-    if peer_addr_str.is_none() || peer_addr_str.is_none() {
+    if pubkey.is_none() || peer_addr_str.is_none() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
             "ERROR: incorrectly formatted peer info. Should be formatted as: `pubkey@host:port`",
         ));
     }
 
-    let peer_addr = peer_addr_str
-        .unwrap()
-        .to_socket_addrs()
-        .map(|mut r| r.next());
-    if peer_addr.is_err() || peer_addr.as_ref().unwrap().is_none() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "ERROR: couldn't parse pubkey@host:port into a socket address",
-        ));
-    }
+    let pubkey = parse_pubkey(pubkey.unwrap())?;
+    let connect_address = parse_peer_addr(peer_addr_str.unwrap()).await?;
 
-    let pubkey = hex_utils::to_compressed_pubkey(pubkey.unwrap());
-    if pubkey.is_none() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "ERROR: unable to parse given pubkey for node",
-        ));
-    }
+    Ok((pubkey, connect_address))
+}
 
-    let addr = peer_addr.unwrap().unwrap();
-
-    let listen_addr = public_ip::addr().await.unwrap();
-
-    let connect_address = match listen_addr == addr.ip() {
-        true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
-        false => addr,
-    };
-
-    Ok((pubkey.unwrap(), connect_address))
+pub fn connected_to_peer(pubkey: &PublicKey, peer_manager: Arc<PeerManager>) -> bool {
+    peer_manager.get_peer_node_ids().contains(pubkey)
 }
 
 pub(crate) async fn connect_peer_if_necessary(
@@ -1648,10 +1733,8 @@ pub(crate) async fn connect_peer_if_necessary(
     peer_addr: SocketAddr,
     peer_manager: Arc<PeerManager>,
 ) -> Result<(), ()> {
-    for node_pubkey in peer_manager.get_peer_node_ids() {
-        if node_pubkey == pubkey {
-            return Ok(());
-        }
+    if connected_to_peer(&pubkey, peer_manager.clone()) {
+        return Ok(());
     }
 
     match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await

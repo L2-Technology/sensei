@@ -21,9 +21,9 @@ use tonic::{metadata::MetadataValue, transport::Channel, Request};
 use crate::sensei::{
     CloseChannelRequest, ConnectPeerRequest, CreateAdminRequest, CreateInvoiceRequest,
     CreateNodeRequest, GetUnusedAddressRequest, InfoRequest, KeysendRequest, ListChannelsRequest,
-    ListNodesRequest, ListPaymentsRequest, ListPeersRequest, ListUnspentRequest, OpenChannelInfo,
-    OpenChannelsRequest, PayInvoiceRequest, SignMessageRequest, StartAdminRequest,
-    StartNodeRequest,
+    ListNodesRequest, ListPaymentsRequest, ListPeersRequest, ListUnspentRequest,
+    NetworkGraphInfoRequest, OpenChannelRequest, OpenChannelsRequest, PayInvoiceRequest,
+    SignMessageRequest, StartAdminRequest, StartNodeRequest,
 };
 
 pub mod sensei {
@@ -341,11 +341,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .parse()
                     .expect("public must be true or false");
 
+                let mut split = node_connection_string.split('@');
+                let pubkey = split.next().expect("you must provide pubkey@host:port");
+                let host_and_port = split.next().unwrap();
                 let request = tonic::Request::new(OpenChannelsRequest {
-                    channels: vec![OpenChannelInfo {
-                        node_connection_string: node_connection_string.to_string(),
-                        amt_satoshis,
+                    requests: vec![OpenChannelRequest {
+                        counterparty_pubkey: pubkey.to_string(),
+                        amount_sats: amt_satoshis,
                         public,
+                        push_amount_msats: None,
+                        custom_id: None,
+                        counterparty_host_port: Some(host_and_port.to_string()),
+                        forwarding_fee_proportional_millionths: None,
+                        forwarding_fee_base_msat: None,
+                        cltv_expiry_delta: None,
+                        max_dust_htlc_exposure_msat: None,
+                        force_close_avoidance_max_fee_satoshis: None,
                     }],
                 });
 
@@ -449,6 +460,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "listunspent" => {
                 let request = tonic::Request::new(ListUnspentRequest {});
                 let response = client.list_unspent(request).await?;
+                println!("{:?}", response.into_inner());
+            }
+            "networkgraphinfo" => {
+                let request = tonic::Request::new(NetworkGraphInfoRequest {});
+                let response = client.network_graph_info(request).await?;
                 println!("{:?}", response.into_inner());
             }
             "nodeinfo" => {

@@ -8,7 +8,7 @@ mod test {
     use migration::{Migrator, MigratorTrait};
     use senseicore::events::SenseiEvent;
     use senseicore::node::{HTLCStatus, LightningNode};
-    use senseicore::services::node::{Channel, OpenChannelInfo};
+    use senseicore::services::node::{Channel, OpenChannelRequest};
     use senseicore::services::{PaginationRequest, PaymentsFilter};
     use serial_test::serial;
     use std::{str::FromStr, sync::Arc, time::Duration};
@@ -79,11 +79,11 @@ mod test {
             .unwrap()
         {
             AdminResponse::CreateNode {
-                id,
-                listen_addr,
-                listen_port,
+                id: _,
+                listen_addr: _,
+                listen_port: _,
                 pubkey,
-                macaroon,
+                macaroon: _,
             } => Some(pubkey),
             _ => None,
         }
@@ -112,10 +112,10 @@ mod test {
         {
             AdminResponse::CreateAdmin {
                 pubkey,
-                macaroon,
-                id,
-                token,
-                role,
+                macaroon: _,
+                id: _,
+                token: _,
+                role: _,
             } => {
                 let directory = admin_service.node_directory.lock().await;
                 let handle = directory.get(&pubkey).unwrap().as_ref().unwrap();
@@ -149,23 +149,6 @@ mod test {
         let mut current_ms = 0;
         while current_ms < timeout_ms {
             if func() {
-                return true;
-            }
-            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
-            current_ms += interval_ms;
-        }
-
-        return false;
-    }
-
-    async fn wait_until_async<F: Future<Output = bool>, G: Fn() -> F>(
-        func: G,
-        timeout_ms: u64,
-        interval_ms: u64,
-    ) -> bool {
-        let mut current_ms = 0;
-        while current_ms < timeout_ms {
-            if func().await {
                 return true;
             }
             tokio::time::sleep(Duration::from_millis(interval_ms)).await;
@@ -276,9 +259,12 @@ mod test {
             .unwrap();
     }
 
-    async fn get_balance(node: Arc<LightningNode>) -> u64 {
+    async fn get_onchain_balance_sats(node: Arc<LightningNode>) -> u64 {
         match node.call(NodeRequest::GetBalance {}).await.unwrap() {
-            NodeResponse::GetBalance { balance_satoshis } => Some(balance_satoshis),
+            NodeResponse::GetBalance {
+                onchain_balance_sats,
+                ..
+            } => Some(onchain_balance_sats),
             _ => None,
         }
         .unwrap()
@@ -292,28 +278,31 @@ mod test {
     ) -> Vec<(Channel, Arc<LightningNode>)> {
         let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
 
-        let channel_infos = to
+        let channel_requests = to
             .iter()
-            .map(|to| {
-                let node_connection_string = format!(
-                    "{}@{}:{}",
-                    to.get_pubkey(),
+            .map(|to| OpenChannelRequest {
+                counterparty_pubkey: to.get_pubkey(),
+                counterparty_host_port: Some(format!(
+                    "{}:{}",
                     to.listen_addresses.first().unwrap(),
                     to.listen_port
-                );
-
-                OpenChannelInfo {
-                    node_connection_string,
-                    amt_satoshis: amt_sat,
-                    public: true,
-                }
+                )),
+                amount_sats: amt_sat,
+                public: true,
+                custom_id: None,
+                push_amount_msats: None,
+                forwarding_fee_proportional_millionths: None,
+                forwarding_fee_base_msat: None,
+                cltv_expiry_delta: None,
+                max_dust_htlc_exposure_msat: None,
+                force_close_avoidance_max_fee_satoshis: None,
             })
-            .collect::<Vec<OpenChannelInfo>>();
+            .collect::<Vec<OpenChannelRequest>>();
 
         let mut event_receiver = from.event_sender.subscribe();
 
         from.call(NodeRequest::OpenChannels {
-            channels: channel_infos,
+            requests: channel_requests,
         })
         .await
         .unwrap();
@@ -331,7 +320,8 @@ mod test {
         let event = wait_for_event(&mut event_receiver, filter, 15000, 250).await;
         assert!(event.is_some());
 
-        let funding_txid = match event.unwrap() {
+        // TODO: looks like I can just remove this?
+        let _funding_txid = match event.unwrap() {
             SenseiEvent::TransactionBroadcast { txid, .. } => Some(txid),
             _ => None,
         }
@@ -407,20 +397,25 @@ mod test {
         amt_sat: u64,
     ) -> Channel {
         let miner_address = bitcoind.client.get_new_address(None, None).unwrap();
-        let node_connection_string = format!(
-            "{}@{}:{}",
-            to.get_pubkey(),
-            to.listen_addresses.first().unwrap(),
-            to.listen_port
-        );
-
         let mut event_receiver = from.event_sender.subscribe();
 
         from.call(NodeRequest::OpenChannels {
-            channels: vec![OpenChannelInfo {
-                node_connection_string: node_connection_string,
-                amt_satoshis: amt_sat,
+            requests: vec![OpenChannelRequest {
+                counterparty_pubkey: to.get_pubkey(),
+                counterparty_host_port: Some(format!(
+                    "{}:{}",
+                    to.listen_addresses.first().unwrap(),
+                    to.listen_port
+                )),
+                amount_sats: amt_sat,
                 public: true,
+                custom_id: None,
+                push_amount_msats: None,
+                forwarding_fee_proportional_millionths: None,
+                forwarding_fee_base_msat: None,
+                cltv_expiry_delta: None,
+                max_dust_htlc_exposure_msat: None,
+                force_close_avoidance_max_fee_satoshis: None,
             }],
         })
         .await
@@ -551,7 +546,7 @@ mod test {
         bitcoind: &BitcoinD,
         persistence_handle: Handle,
     ) -> AdminService {
-        let (event_sender, event_receiver): (
+        let (event_sender, _event_receiver): (
             broadcast::Sender<SenseiEvent>,
             broadcast::Receiver<SenseiEvent>,
         ) = broadcast::channel(256);
@@ -694,9 +689,9 @@ mod test {
         )
         .await;
 
-        let alice_balance = get_balance(alice.clone()).await;
-        let bob_balance = get_balance(bob.clone()).await;
-        let charlie_balance = get_balance(charlie.clone()).await;
+        let alice_balance = get_onchain_balance_sats(alice.clone()).await;
+        let bob_balance = get_onchain_balance_sats(bob.clone()).await;
+        let charlie_balance = get_onchain_balance_sats(charlie.clone()).await;
 
         let alice_initial_balance = 100_000_000 as u64;
         let bob_initial_balance = 100_000_000 as u64;
