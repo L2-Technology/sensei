@@ -8,6 +8,8 @@ name: CD
 env:
   CLI: senseicli
   DAEMON: senseid
+  DOCKER_CLI_EXPERIMENTAL: enabled
+  
 
 jobs:
   # This job downloads and stores `cross` as an artifact, so that it can be
@@ -307,3 +309,34 @@ jobs:
           asset_path: ${{ env.DAEMON }}.tar.gz
           asset_name: ${{ env.DAEMON }}-${{steps.tag.outputs.tag}}-${{ matrix.target }}.tar.gz
           asset_content_type: application/gzip
+  build:
+    needs: build-web-admin
+    name: Build Docker image
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Set VERSION
+        run: echo "VERSION=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Checkout project
+        uses: actions/checkout@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+        id: qemu
+
+      - name: Setup Docker buildx action
+        uses: docker/setup-buildx-action@v1
+        id: buildx
+
+      - name: Show available Docker buildx platforms
+        run: echo ${{ steps.buildx.outputs.platforms }}
+
+      - name: Run Docker buildx
+        run: |
+          docker buildx build \
+          --platform linux/amd64,linux/arm64 \
+          --tag ${{ secrets.DOCKER_HUB_USER }}/sensei:$VERSION \
+          --push .
