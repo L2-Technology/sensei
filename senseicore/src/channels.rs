@@ -133,7 +133,7 @@ impl ChannelOpener {
             .map(|(request, result)| {
                 if result.is_ok() {
                     let mut channel_counterparty_node_id = None;
-                    let event = events.iter().find(|event| {
+                    let event_opt = events.iter().find(|event| {
                         if let SenseiEvent::FundingGenerationReady {
                             user_channel_id,
                             counterparty_node_id,
@@ -148,10 +148,9 @@ impl ChannelOpener {
                         false
                     });
 
-                    if event.is_none() {
-                        (request, Err(Error::FundingGenerationNeverHappened), None)
-                    } else {
-                        (request, result, channel_counterparty_node_id)
+                    match event_opt {
+                        None => (request, Err(Error::FundingGenerationNeverHappened), None),
+                        Some(_) => (request, result, channel_counterparty_node_id),
                     }
                 } else {
                     (request, result, None)

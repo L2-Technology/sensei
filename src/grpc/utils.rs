@@ -1,15 +1,13 @@
 use tonic::{metadata::MetadataMap, Status};
 
 pub fn raw_macaroon_from_metadata(metadata: MetadataMap) -> Result<String, Status> {
-    let macaroon = metadata.get("macaroon");
+    let macaroon_opt = metadata.get("macaroon");
 
-    if macaroon.is_none() {
-        return Err(Status::unauthenticated("macaroon is required"));
+    match macaroon_opt {
+        Some(macaroon) => macaroon
+            .to_str()
+            .map(String::from)
+            .map_err(|_e| Status::unauthenticated("invalid macaroon: must be ascii")),
+        None => Err(Status::unauthenticated("macaroon is required")),
     }
-
-    macaroon
-        .unwrap()
-        .to_str()
-        .map(String::from)
-        .map_err(|_e| Status::unauthenticated("invalid macaroon: must be ascii"))
 }
