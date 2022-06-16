@@ -10,6 +10,7 @@ pub mod kv_store;
 pub mod macaroon;
 pub mod node;
 pub mod payment;
+pub mod peer;
 pub mod script_pubkey;
 pub mod transaction;
 pub mod utxo;

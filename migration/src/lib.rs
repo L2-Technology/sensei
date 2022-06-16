@@ -9,6 +9,7 @@ mod m20220428_000001_create_utxos_table;
 mod m20220428_000002_create_script_pubkeys_table;
 mod m20220428_000003_create_transactions_table;
 mod m20220428_000004_create_keychains_table;
+mod m20220616_000001_create_peers_table;
 
 pub struct Migrator;
 
@@ -26,6 +27,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20220428_000002_create_script_pubkeys_table::Migration),
             Box::new(m20220428_000003_create_transactions_table::Migration),
             Box::new(m20220428_000004_create_keychains_table::Migration),
+            Box::new(m20220616_000001_create_peers_table::Migration),
         ]
     }
 }
