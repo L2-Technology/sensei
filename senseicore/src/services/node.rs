@@ -138,6 +138,7 @@ impl From<&OpenChannelRequest> for UserConfig {
             peer_channel_config_limits: ChannelHandshakeLimits {
                 // lnd's max to_self_delay is 2016, so we want to be compatible.
                 their_to_self_delay: 2016,
+                trust_own_funding_0conf: true,
                 ..Default::default()
             },
             channel_options: ChannelConfig {

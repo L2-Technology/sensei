@@ -629,9 +629,11 @@ impl LightningNode {
 
         // TODO: likely expose a lot of this config to our LightningNodeConfig
         let mut user_config = UserConfig::default();
+
         user_config
             .peer_channel_config_limits
             .force_announced_channel_preference = false;
+        user_config.manually_accept_inbound_channels = true;
 
         let best_block = chain_manager.get_best_block().await?;
 

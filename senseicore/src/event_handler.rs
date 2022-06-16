@@ -49,8 +49,54 @@ pub struct LightningNodeEventHandler {
 impl EventHandler for LightningNodeEventHandler {
     fn handle_event(&self, event: &Event) {
         match event {
-            Event::OpenChannelRequest { .. } => {
-                // Unreachable, we don't set manually_accept_inbound_channels
+            Event::OpenChannelRequest {
+                temporary_channel_id,
+                counterparty_node_id,
+                funding_satoshis: _,
+                push_msat: _,
+                channel_type,
+            } => {
+                // TODO: lookup counterparty_node_id in my trusted peer list to set this
+                let is_trusted_peer = true;
+
+                if is_trusted_peer {
+                    match self
+                        .channel_manager
+                        .accept_inbound_channel_from_trusted_peer_0conf(
+                            temporary_channel_id,
+                            counterparty_node_id,
+                            1,
+                        ) {
+                        Ok(()) => {
+                            println!(
+                                "accepted 0-conf inbound channel from {:?}",
+                                counterparty_node_id
+                            );
+                        }
+                        Err(e) => {
+                            println!(
+                                "failed to accept 0-conf inbound channel from {:?}: {:?}",
+                                counterparty_node_id, e
+                            );
+                        }
+                    }
+                } else {
+                    match self.channel_manager.accept_inbound_channel(
+                        temporary_channel_id,
+                        counterparty_node_id,
+                        1,
+                    ) {
+                        Ok(()) => {
+                            println!("accepted inbound channel from {:?}", counterparty_node_id);
+                        }
+                        Err(e) => {
+                            println!(
+                                "failed to accept inbound channel from {:?}: {:?}",
+                                counterparty_node_id, e
+                            );
+                        }
+                    }
+                }
             }
             Event::FundingGenerationReady {
                 temporary_channel_id,
