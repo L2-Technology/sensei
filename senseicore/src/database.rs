@@ -16,6 +16,8 @@ use entity::node;
 use entity::node::Entity as Node;
 use entity::payment;
 use entity::payment::Entity as Payment;
+use entity::peer;
+use entity::peer::Entity as Peer;
 use entity::sea_orm;
 use entity::sea_orm::ActiveValue;
 use entity::sea_orm::QueryOrder;
@@ -350,6 +352,88 @@ impl SenseiDatabase {
 
         Ok((
             payments,
+            PaginationResponse {
+                has_more,
+                total: total.try_into().unwrap(),
+            },
+        ))
+    }
+
+    pub async fn delete_peer(&self, node_id: &str, pubkey: &str) -> Result<(), Error> {
+        match self.find_peer(node_id, pubkey).await? {
+            Some(peer) => {
+                let _deleted = peer.delete(&self.connection).await?;
+                Ok(())
+            }
+            None => Ok(()),
+        }
+    }
+
+    pub async fn find_peer(
+        &self,
+        node_id: &str,
+        pubkey: &str,
+    ) -> Result<Option<peer::Model>, Error> {
+        Ok(Peer::find()
+            .filter(entity::peer::Column::NodeId.eq(node_id))
+            .filter(entity::peer::Column::Pubkey.eq(pubkey))
+            .one(&self.connection)
+            .await?)
+    }
+
+    pub async fn label_peer(
+        &self,
+        node_id: &str,
+        pubkey: &str,
+        label: String,
+    ) -> Result<(), Error> {
+        match self.find_peer(node_id, pubkey).await? {
+            Some(peer) => {
+                let mut peer: peer::ActiveModel = peer.into();
+                peer.label = ActiveValue::Set(Some(label));
+                peer.update(&self.connection).await?;
+                Ok(())
+            }
+            None => Ok(()),
+        }
+    }
+
+    pub fn find_peer_sync(
+        &self,
+        node_id: &str,
+        pubkey: &str
+    ) -> Result<Option<peer::Model>, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.find_peer(node_id, pubkey).await })
+        })
+    }
+
+    pub async fn list_peers(
+        &self,
+        node_id: &str,
+        pagination: PaginationRequest,
+    ) -> Result<(Vec<peer::Model>, PaginationResponse), Error> {
+        let query_string = pagination.query.unwrap_or_else(|| String::from(""));
+        let page_size: usize = pagination.take.try_into().unwrap();
+        let page: usize = pagination.page.try_into().unwrap();
+
+        let peer_pages = Peer::find()
+            .filter(peer::Column::NodeId.eq(node_id))
+            .filter(
+                Condition::any()
+                    .add(peer::Column::Pubkey.contains(&query_string))
+                    .add(peer::Column::Label.contains(&query_string))
+            )
+            .order_by_desc(peer::Column::UpdatedAt)
+            .paginate(&self.connection, page_size);
+
+        let peers = peer_pages.fetch_page(page).await?;
+        let total = peer_pages.num_items().await?;
+        let has_more = ((page + 1) * page_size) < total;
+
+        Ok((
+            peers,
             PaginationResponse {
                 has_more,
                 total: total.try_into().unwrap(),

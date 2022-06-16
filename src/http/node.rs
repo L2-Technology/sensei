@@ -12,12 +12,12 @@ use std::sync::Arc;
 use crate::http::auth_header::AuthHeader;
 use crate::AdminService;
 use axum::extract::{Extension, Json, Query};
-use axum::routing::{get, post};
+use axum::routing::{get, post, delete};
 use axum::Router;
 use http::{HeaderValue, StatusCode};
 use senseicore::services::admin::AdminRequest;
 use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest};
-use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams};
+use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams, ListKnownPeersParams};
 use senseicore::utils;
 use serde::Deserialize;
 use serde_json::Value;
@@ -191,6 +191,36 @@ impl From<VerifyMessageParams> for NodeRequest {
     }
 }
 
+#[derive(Deserialize)]
+pub struct AddKnownPeerParams {
+    pub pubkey: String,
+    pub label: String,
+    pub zero_conf: bool
+}
+
+impl From<AddKnownPeerParams> for NodeRequest {
+    fn from(params: AddKnownPeerParams) -> Self {
+        Self::AddKnownPeer {
+            pubkey: params.pubkey,
+            label: params.label,
+            zero_conf: params.zero_conf
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RemoveKnownPeerParams {
+    pub pubkey: String,
+}
+
+impl From<RemoveKnownPeerParams> for NodeRequest {
+    fn from(params: RemoveKnownPeerParams) -> Self {
+        Self::RemoveKnownPeer {
+            pubkey: params.pubkey
+        }
+    }
+}
+
 pub fn add_routes(router: Router) -> Router {
     router
         .route("/v1/node/payments", get(handle_get_payments))
@@ -215,6 +245,9 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/sign/message", post(sign_message))
         .route("/v1/node/verify/message", post(verify_message))
         .route("/v1/node/network-graph/info", get(network_graph_info))
+        .route("/v1/node/known-peers", get(list_known_peers))
+        .route("/v1/node/known-peers", post(add_known_peer))
+        .route("/v1/node/known-peers", delete(remove_known_peer))
 }
 
 pub async fn get_unused_address(
@@ -587,4 +620,50 @@ pub async fn network_graph_info(
         cookies,
     )
     .await
+}
+
+
+pub async fn list_known_peers(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Query(params): Query<ListKnownPeersParams>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, StatusCode> {
+    let request = NodeRequest::ListKnownPeers {
+        pagination: params.clone().into()
+    };
+
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn add_known_peer(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, StatusCode> {
+    let request = {
+        let params: Result<AddKnownPeerParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn remove_known_peer(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, StatusCode> {
+    let request = {
+        let params: Result<RemoveKnownPeerParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
 }

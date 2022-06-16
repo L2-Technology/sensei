@@ -37,6 +37,9 @@ service Node {
     rpc VerifyMessage (VerifyMessageRequest) returns (VerifyMessageResponse);
     rpc ListUnspent (ListUnspentRequest) returns (ListUnspentResponse);
     rpc NetworkGraphInfo (NetworkGraphInfoRequest) returns (NetworkGraphInfoResponse);
+    rpc ListKnownPeers (ListKnownPeersRequest) returns (ListKnownPeersResponse);
+    rpc AddKnownPeer (AddKnownPeerRequest) returns (AddKnownPeerResponse);
+    rpc RemoveKnownPeer (RemoveKnownPeerRequest) returns (RemoveKnownPeerResponse);
 }
 
 message ListNode {
@@ -416,4 +419,29 @@ message NetworkGraphInfoResponse {
     uint64 num_channels = 1;
     uint64 num_nodes = 2;
     uint64 num_known_edge_policies = 3;
+}
+
+message AddKnownPeerRequest {
+    string pubkey = 1;
+    string label = 2;
+    bool zero_conf = 3;
+}
+message AddKnownPeerResponse {}
+
+message RemoveKnownPeerRequest {
+    string pubkey = 1;
+}
+message RemoveKnownPeerResponse {}
+
+message KnownPeer {
+    string pubkey = 1;
+    optional string label = 2;
+    bool zero_conf = 3;
+}
+message ListKnownPeersRequest {
+    optional PaginationRequest pagination = 1;
+}
+message ListKnownPeersResponse {
+    repeated KnownPeer peers = 1;
+    PaginationResponse pagination = 2;
 }

@@ -13,7 +13,7 @@ use super::sensei::{
     NetworkGraphInfoResponse, OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest,
     OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
     PaymentsFilter, Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-    StopNodeResponse, Utxo as UtxoMessage,
+    StopNodeResponse, Utxo as UtxoMessage, AddKnownPeerRequest, AddKnownPeerResponse, RemoveKnownPeerRequest, RemoveKnownPeerResponse, KnownPeer, ListKnownPeersRequest, ListKnownPeersResponse,
 };
 
 use super::sensei::{
@@ -632,3 +632,86 @@ impl TryFrom<NodeResponse> for NetworkGraphInfoResponse {
         }
     }
 }
+
+
+impl From<entity::peer::Model> for KnownPeer {
+    fn from(peer: entity::peer::Model) -> Self {
+        Self {
+            pubkey: peer.pubkey,
+            label: peer.label,
+            zero_conf: peer.zero_conf
+        }
+    }
+}
+
+impl From<ListKnownPeersRequest> for NodeRequest {
+    fn from(req: ListKnownPeersRequest) -> Self {
+        NodeRequest::ListKnownPeers {
+            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for ListKnownPeersResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::ListKnownPeers {
+                peers,
+                pagination,
+            } => {
+                let pagination: PaginationResponse = pagination.into();
+                Ok(Self {
+                    peers: peers
+                        .into_iter()
+                        .map(|peer| peer.into())
+                        .collect::<Vec<_>>(),
+                    pagination: Some(pagination),
+                })
+            }
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<AddKnownPeerRequest> for NodeRequest {
+    fn from(req: AddKnownPeerRequest) -> Self {
+        NodeRequest::AddKnownPeer {
+            pubkey: req.pubkey,
+            label: req.label,
+            zero_conf: req.zero_conf
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for AddKnownPeerResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::AddKnownPeer {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<RemoveKnownPeerRequest> for NodeRequest {
+    fn from(req: RemoveKnownPeerRequest) -> Self {
+        NodeRequest::RemoveKnownPeer {
+            pubkey: req.pubkey
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for RemoveKnownPeerResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::RemoveKnownPeer {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+

@@ -158,6 +158,35 @@ impl From<ListTransactionsParams> for PaginationRequest {
     }
 }
 
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ListKnownPeersParams {
+    pub page: u32,
+    pub take: u32,
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub query: Option<String>,
+}
+
+impl Default for ListKnownPeersParams {
+    fn default() -> Self {
+        Self {
+            page: 0,
+            take: 10,
+            query: None,
+        }
+    }
+}
+
+impl From<ListKnownPeersParams> for PaginationRequest {
+    fn from(params: ListKnownPeersParams) -> Self {
+        Self {
+            page: params.page,
+            take: params.take,
+            query: params.query,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PaginationResponse {
     pub has_more: bool,

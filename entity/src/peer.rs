@@ -1,4 +1,5 @@
 use sea_orm::{entity::prelude::*, ActiveValue};
+use serde::{Deserialize, Serialize};
 
 use crate::seconds_since_epoch;
 
@@ -11,15 +12,15 @@ impl EntityName for Entity {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel)]
+#[derive(Clone, Debug, PartialEq, DeriveModel, DeriveActiveModel, Deserialize, Serialize)]
 pub struct Model {
     pub id: String,
     pub created_at: i64,
     pub updated_at: i64,
     pub node_id: String,
     pub pubkey: String,
-    pub label: String,
     pub zero_conf: bool,
+    pub label: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]

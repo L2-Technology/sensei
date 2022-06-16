@@ -23,7 +23,7 @@ use super::{
         NetworkGraphInfoRequest, NetworkGraphInfoResponse, OpenChannelsRequest,
         OpenChannelsResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
         SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-        StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse,
+        StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse, AddKnownPeerRequest, AddKnownPeerResponse, RemoveKnownPeerRequest, RemoveKnownPeerResponse, ListKnownPeersRequest, ListKnownPeersResponse,
     },
     utils::raw_macaroon_from_metadata,
 };
@@ -308,6 +308,36 @@ impl Node for NodeService {
         &self,
         request: tonic::Request<NetworkGraphInfoRequest>,
     ) -> Result<tonic::Response<NetworkGraphInfoResponse>, tonic::Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn list_known_peers(
+        &self,
+        request: tonic::Request<ListKnownPeersRequest>,
+    ) -> Result<tonic::Response<ListKnownPeersResponse>, tonic::Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn add_known_peer(
+        &self,
+        request: tonic::Request<AddKnownPeerRequest>,
+    ) -> Result<tonic::Response<AddKnownPeerResponse>, tonic::Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn remove_known_peer(
+        &self,
+        request: tonic::Request<RemoveKnownPeerRequest>,
+    ) -> Result<tonic::Response<RemoveKnownPeerResponse>, tonic::Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

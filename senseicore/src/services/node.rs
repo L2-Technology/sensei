@@ -239,6 +239,17 @@ pub enum NodeRequest {
     },
     ListUnspent {},
     NetworkGraphInfo {},
+    ListKnownPeers {
+        pagination: PaginationRequest,
+    },
+    AddKnownPeer {
+        pubkey: String,
+        label: String,
+        zero_conf: bool
+    },
+    RemoveKnownPeer {
+        pubkey: String
+    },
 }
 
 #[derive(Serialize)]
@@ -306,6 +317,12 @@ pub enum NodeResponse {
         num_nodes: u64,
         num_known_edge_policies: u64,
     },
+    ListKnownPeers {
+        peers: Vec<entity::peer::Model>,
+        pagination: PaginationResponse,
+    },
+    AddKnownPeer {},
+    RemoveKnownPeer {},
     Error(NodeRequestError),
 }
 

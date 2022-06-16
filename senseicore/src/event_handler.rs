@@ -54,10 +54,12 @@ impl EventHandler for LightningNodeEventHandler {
                 counterparty_node_id,
                 funding_satoshis: _,
                 push_msat: _,
-                channel_type,
+                channel_type: _,
             } => {
-                // TODO: lookup counterparty_node_id in my trusted peer list to set this
-                let is_trusted_peer = true;
+                let is_trusted_peer = match self.database.find_peer_sync(&self.node_id, &counterparty_node_id.to_string()) {
+                    Ok(Some(known_peer)) => known_peer.zero_conf,
+                    _ => false
+                };
 
                 if is_trusted_peer {
                     match self
