@@ -8,70 +8,20 @@ import { useConfirm } from "../../contexts/confirm";
 import removeKnownPeer from "../mutations/removeKnownPeer";
 import addKnownPeer from "../mutations/addKnownPeer";
 import { KnownPeer } from "@l2-technology/sensei-client";
-import { useState } from "react";
-import { CheckIcon, PencilAltIcon } from "@heroicons/react/solid";
+import EditableLabelColumn from "src/components/tables/EditableLabelColumn";
 
-const EditLabelForm = ({ knownPeer, setEditing }) => {
-  let queryClient = useQueryClient();
-  let [label, setLabel] = useState(knownPeer.label || "");
-
-  async function handleSubmit() {
-    try {
-      await addKnownPeer(knownPeer.pubkey, label, knownPeer.zeroConf);
-      setEditing(false);
-      queryClient.invalidateQueries("knownPeers");
-    } catch (e) {
-      // TODO: handle error
-    }
+const LabelColumn = ({ knownPeer, value }) => {
+  
+  const updateLabel = async (newLabel) => {
+    await addKnownPeer(knownPeer.pubkey, newLabel, knownPeer.zeroConf);
   }
 
-  return (
-    <div className="flex align-middle items-center">
-      <div className="rounded-xl shadow-sm flex">
-      <input
-        type="text"
-        value={label}
-        onKeyPress={(e) => {
-          if (e.key === "Enter") {
-            handleSubmit();
-          }
-        }}
-        name="label"
-        className="input"
-        onChange={(e) => {
-          setLabel(e.target.value);
-        }}
-      />
-      </div>
-      <CheckIcon
-        onClick={handleSubmit}
-        className="inline-block w-8 h-8 text-orange cursor-pointer"
-      />
-    </div>
-  );
-};
-
-const LabelColumn = ({ knownPeer, value, className }) => {
-  let [editing, setEditing] = useState(false);
-
-  return editing ? (
-    <td
-      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
-    >
-      <EditLabelForm knownPeer={knownPeer} setEditing={setEditing} />
-    </td>
-  ) : (
-    <td
-      onClick={() => setEditing(true)}
-      className={`group cursor-pointer p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
-    >
-      {value}{" "}
-      <span className="inline-block group-hover:hidden">
-        &nbsp;&nbsp;&nbsp;&nbsp;
-      </span>
-      <PencilAltIcon className="w-4 h-4 cursor-pointer hidden group-hover:inline-block" />{" "}
-    </td>
-  );
+  return <EditableLabelColumn 
+    label={value} 
+    updateLabel={updateLabel} 
+    queryKey={"knownPeers"} 
+  />
+  
 };
 
 const SimpleColumn = ({ value, className }) => {
