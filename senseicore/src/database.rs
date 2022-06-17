@@ -425,7 +425,7 @@ impl SenseiDatabase {
                     .add(peer::Column::Pubkey.contains(&query_string))
                     .add(peer::Column::Label.contains(&query_string))
             )
-            .order_by_desc(peer::Column::UpdatedAt)
+            .order_by_desc(peer::Column::CreatedAt)
             .paginate(&self.connection, page_size);
 
         let peers = peer_pages.fetch_page(page).await?;

@@ -1,12 +1,24 @@
+import { Link } from "react-router-dom";
+import PeersList from "../components/PeersList";
+
 const PeersPage = () => {
   return (
-    <div className="py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Peers</h1>
+    <div className="py-12">
+      <div className="">
+        <div className="pb-5 border-b border-plum-200 sm:flex sm:items-center sm:justify-between">
+          <h3 className="text-2xl leading-6 font-medium text-light-plum">
+            Peer Directory
+          </h3>
+          <div className="mt-3 sm:mt-0 sm:ml-4">
+            <Link to="/admin/peers/new" className="btn-orange">
+              Add Peer
+            </Link>
+          </div>
+        </div>
       </div>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
-        <div className="py-4">
-          <div className="border-4 border-dashed border-gray-400 rounded-lg h-96" />
+      <div className="py-4 relative">
+        <div className="bg-gray-accent2 -mx-4 sm:mx-0 sm:rounded-xl overflow-x-auto">
+          <PeersList />
         </div>
       </div>
     </div>

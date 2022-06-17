@@ -16,6 +16,7 @@ import SendMoneyPage from "./payments/pages/SendMoneyPage";
 import FundPage from "./chain/pages/FundPage";
 import ReceiveMoneyPage from "./payments/pages/ReceiveMoneyPage";
 import PeersPage from "./peers/pages/PeersPage";
+import AddPeerPage from "./peers/pages/AddPeerPage";
 import NewNodePage from "./nodes/pages/NewNodePage";
 import Modal from "./components/layout/app/Modal";
 import ConfirmModal from "./components/layout/app/ConfirmModal";
@@ -58,6 +59,7 @@ function App() {
           <Route path="/admin/receive-money" element={<ReceiveMoneyPage />} />
           <Route path="/admin/send-money" element={<SendMoneyPage />} />
           <Route path="/admin/peers" element={<PeersPage />} />
+          <Route path="/admin/peers/new" element={<AddPeerPage />} />
           <Route path="/admin/nodes" element={<NodesPage />} />
           <Route path="/admin/nodes/new" element={<NewNodePage />} />
           <Route path="/admin/tokens" element={<TokensPage />} />

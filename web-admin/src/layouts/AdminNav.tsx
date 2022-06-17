@@ -14,6 +14,7 @@ import {
   KeyIcon,
   UserIcon,
   ChevronDownIcon,
+  UsersIcon
 } from "@heroicons/react/outline";
 import { UserCircleIcon } from "@heroicons/react/solid";
 import { useAuth } from "../contexts/auth";
@@ -61,6 +62,7 @@ const navigation = [
   { name: "Channels", href: "/admin/channels", icon: AdjustmentsIcon },
   { name: "Send Money", href: "/admin/send-money", icon: ShoppingCartIcon },
   { name: "Receive Money", href: "/admin/receive-money", icon: CashIcon },
+  { name: "Peer Directory", href: "/admin/peers", icon: UsersIcon },
   { name: "Logout", href: "/admin/logout", icon: LogoutIcon },
 ];
 
