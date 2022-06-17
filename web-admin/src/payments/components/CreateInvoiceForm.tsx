@@ -6,7 +6,7 @@ import { useNotification } from "../../contexts/notification";
 import copy from "copy-to-clipboard";
 
 export const CreateInvoiceInput = z.object({
-  amountMillisats: z.string(),
+  amountSats: z.string(),
   description: z.string(),
 });
 
@@ -53,11 +53,11 @@ const CreateInvoiceForm = () => {
       noticePosition="top"
       layout="default"
       resetAfterSuccess={true}
-      initialValues={{ description: "", amountMillisats: "" }}
-      onSubmit={async ({ description, amountMillisats }) => {
+      initialValues={{ description: "", amountSats: "" }}
+      onSubmit={async ({ description, amountSats }) => {
         try {
           const { invoice } = await createInvoice(
-            parseInt(amountMillisats, 10),
+            parseInt(amountSats, 10) * 1000,
             description
           );
 
@@ -74,8 +74,8 @@ const CreateInvoiceForm = () => {
       <Input autoFocus label="Description" name="description" />
       <Input
         min={1}
-        label="Amount Millisats"
-        name="amountMillisats"
+        label="Amount Sats"
+        name="amountSats"
         type="number"
       />
     </Form>
