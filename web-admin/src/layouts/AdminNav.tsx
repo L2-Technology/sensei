@@ -57,7 +57,6 @@ const adminNav = [
 ];
 
 const navigation = [
-  { name: "Fund Node", href: "/admin/fund", icon: QrcodeIcon },
   { name: "Chain", href: "/admin/chain", icon: LinkIcon },
   { name: "Channels", href: "/admin/channels", icon: AdjustmentsIcon },
   { name: "Send Money", href: "/admin/send-money", icon: ShoppingCartIcon },

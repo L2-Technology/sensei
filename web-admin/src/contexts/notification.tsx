@@ -1,3 +1,4 @@
+import { InboxIcon } from "@heroicons/react/outline";
 import React, {
   createContext,
   ReactNode,
@@ -9,11 +10,13 @@ import React, {
 interface NotificationContextOptions {
   isOpen: boolean;
   component: ReactNode | null;
+  iconComponent: ReactNode | null;
 }
 
 const defaultOptions: NotificationContextOptions = {
   isOpen: false,
   component: null,
+  iconComponent: null
 };
 
 const NotificationContext = createContext(null);
@@ -41,7 +44,7 @@ function useNotification() {
 
   const hideNotification = () => {
     setNotification({
-      ...notification,
+      ...defaultOptions,
       isOpen: false,
     });
   };

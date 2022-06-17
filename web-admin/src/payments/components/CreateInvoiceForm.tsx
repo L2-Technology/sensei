@@ -4,6 +4,7 @@ import { useQueryClient } from "react-query";
 import { z } from "zod";
 import { useNotification } from "../../contexts/notification";
 import copy from "copy-to-clipboard";
+import { InboxIcon } from "@heroicons/react/outline";
 
 export const CreateInvoiceInput = z.object({
   amountSats: z.string(),
@@ -65,6 +66,7 @@ const CreateInvoiceForm = () => {
 
           showNotification({
             component: <NewInvoiceNotification invoice={invoice} />,
+            iconComponent: <InboxIcon className="h-6 w-6 text-light-plum" aria-hidden="true"/>
           });
         } catch (e) {
           // TODO: handle error

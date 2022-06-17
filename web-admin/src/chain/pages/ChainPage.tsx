@@ -1,8 +1,19 @@
 import OnChainBalance from "../components/OnChainBalance";
 import TransactionsList from "src/transactions/components/TransactionsList";
+import UnusedAddress from "../components/UnusedAddress";
 const ChainPage = () => {
   return (
     <div className="py-6">
+      <div className="">
+        <h1 className="text-2xl font-semibold text-plum-light">Fund Node</h1>
+      </div>
+      <div className="">
+        <div className="py-4">
+          <div className="mb-8">
+            <UnusedAddress />
+          </div>
+        </div>
+      </div>
       <div className="">
         <h1 className="text-2xl font-semibold text-plum-light">Balance</h1>
       </div>
