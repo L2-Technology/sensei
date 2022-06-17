@@ -225,6 +225,13 @@ const PaymentsList = ({ origin = "", status = "" }) => {
     });
   };
 
+  const refetchInterval = (data, query) => {
+    const hasPendingPayment = data?.results.find(payment => {
+      return payment.status === "pending"
+    })
+    return hasPendingPayment ? 1000 : false
+  }
+
   const queryFunction = async ({ queryKey }) => {
     const [_key, { page, searchTerm, take }] = queryKey;
     const { payments, pagination } = await getPayments({
@@ -253,6 +260,7 @@ const PaymentsList = ({ origin = "", status = "" }) => {
       hasHeader
       itemsPerPage={5}
       RowComponent={PaymentRow}
+      refetchInterval={refetchInterval}
     />
   );
 };

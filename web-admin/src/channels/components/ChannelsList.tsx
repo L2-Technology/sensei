@@ -230,6 +230,15 @@ const ChannelsList = () => {
     };
   };
 
+  // TODO: when channels are stored in db and can be in error state
+  //       need to make sure we aren't polling failed/closed channels
+  const refetchInterval = (data, query) => {
+    const hasPendingChannel = data?.results.find(channel => {
+      return channel.status !== "ready"
+    })
+    return hasPendingChannel ? 1000 : false
+  }
+
   return (
     <SearchableTable
       attributes={attributes}
@@ -242,6 +251,7 @@ const ChannelsList = () => {
       itemsPerPage={5}
       RowComponent={ChannelRow}
       striped={true}
+      refetchInterval={refetchInterval}
     />
   );
 };

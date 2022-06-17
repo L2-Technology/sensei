@@ -216,6 +216,7 @@ interface SearchableTableProps<T> {
   searchBarTitle?: string | null;
   searchBarPlaceholder: string;
   RowComponent?: ReactNode;
+  refetchInterval?: number | false | ((data: any, query: any) => number | false);
 }
 
 const SimpleSearchableTable = <T extends object>({
@@ -231,6 +232,7 @@ const SimpleSearchableTable = <T extends object>({
   searchBarTitle = null,
   searchBarPlaceholder,
   RowComponent = SimpleRow,
+  refetchInterval = false
 }: SearchableTableProps<T>) => {
   const [page, setPage] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
@@ -245,7 +247,10 @@ const SimpleSearchableTable = <T extends object>({
   const { data, isLoading, isError } = useQuery(
     [queryKey, { page, searchTerm, skip, take }],
     queryFunction,
-    { keepPreviousData: true }
+    { 
+      keepPreviousData: true,
+      refetchInterval
+    }
   );
 
   if (isLoading) {
