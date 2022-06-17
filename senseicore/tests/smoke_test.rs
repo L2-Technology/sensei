@@ -457,7 +457,7 @@ mod test {
             channels.len() > 0 && channels[0].is_usable
         };
 
-        assert!(wait_until(Box::new(has_usable_channel), 15000, 250).await);
+        assert!(wait_until(Box::new(has_usable_channel), 30000, 250).await);
 
         from.list_channels(PaginationRequest {
             page: 0,
