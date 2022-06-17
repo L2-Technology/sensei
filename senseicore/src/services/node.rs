@@ -138,6 +138,7 @@ impl From<&OpenChannelRequest> for UserConfig {
             peer_channel_config_limits: ChannelHandshakeLimits {
                 // lnd's max to_self_delay is 2016, so we want to be compatible.
                 their_to_self_delay: 2016,
+                trust_own_funding_0conf: true,
                 ..Default::default()
             },
             channel_options: ChannelConfig {
@@ -238,6 +239,17 @@ pub enum NodeRequest {
     },
     ListUnspent {},
     NetworkGraphInfo {},
+    ListKnownPeers {
+        pagination: PaginationRequest,
+    },
+    AddKnownPeer {
+        pubkey: String,
+        label: String,
+        zero_conf: bool,
+    },
+    RemoveKnownPeer {
+        pubkey: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -305,6 +317,12 @@ pub enum NodeResponse {
         num_nodes: u64,
         num_known_edge_policies: u64,
     },
+    ListKnownPeers {
+        peers: Vec<entity::peer::Model>,
+        pagination: PaginationResponse,
+    },
+    AddKnownPeer {},
+    RemoveKnownPeer {},
     Error(NodeRequestError),
 }
 

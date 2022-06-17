@@ -14,6 +14,7 @@ use std::{
 
 #[derive(Debug)]
 pub enum Error {
+    Generic(String),
     Db(migration::DbErr),
     TinderCrypt(tindercrypt::errors::Error),
     Macaroon(macaroon::MacaroonError),
@@ -41,6 +42,7 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
+            Error::Generic(e) => e.to_string(),
             Error::Db(e) => e.to_string(),
             Error::Macaroon(_e) => "macaroon error".to_string(),
             Error::TinderCrypt(e) => e.to_string(),
