@@ -56,9 +56,12 @@ impl EventHandler for LightningNodeEventHandler {
                 push_msat: _,
                 channel_type: _,
             } => {
-                let is_trusted_peer = match self.database.find_peer_sync(&self.node_id, &counterparty_node_id.to_string()) {
+                let is_trusted_peer = match self
+                    .database
+                    .find_peer_sync(&self.node_id, &counterparty_node_id.to_string())
+                {
                     Ok(Some(known_peer)) => known_peer.zero_conf,
-                    _ => false
+                    _ => false,
                 };
 
                 if is_trusted_peer {

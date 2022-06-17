@@ -158,7 +158,6 @@ impl From<ListTransactionsParams> for PaginationRequest {
     }
 }
 
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ListKnownPeersParams {
     pub page: u32,

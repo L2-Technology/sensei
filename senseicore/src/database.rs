@@ -401,7 +401,7 @@ impl SenseiDatabase {
     pub fn find_peer_sync(
         &self,
         node_id: &str,
-        pubkey: &str
+        pubkey: &str,
     ) -> Result<Option<peer::Model>, Error> {
         tokio::task::block_in_place(move || {
             self.runtime_handle
@@ -423,7 +423,7 @@ impl SenseiDatabase {
             .filter(
                 Condition::any()
                     .add(peer::Column::Pubkey.contains(&query_string))
-                    .add(peer::Column::Label.contains(&query_string))
+                    .add(peer::Column::Label.contains(&query_string)),
             )
             .order_by_desc(peer::Column::CreatedAt)
             .paginate(&self.connection, page_size);

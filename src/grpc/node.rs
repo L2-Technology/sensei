@@ -13,17 +13,18 @@ pub use super::sensei::node_server::{Node, NodeServer};
 
 use super::{
     sensei::{
-        CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-        CreateInvoiceRequest, CreateInvoiceResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
-        DeletePaymentRequest, DeletePaymentResponse, GetBalanceRequest, GetBalanceResponse,
-        GetUnusedAddressRequest, GetUnusedAddressResponse, InfoRequest, InfoResponse,
-        KeysendRequest, KeysendResponse, LabelPaymentRequest, LabelPaymentResponse,
-        ListChannelsRequest, ListChannelsResponse, ListPaymentsRequest, ListPaymentsResponse,
-        ListPeersRequest, ListPeersResponse, ListUnspentRequest, ListUnspentResponse,
-        NetworkGraphInfoRequest, NetworkGraphInfoResponse, OpenChannelsRequest,
-        OpenChannelsResponse, PayInvoiceRequest, PayInvoiceResponse, SignMessageRequest,
+        AddKnownPeerRequest, AddKnownPeerResponse, CloseChannelRequest, CloseChannelResponse,
+        ConnectPeerRequest, ConnectPeerResponse, CreateInvoiceRequest, CreateInvoiceResponse,
+        DecodeInvoiceRequest, DecodeInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse,
+        GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
+        InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, LabelPaymentRequest,
+        LabelPaymentResponse, ListChannelsRequest, ListChannelsResponse, ListKnownPeersRequest,
+        ListKnownPeersResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
+        ListPeersResponse, ListUnspentRequest, ListUnspentResponse, NetworkGraphInfoRequest,
+        NetworkGraphInfoResponse, OpenChannelsRequest, OpenChannelsResponse, PayInvoiceRequest,
+        PayInvoiceResponse, RemoveKnownPeerRequest, RemoveKnownPeerResponse, SignMessageRequest,
         SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-        StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse, AddKnownPeerRequest, AddKnownPeerResponse, RemoveKnownPeerRequest, RemoveKnownPeerResponse, ListKnownPeersRequest, ListKnownPeersResponse,
+        StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse,
     },
     utils::raw_macaroon_from_metadata,
 };

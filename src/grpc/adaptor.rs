@@ -8,12 +8,14 @@
 // licenses.
 
 use super::sensei::{
-    self, Channel as ChannelMessage, DeletePaymentRequest, DeletePaymentResponse,
-    Info as InfoMessage, LabelPaymentRequest, LabelPaymentResponse, NetworkGraphInfoRequest,
-    NetworkGraphInfoResponse, OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest,
-    OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
-    PaymentsFilter, Peer as PeerMessage, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-    StopNodeResponse, Utxo as UtxoMessage, AddKnownPeerRequest, AddKnownPeerResponse, RemoveKnownPeerRequest, RemoveKnownPeerResponse, KnownPeer, ListKnownPeersRequest, ListKnownPeersResponse,
+    self, AddKnownPeerRequest, AddKnownPeerResponse, Channel as ChannelMessage,
+    DeletePaymentRequest, DeletePaymentResponse, Info as InfoMessage, KnownPeer,
+    LabelPaymentRequest, LabelPaymentResponse, ListKnownPeersRequest, ListKnownPeersResponse,
+    NetworkGraphInfoRequest, NetworkGraphInfoResponse,
+    OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest, OpenChannelsResponse,
+    PaginationRequest, PaginationResponse, Payment as PaymentMessage, PaymentsFilter,
+    Peer as PeerMessage, RemoveKnownPeerRequest, RemoveKnownPeerResponse, StartNodeRequest,
+    StartNodeResponse, StopNodeRequest, StopNodeResponse, Utxo as UtxoMessage,
 };
 
 use super::sensei::{
@@ -633,13 +635,12 @@ impl TryFrom<NodeResponse> for NetworkGraphInfoResponse {
     }
 }
 
-
 impl From<entity::peer::Model> for KnownPeer {
     fn from(peer: entity::peer::Model) -> Self {
         Self {
             pubkey: peer.pubkey,
             label: peer.label,
-            zero_conf: peer.zero_conf
+            zero_conf: peer.zero_conf,
         }
     }
 }
@@ -657,10 +658,7 @@ impl TryFrom<NodeResponse> for ListKnownPeersResponse {
 
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
-            NodeResponse::ListKnownPeers {
-                peers,
-                pagination,
-            } => {
+            NodeResponse::ListKnownPeers { peers, pagination } => {
                 let pagination: PaginationResponse = pagination.into();
                 Ok(Self {
                     peers: peers
@@ -680,7 +678,7 @@ impl From<AddKnownPeerRequest> for NodeRequest {
         NodeRequest::AddKnownPeer {
             pubkey: req.pubkey,
             label: req.label,
-            zero_conf: req.zero_conf
+            zero_conf: req.zero_conf,
         }
     }
 }
@@ -698,9 +696,7 @@ impl TryFrom<NodeResponse> for AddKnownPeerResponse {
 
 impl From<RemoveKnownPeerRequest> for NodeRequest {
     fn from(req: RemoveKnownPeerRequest) -> Self {
-        NodeRequest::RemoveKnownPeer {
-            pubkey: req.pubkey
-        }
+        NodeRequest::RemoveKnownPeer { pubkey: req.pubkey }
     }
 }
 
@@ -714,4 +710,3 @@ impl TryFrom<NodeResponse> for RemoveKnownPeerResponse {
         }
     }
 }
-

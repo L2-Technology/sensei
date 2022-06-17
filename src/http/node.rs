@@ -12,12 +12,14 @@ use std::sync::Arc;
 use crate::http::auth_header::AuthHeader;
 use crate::AdminService;
 use axum::extract::{Extension, Json, Query};
-use axum::routing::{get, post, delete};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use http::{HeaderValue, StatusCode};
 use senseicore::services::admin::AdminRequest;
 use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest};
-use senseicore::services::{ListChannelsParams, ListPaymentsParams, ListTransactionsParams, ListKnownPeersParams};
+use senseicore::services::{
+    ListChannelsParams, ListKnownPeersParams, ListPaymentsParams, ListTransactionsParams,
+};
 use senseicore::utils;
 use serde::Deserialize;
 use serde_json::Value;
@@ -195,7 +197,7 @@ impl From<VerifyMessageParams> for NodeRequest {
 pub struct AddKnownPeerParams {
     pub pubkey: String,
     pub label: String,
-    pub zero_conf: bool
+    pub zero_conf: bool,
 }
 
 impl From<AddKnownPeerParams> for NodeRequest {
@@ -203,7 +205,7 @@ impl From<AddKnownPeerParams> for NodeRequest {
         Self::AddKnownPeer {
             pubkey: params.pubkey,
             label: params.label,
-            zero_conf: params.zero_conf
+            zero_conf: params.zero_conf,
         }
     }
 }
@@ -216,7 +218,7 @@ pub struct RemoveKnownPeerParams {
 impl From<RemoveKnownPeerParams> for NodeRequest {
     fn from(params: RemoveKnownPeerParams) -> Self {
         Self::RemoveKnownPeer {
-            pubkey: params.pubkey
+            pubkey: params.pubkey,
         }
     }
 }
@@ -622,7 +624,6 @@ pub async fn network_graph_info(
     .await
 }
 
-
 pub async fn list_known_peers(
     Extension(admin_service): Extension<Arc<AdminService>>,
     Query(params): Query<ListKnownPeersParams>,
@@ -630,7 +631,7 @@ pub async fn list_known_peers(
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, StatusCode> {
     let request = NodeRequest::ListKnownPeers {
-        pagination: params.clone().into()
+        pagination: params.clone().into(),
     };
 
     handle_authenticated_request(admin_service, request, macaroon, cookies).await

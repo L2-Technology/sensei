@@ -1667,19 +1667,23 @@ impl LightningNode {
                     num_nodes: graph.nodes().len() as u64,
                     num_known_edge_policies,
                 })
-            },
+            }
             NodeRequest::ListKnownPeers { pagination } => {
                 let (peers, pagination) = self.database.list_peers(&self.id, pagination).await?;
                 Ok(NodeResponse::ListKnownPeers { peers, pagination })
             }
-            NodeRequest::AddKnownPeer { pubkey, label, zero_conf } => {
+            NodeRequest::AddKnownPeer {
+                pubkey,
+                label,
+                zero_conf,
+            } => {
                 let peer = match self.database.find_peer(&self.id, &pubkey).await? {
                     Some(peer) => {
                         let mut peer: entity::peer::ActiveModel = peer.into();
                         peer.label = ActiveValue::Set(Some(label));
                         peer.zero_conf = ActiveValue::Set(zero_conf);
                         peer.update(self.database.get_connection())
-                    },
+                    }
                     None => {
                         let peer = entity::peer::ActiveModel {
                             node_id: ActiveValue::Set(self.id.clone()),
@@ -1692,7 +1696,7 @@ impl LightningNode {
                     }
                 };
 
-                let _res = peer.await.map_err(|e| Error::Db(e))?;
+                let _res = peer.await.map_err(Error::Db)?;
 
                 Ok(NodeResponse::AddKnownPeer {})
             }

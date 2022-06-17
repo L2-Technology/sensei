@@ -245,10 +245,10 @@ pub enum NodeRequest {
     AddKnownPeer {
         pubkey: String,
         label: String,
-        zero_conf: bool
+        zero_conf: bool,
     },
     RemoveKnownPeer {
-        pubkey: String
+        pubkey: String,
     },
 }
 
