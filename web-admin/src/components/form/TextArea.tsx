@@ -31,6 +31,8 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
       meta: { dirty, error, submitFailed, submitError, submitting },
     } = useField(name);
 
+    let myOnChange = props.onChange ? (e) => {props.onChange(e); input.onChange(e) } : input.onChange;
+    
     const hasError = (dirty || submitFailed) && (error || submitError);
 
     return (
@@ -47,6 +49,7 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, TextAreaProps>(
             {...input}
             disabled={submitting}
             {...props}
+            onChange={myOnChange}
             ref={ref}
             className={`form-input block border rounded-xl w-full bg-plum text-light-plum transition duration-150 ease-in-out sm:text-sm sm:leading-5 flex-1 ${
               hasError
