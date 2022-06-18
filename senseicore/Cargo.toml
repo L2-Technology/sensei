@@ -41,6 +41,8 @@ dirs = "4.0"
 public-ip = "0.2"
 entity = { path = "../entity" }
 migration = { path = "../migration" }
+triggered = "0.1"
+anyhow = "1.0"
 
 [dependencies.lightning-signer-core]
 git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
