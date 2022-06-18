@@ -42,6 +42,28 @@ public-ip = "0.2"
 entity = { path = "../entity" }
 migration = { path = "../migration" }
 
+[dependencies.lightning-signer-core]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+#path = "../../vls/lightning-signer-core"
+
+[dependencies.vls-protocol-signer]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+#path = "../../vls/vls-protocol-signer"
+
+[dependencies.vls-protocol-client]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+#path = "../../vls/vls-protocol-client"
+
+[dependencies.vls-proxy]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+#path = "../../vls/vls-proxy"
+default-features = false
+features = ["grpc"]
+
 [dev-dependencies]
 bitcoind = { version = "0.26", features = [ "22_0" ] }
 serial_test = "0.6.0"
