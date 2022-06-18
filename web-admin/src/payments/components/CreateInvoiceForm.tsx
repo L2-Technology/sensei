@@ -4,9 +4,10 @@ import { useQueryClient } from "react-query";
 import { z } from "zod";
 import { useNotification } from "../../contexts/notification";
 import copy from "copy-to-clipboard";
+import { InboxIcon } from "@heroicons/react/outline";
 
 export const CreateInvoiceInput = z.object({
-  amountMillisats: z.string(),
+  amountSats: z.string(),
   description: z.string(),
 });
 
@@ -53,11 +54,11 @@ const CreateInvoiceForm = () => {
       noticePosition="top"
       layout="default"
       resetAfterSuccess={true}
-      initialValues={{ description: "", amountMillisats: "" }}
-      onSubmit={async ({ description, amountMillisats }) => {
+      initialValues={{ description: "", amountSats: "" }}
+      onSubmit={async ({ description, amountSats }) => {
         try {
           const { invoice } = await createInvoice(
-            parseInt(amountMillisats, 10),
+            parseInt(amountSats, 10) * 1000,
             description
           );
 
@@ -65,6 +66,7 @@ const CreateInvoiceForm = () => {
 
           showNotification({
             component: <NewInvoiceNotification invoice={invoice} />,
+            iconComponent: <InboxIcon className="h-6 w-6 text-light-plum" aria-hidden="true"/>
           });
         } catch (e) {
           // TODO: handle error
@@ -74,8 +76,8 @@ const CreateInvoiceForm = () => {
       <Input autoFocus label="Description" name="description" />
       <Input
         min={1}
-        label="Amount Millisats"
-        name="amountMillisats"
+        label="Amount Sats"
+        name="amountSats"
         type="number"
       />
     </Form>

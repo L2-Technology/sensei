@@ -57,7 +57,6 @@ const adminNav = [
 ];
 
 const navigation = [
-  { name: "Fund Node", href: "/admin/fund", icon: QrcodeIcon },
   { name: "Chain", href: "/admin/chain", icon: LinkIcon },
   { name: "Channels", href: "/admin/channels", icon: AdjustmentsIcon },
   { name: "Send Money", href: "/admin/send-money", icon: ShoppingCartIcon },
@@ -150,7 +149,7 @@ export const AdminSidebar = ({ setSidebarOpen }: SidebarProps) => {
                   isActive
                     ? "bg-orange text-white hover:bg-orange-hover"
                     : "text-gray-300 hover:bg-white hover:bg-opacity-5 hover:text-white"
-                } group flex items-center rounded-xl px-3 py-2  text-sm font-medium last:!mt-auto`;
+                } group flex items-center rounded-xl px-3 py-2  text-sm font-medium`;
               }}
             >
               {({ isActive }) => {
@@ -171,6 +170,7 @@ export const AdminSidebar = ({ setSidebarOpen }: SidebarProps) => {
             </NavLink>
           ))}
         </nav>
+        <div className="text-gray-400 pt-3 text-center">Sensei v{auth.status.version}</div>
       </div>
     </div>
   );

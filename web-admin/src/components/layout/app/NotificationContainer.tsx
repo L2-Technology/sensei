@@ -1,12 +1,10 @@
 import { Transition } from "@headlessui/react";
 import { useNotification } from "../../../contexts/notification";
 import { Fragment } from "react";
-import { InboxIcon } from "@heroicons/react/outline";
 import { XIcon } from "@heroicons/react/outline";
 
 const NotificationContainer = () => {
-  const { hideNotification, component, isOpen } = useNotification();
-
+  const { hideNotification, component, isOpen, iconComponent } = useNotification();
   return (
     <>
       {/* Global notification live region, render this permanently at the end of the document */}
@@ -29,10 +27,7 @@ const NotificationContainer = () => {
               <div className="p-4">
                 <div className="flex items-start">
                   <div className="flex-shrink-0">
-                    <InboxIcon
-                      className="h-6 w-6 text-light-plum"
-                      aria-hidden="true"
-                    />
+                    {iconComponent}
                   </div>
                   <div className="ml-3 w-0 flex-1 pt-0.5">{component}</div>
                   <div className="ml-4 flex-shrink-0 flex">

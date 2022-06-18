@@ -2,76 +2,26 @@ import { truncateMiddle } from "../../utils/capitalize";
 import SearchableTable from "../../components/tables/SearchableTable";
 import getPayments from "../queries/getPayments";
 import labelPayment from "../mutations/labelPayment";
-import { useQueryClient } from "react-query";
 import copy from "copy-to-clipboard";
 import { Payment } from "@l2-technology/sensei-client";
-
 import { useState } from "react";
 import {
-  CheckIcon,
-  PencilAltIcon,
   ClipboardCopyIcon,
 } from "@heroicons/react/outline";
+import EditableLabelColumn from "src/components/tables/EditableLabelColumn";
 
-const EditLabelForm = ({ payment, setEditing }) => {
-  let queryClient = useQueryClient();
-  let [label, setLabel] = useState(payment.label || "");
-
-  async function handleSubmit() {
-    try {
-      await labelPayment(label, payment.paymentHash);
-      setEditing(false);
-      queryClient.invalidateQueries("payments");
-    } catch (e) {
-      // TODO: handle error
-    }
+const LabelColumn = ({ payment, value }) => {
+  
+  const updateLabel = async (newLabel) => {
+    await labelPayment(newLabel, payment.paymentHash);
   }
 
-  return (
-    <div className="flex align-middle items-center">
-      <input
-        type="text"
-        value={label}
-        onKeyPress={(e) => {
-          if (e.key === "Enter") {
-            handleSubmit();
-          }
-        }}
-        name="label"
-        className="h-6 text-sm w-32 border rounded"
-        onChange={(e) => {
-          setLabel(e.target.value);
-        }}
-      />
-      <CheckIcon
-        onClick={handleSubmit}
-        className="inline-block w-5 h-5 text-green-600 cursor-pointer"
-      />
-    </div>
-  );
-};
-
-const LabelColumn = ({ payment, value, className }) => {
-  let [editing, setEditing] = useState(false);
-
-  return editing ? (
-    <td
-      className={`p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
-    >
-      <EditLabelForm payment={payment} setEditing={setEditing} />
-    </td>
-  ) : (
-    <td
-      onClick={() => setEditing(true)}
-      className={`group cursor-pointer p-3 md:px-6 md:py-4  whitespace-nowrap text-sm leading-5 font-medium text-light-plum ${className}`}
-    >
-      {value}{" "}
-      <span className="inline-block group-hover:hidden">
-        &nbsp;&nbsp;&nbsp;&nbsp;
-      </span>
-      <PencilAltIcon className="w-4 h-4 cursor-pointer hidden group-hover:inline-block" />{" "}
-    </td>
-  );
+  return <EditableLabelColumn 
+    label={value} 
+    updateLabel={updateLabel} 
+    queryKey={"payments"} 
+  />
+  
 };
 
 const AmountColumn = ({ value, className }) => {
@@ -225,6 +175,13 @@ const PaymentsList = ({ origin = "", status = "" }) => {
     });
   };
 
+  const refetchInterval = (data, query) => {
+    const hasPendingPayment = data?.results.find(payment => {
+      return payment.status === "pending"
+    })
+    return hasPendingPayment ? 1000 : false
+  }
+
   const queryFunction = async ({ queryKey }) => {
     const [_key, { page, searchTerm, take }] = queryKey;
     const { payments, pagination } = await getPayments({
@@ -253,6 +210,7 @@ const PaymentsList = ({ origin = "", status = "" }) => {
       hasHeader
       itemsPerPage={5}
       RowComponent={PaymentRow}
+      refetchInterval={refetchInterval}
     />
   );
 };

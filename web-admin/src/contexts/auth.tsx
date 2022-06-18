@@ -2,6 +2,7 @@ import React from "react";
 import sensei from "../utils/sensei";
 
 interface NodeStatus {
+  version: string;
   created: boolean;
   running: boolean;
   authenticated: boolean;
