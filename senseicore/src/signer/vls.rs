@@ -4,28 +4,34 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use bitcoin::bech32::u5;
+use bitcoin::psbt::PartiallySignedTransaction;
 use bitcoin::secp256k1::ecdsa::RecoverableSignature;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::secp256k1::{All, PublicKey, SecretKey};
-use bitcoin::Witness;
+use bitcoin::util::bip32::{ChildNumber, ExtendedPubKey};
+use bitcoin::{consensus, Witness};
 use bitcoin::{Address, Network, Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
     KeyMaterial, KeysInterface, Recipient, SpendableOutputDescriptor,
 };
 use lightning::ln::msgs::DecodeError;
 use lightning::ln::script::ShutdownScript;
-use lightning_signer::persist::DummyPersister;
+use lightning_signer::policy::simple_validator::{
+    make_simple_policy, PolicyDevFlags, SimpleValidatorFactory,
+};
 use lightning_signer::{bitcoin, lightning};
+use lightning_signer_server::persist::persist_json::KVJsonPersister;
 use log::{debug, error, info};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::{runtime, task};
+use vls_protocol::model;
+use vls_protocol::msgs::{self, DeBolt, SerBolt, SignWithdrawal, SignWithdrawalReply};
+use vls_protocol::serde_bolt::{LargeBytes, WireString};
 use vls_protocol_client::{DynSigner, Error, KeysManagerClient, SpendableKeysInterface, Transport};
 use vls_protocol_signer::handler::{Handler, RootHandler};
-use vls_protocol_signer::vls_protocol::model::PubKey;
-use vls_protocol_signer::vls_protocol::msgs::{self, DeBolt, SerBolt};
-use vls_protocol_signer::vls_protocol::serde_bolt::WireString;
+use vls_protocol_signer::vls_protocol;
 use vls_proxy::grpc::adapter::{ChannelRequest, ClientId, HsmdService};
 use vls_proxy::grpc::incoming::TcpIncoming;
 
@@ -39,12 +45,15 @@ struct NullTransport {
 }
 
 impl NullTransport {
-    pub fn new(address: Address) -> Self {
-        let persister = Arc::new(DummyPersister);
-        let allowlist = vec![address.to_string()];
-        info!("allowlist {:?}", allowlist);
-        let network = Network::Regtest; // FIXME
-        let handler = RootHandler::new(network, 0, None, persister, allowlist);
+    pub fn new(network: Network, data_dir: String) -> Self {
+        let persister = Arc::new(KVJsonPersister::new(&data_dir));
+        let handler = RootHandler::new(network, 0, None, persister, vec![]);
+        let mut policy = make_simple_policy(network);
+        policy.dev_flags = Some(PolicyDevFlags {
+            disable_beneficial_balance_checks: true,
+        });
+        let validator_factory = Arc::new(SimpleValidatorFactory::new_with_policy(policy));
+        handler.node.set_validator_factory(validator_factory);
         NullTransport { handler }
     }
 }
@@ -61,7 +70,12 @@ impl Transport for NullTransport {
         Ok(result.as_vec())
     }
 
-    fn call(&self, dbid: u64, peer_id: PubKey, message_ser: Vec<u8>) -> Result<Vec<u8>, Error> {
+    fn call(
+        &self,
+        dbid: u64,
+        peer_id: model::PubKey,
+        message_ser: Vec<u8>,
+    ) -> Result<Vec<u8>, Error> {
         let message = msgs::from_vec(message_ser)?;
         debug!("ENTER call({}) {:?}", dbid, message);
         let handler = self.handler.for_new_client(0, peer_id, dbid);
@@ -156,35 +170,82 @@ impl SpendableKeysInterface for KeysManager {
     fn get_node_id(&self) -> PublicKey {
         self.node_id
     }
+
+    fn sign_from_wallet(
+        &self,
+        psbt: &PartiallySignedTransaction,
+        derivations: Vec<u32>,
+    ) -> PartiallySignedTransaction {
+        let utxos = derivations
+            .into_iter()
+            .zip(psbt.inputs.iter())
+            .map(|(d, inp)| model::Utxo {
+                txid: model::TxId([0; 32]),
+                outnum: 0,
+                amount: inp.witness_utxo.as_ref().unwrap().value,
+                keyindex: d,
+                is_p2sh: false,
+                script: vec![],
+                close_info: None,
+            })
+            .collect::<Vec<_>>();
+
+        let message = SignWithdrawal {
+            utxos,
+            psbt: LargeBytes(consensus::serialize(&psbt)),
+        };
+        let result: SignWithdrawalReply = self.client.call(message).expect("sign failed");
+        consensus::deserialize(&result.psbt.0).expect("deserialize PSBT")
+    }
 }
 
 pub(crate) async fn make_null_signer(
     network: Network,
-    ldk_data_dir: String,
-    sweep_address: Address,
-) -> Box<dyn SpendableKeysInterface<Signer = DynSigner>> {
-    let node_id_path = format!("{}/node_id", ldk_data_dir);
+    data_dir: String,
+) -> (
+    Box<dyn SpendableKeysInterface<Signer = DynSigner>>,
+    ExtendedPubKey,
+) {
+    let node_id_path = format!("{}/node_id", data_dir);
 
-    if let Ok(_node_id_hex) = fs::read_to_string(node_id_path.clone()) {
-        unimplemented!("read from disk {}", node_id_path);
-    } else {
-        let transport = NullTransport::new(sweep_address.clone());
-        let node_id = transport.handler.node.get_id();
-        let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
-        let keys_manager = KeysManager {
-            client,
-            sweep_address,
-            node_id,
-        };
-        fs::write(node_id_path, node_id.to_string()).expect("write node_id");
-        Box::new(keys_manager)
+    let transport = NullTransport::new(network, data_dir);
+    let node_id = transport.handler.node.get_id();
+    let node_id_hex_res = fs::read_to_string(node_id_path.clone());
+    if let Ok(ref node_id_hex) = node_id_hex_res {
+        assert_eq!(node_id_hex, &node_id.to_string())
     }
+    let xpub = transport.handler.node.get_account_extended_pubkey();
+    let secp = Secp256k1::new();
+    let pub0 = xpub.ckd_pub(&secp, ChildNumber::from(0)).unwrap().to_pub();
+    let sweep_address = Address::p2wpkh(&pub0, network).unwrap();
+    info!(
+        "initialize allowlist {} for node {}",
+        sweep_address, node_id
+    );
+    transport
+        .handler
+        .node
+        .add_allowlist(&vec![sweep_address.to_string()])
+        .unwrap();
+    let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
+    // FIXME replace with sweep address generated from xpub
+    let keys_manager = KeysManager {
+        client,
+        sweep_address,
+        node_id,
+    };
+
+    if node_id_hex_res.is_err() {
+        fs::write(node_id_path, node_id.to_string()).expect("write node_id");
+    }
+    (Box::new(keys_manager), xpub)
 }
 
 struct GrpcTransport {
     sender: Sender<ChannelRequest>,
     #[allow(unused)]
     node_secret: SecretKey,
+    #[allow(unused)]
     node_id: PublicKey,
     handle: Handle,
 }
@@ -268,7 +329,7 @@ impl Transport for GrpcTransport {
         Self::do_call(&self.handle, self.sender.clone(), message, None)
     }
 
-    fn call(&self, dbid: u64, peer_id: PubKey, message: Vec<u8>) -> Result<Vec<u8>, Error> {
+    fn call(&self, dbid: u64, peer_id: model::PubKey, message: Vec<u8>) -> Result<Vec<u8>, Error> {
         let client_id = Some(ClientId {
             peer_id: peer_id.0,
             dbid,
@@ -278,6 +339,7 @@ impl Transport for GrpcTransport {
     }
 }
 
+#[allow(unused)]
 pub(crate) async fn make_grpc_signer(
     shutter: Shutter,
     signer_handle: Handle,

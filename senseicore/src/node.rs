@@ -25,6 +25,7 @@ use crate::services::node::{
     OpenChannelResult, Peer, Utxo,
 };
 use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
+use crate::signer::get_keys_manager;
 use crate::utils::PagedVec;
 use crate::{hex_utils, version};
 use bdk::keys::ExtendedKey;
@@ -45,10 +46,10 @@ use bitcoin::hashes::hex::ToHex;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
+use bitcoin::util::bip32::{ChildNumber, DerivationPath};
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
-use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager, Recipient};
+use lightning::chain::keysinterface::{KeysInterface, Recipient};
 use lightning::chain::Watch;
 use lightning::chain::{self, Filter};
 use lightning::ln::channelmanager::{self, ChannelDetails, ChannelManager as LdkChannelManager};
@@ -85,6 +86,7 @@ use std::{convert::From, fmt};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
+use vls_protocol_client::{DynKeysInterface, DynSigner};
 
 #[derive(Serialize, Debug)]
 pub struct LocalInvoice {
@@ -293,7 +295,7 @@ pub type GossipSync<P, G, A, L> =
     lightning_background_processor::GossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
 
 pub type ChainMonitor = chainmonitor::ChainMonitor<
-    InMemorySigner,
+    DynSigner,
     Arc<dyn Filter + Send + Sync>,
     Arc<SenseiBroadcaster>,
     Arc<SenseiFeeEstimator>,
@@ -304,7 +306,7 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
 trait MustSized: Sized {}
 
 pub type SimpleArcChannelManager<M, T, F, L> =
-    LdkChannelManager<InMemorySigner, Arc<M>, Arc<T>, Arc<KeysManager>, Arc<F>, Arc<L>>;
+    LdkChannelManager<DynSigner, Arc<M>, Arc<T>, Arc<DynKeysInterface>, Arc<F>, Arc<L>>;
 
 pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
     SD,
@@ -338,7 +340,7 @@ pub type InvoicePayer = payment::InvoicePayer<
 
 #[allow(dead_code)]
 pub type SyncableMonitor = (
-    ChannelMonitor<InMemorySigner>,
+    ChannelMonitor<DynSigner>,
     Arc<SenseiBroadcaster>,
     Arc<SenseiFeeEstimator>,
     Arc<FilesystemLogger>,
@@ -347,6 +349,8 @@ pub type SyncableMonitor = (
 pub type NetworkGraphMessageHandler =
     P2PGossipSync<Arc<NetworkGraph>, Arc<dyn chain::Access + Send + Sync>, Arc<FilesystemLogger>>;
 
+// FIXME remove
+#[allow(unused)]
 fn get_wpkh_descriptors_for_extended_key(
     xkey: ExtendedKey,
     network: Network,
@@ -408,7 +412,7 @@ pub struct LightningNode {
     pub peer_manager: Arc<PeerManager>,
     pub network_graph: Arc<NetworkGraph>,
     pub network_graph_msg_handler: Arc<NetworkGraphMessageHandler>,
-    pub keys_manager: Arc<KeysManager>,
+    pub keys_manager: Arc<DynKeysInterface>,
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
     pub scorer: Arc<Mutex<Scorer>>,
@@ -533,14 +537,6 @@ impl LightningNode {
             .map_err(|_e| Error::InvalidMacaroon)
     }
 
-    pub fn get_node_pubkey_from_seed(seed: &[u8; 32]) -> String {
-        let secp_ctx = Secp256k1::new();
-        let keys_manager = KeysManager::new(seed, 0, 0);
-        let node_secret = keys_manager.get_node_secret(Recipient::Node).unwrap();
-        let node_pubkey = PublicKey::from_secret_key(&secp_ctx, &node_secret);
-        node_pubkey.to_string()
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: Arc<SenseiConfig>,
@@ -563,23 +559,15 @@ impl LightningNode {
             LightningNode::get_seed_for_node(id.clone(), passphrase.clone(), database.clone())
                 .await?;
 
-        let cur = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
+        let (manager, xpub) = get_keys_manager("local", network, data_dir.clone())
+            .await
             .unwrap();
+        let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
-        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
-
-        let xprivkey = ExtendedPrivKey::new_master(network, &seed).unwrap();
-        let xkey = ExtendedKey::from(xprivkey);
-        let native_segwit_base_path = "m/84";
-        let account_number = 0;
-        let (receive_descriptor_template, change_descriptor_template) =
-            get_wpkh_descriptors_for_extended_key(
-                xkey,
-                network,
-                native_segwit_base_path,
-                account_number,
-            );
+        let secp = Secp256k1::new();
+        let pub0 = xpub.ckd_pub(&secp, ChildNumber::from(0)).unwrap().to_pub();
+        let receive_descriptor_template = bdk::descriptor!(wpkh(pub0)).unwrap();
+        let change_descriptor_template = bdk::descriptor!(wpkh(pub0)).unwrap();
 
         let bdk_database = WalletDatabase::new(id.clone(), database.clone(), database.get_handle());
         let wallet_database = bdk_database.clone();
@@ -1026,6 +1014,7 @@ impl LightningNode {
             self.event_sender.subscribe(),
             self.broadcaster.clone(),
             self.peer_manager.clone(),
+            self.keys_manager.clone(),
         );
         opener.open_batch(requests).await
     }
@@ -1081,12 +1070,12 @@ impl LightningNode {
         Ok(())
     }
 
-    async fn keysend<K: KeysInterface>(
+    async fn keysend(
         &self,
         invoice_payer: &InvoicePayer,
         payee_pubkey: PublicKey,
         amt_msat: u64,
-        keys: &K,
+        keys: &DynKeysInterface,
     ) -> Result<(), Error> {
         let payment_preimage = keys.get_secure_random_bytes();
 

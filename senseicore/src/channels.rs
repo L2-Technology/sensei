@@ -4,12 +4,13 @@ use crate::error::Error;
 use crate::node::{connect_peer_if_necessary, parse_peer_addr, parse_pubkey, PeerManager};
 use crate::services::node::OpenChannelRequest;
 use crate::{chain::database::WalletDatabase, events::SenseiEvent, node::ChannelManager};
-use bdk::{FeeRate, SignOptions};
+use bdk::FeeRate;
 use lightning::chain::chaininterface::ConfirmationTarget;
 use rand::{thread_rng, Rng};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
+use vls_protocol_client::{DynKeysInterface, SpendableKeysInterface};
 
 pub struct EventFilter<F>
 where
@@ -26,9 +27,11 @@ pub struct ChannelOpener {
     event_receiver: broadcast::Receiver<SenseiEvent>,
     broadcaster: Arc<SenseiBroadcaster>,
     peer_manager: Arc<PeerManager>,
+    keys_manager: Arc<DynKeysInterface>,
 }
 
 impl ChannelOpener {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         node_id: String,
         channel_manager: Arc<ChannelManager>,
@@ -37,6 +40,7 @@ impl ChannelOpener {
         event_receiver: broadcast::Receiver<SenseiEvent>,
         broadcaster: Arc<SenseiBroadcaster>,
         peer_manager: Arc<PeerManager>,
+        keys_manager: Arc<DynKeysInterface>,
     ) -> Self {
         Self {
             node_id,
@@ -46,6 +50,7 @@ impl ChannelOpener {
             event_receiver,
             broadcaster,
             peer_manager,
+            keys_manager,
         }
     }
 
@@ -185,6 +190,7 @@ impl ChannelOpener {
         let wallet = self.wallet.lock().unwrap();
 
         let mut tx_builder = wallet.build_tx();
+        tx_builder.version(2);
         let fee_sats_per_1000_wu = self
             .chain_manager
             .fee_estimator
@@ -223,9 +229,11 @@ impl ChannelOpener {
             return Err(Error::Bdk(e));
         }
 
-        let (mut psbt, _tx_details) = tx_result.unwrap();
+        let (psbt, _tx_details) = tx_result.unwrap();
 
-        let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
+        // let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
+        let derivations = (0..psbt.inputs.len()).map(|_| 0).collect::<Vec<_>>();
+        let psbt = self.keys_manager.sign_from_wallet(&psbt, derivations);
         let funding_tx = psbt.extract_tx();
 
         let channels_to_open = requests_with_results

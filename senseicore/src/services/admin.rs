@@ -15,6 +15,7 @@ use crate::events::SenseiEvent;
 use crate::network_graph::SenseiNetworkGraph;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
 
+use crate::signer::get_keys_manager;
 use entity::node::{self, NodeRole};
 use entity::sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait};
 use entity::{access_token, seconds_since_epoch};
@@ -563,9 +564,13 @@ impl AdminService {
 
         // NODE DIRECTORY
         let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
-        fs::create_dir_all(node_directory)?;
+        fs::create_dir_all(node_directory.clone())?;
 
+        let (manager, _xpub) = get_keys_manager("local", self.config.network, node_directory)
+            .await
+            .unwrap();
         // NODE SEED
+        // FIXME unused now
         let seed = LightningNode::generate_seed();
         let encrypted_seed = LightningNode::encrypt_seed(&seed, passphrase.as_bytes())?;
 
@@ -574,7 +579,7 @@ impl AdminService {
             .get_seed_active_model(node_id.clone(), encrypted_seed);
 
         // NODE PUBKEY
-        let node_pubkey = LightningNode::get_node_pubkey_from_seed(&seed);
+        let node_pubkey = manager.get_node_id().to_string();
 
         // NODE MACAROON
         let (macaroon, macaroon_id) = LightningNode::generate_macaroon(&seed, node_pubkey.clone())?;

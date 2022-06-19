@@ -804,6 +804,7 @@ mod test {
     #[test]
     #[serial]
     fn run_smoke_test() {
+        let _ = env_logger::builder().is_test(true).try_init();
         run_test("smoke_test", smoke_test)
     }
 }

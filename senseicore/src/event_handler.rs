@@ -23,7 +23,7 @@ use entity::sea_orm::ActiveValue;
 use lightning::chain::chaininterface::BroadcasterInterface;
 use lightning::routing::gossip::NodeId;
 use lightning::{
-    chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
+    chain::chaininterface::ConfirmationTarget,
     util::events::{Event, EventHandler, PaymentPurpose},
 };
 use rand::{thread_rng, Rng};
@@ -31,13 +31,14 @@ use std::sync::Mutex;
 use std::{sync::Arc, time::Duration};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
+use vls_protocol_client::{DynKeysInterface, SpendableKeysInterface};
 
 pub struct LightningNodeEventHandler {
     pub node_id: String,
     pub config: Arc<SenseiConfig>,
     pub wallet: Arc<Mutex<bdk::Wallet<WalletDatabase>>>,
     pub channel_manager: Arc<ChannelManager>,
-    pub keys_manager: Arc<KeysManager>,
+    pub keys_manager: Arc<DynKeysInterface>,
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,

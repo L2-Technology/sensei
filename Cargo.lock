@@ -514,7 +514,7 @@ dependencies = [
 [[package]]
 name = "bitcoind-client"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "async-trait",
  "jsonrpc-async",
@@ -567,7 +567,7 @@ dependencies = [
 [[package]]
 name = "bolt-derive"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1882,7 +1882,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-core"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -1901,7 +1901,7 @@ dependencies = [
 [[package]]
 name = "lightning-signer-server"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3234,6 +3234,7 @@ dependencies = [
  "lightning-persister",
  "lightning-rapid-gossip-sync",
  "lightning-signer-core",
+ "lightning-signer-server",
  "log",
  "macaroon",
  "migration",
@@ -4429,7 +4430,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vls-frontend"
 version = "0.1.0-5"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "async-trait",
  "bitcoind-client",
@@ -4442,7 +4443,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "bolt-derive",
  "log",
@@ -4454,7 +4455,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol-client"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4468,7 +4469,7 @@ dependencies = [
 [[package]]
 name = "vls-protocol-signer"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "bit-vec",
  "lightning-signer-core",
@@ -4480,7 +4481,7 @@ dependencies = [
 [[package]]
 name = "vls-proxy"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=b2f478ec263c5c9ecbd1795c5f234613cfa67ffa#b2f478ec263c5c9ecbd1795c5f234613cfa67ffa"
+source = "git+https://gitlab.com/lightning-signer/validating-lightning-signer.git?rev=5a7f67dbf0245f35b61342d62b99ddedbc6243c8#5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
 dependencies = [
  "anyhow",
  "async-stream",
