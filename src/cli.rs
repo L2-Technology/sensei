@@ -311,6 +311,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let request = tonic::Request::new(CreateInvoiceRequest {
                                 amt_msat,
                                 description: String::from(""),
+                                expiry: Some(3600),
                             });
                             let response = client.create_invoice(request).await?;
                             println!("{:?}", response.into_inner());

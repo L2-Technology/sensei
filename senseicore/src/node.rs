@@ -66,7 +66,9 @@ use lightning::util::config::UserConfig;
 use lightning::util::ser::ReadableArgs;
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
-use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
+use lightning_invoice::{
+    payment, utils, Currency, Invoice, InvoiceDescription, DEFAULT_EXPIRY_TIME,
+};
 use lightning_net_tokio::SocketDescriptor;
 use lightning_rapid_gossip_sync::RapidGossipSync;
 use macaroon::Macaroon;
@@ -1185,7 +1187,12 @@ impl LightningNode {
         Ok(())
     }
 
-    pub async fn get_invoice(&self, amt_msat: u64, description: String) -> Result<Invoice, Error> {
+    pub async fn get_invoice(
+        &self,
+        amt_msat: u64,
+        description: String,
+        expiry: Option<u32>,
+    ) -> Result<Invoice, Error> {
         let currency = match self.config.network {
             Network::Bitcoin => Currency::Bitcoin,
             Network::Testnet => Currency::BitcoinTestnet,
@@ -1193,13 +1200,16 @@ impl LightningNode {
             Network::Signet => Currency::Signet,
         };
 
+        let invoice_expiry_delta_secs: u32 =
+            expiry.unwrap_or_else(|| DEFAULT_EXPIRY_TIME.try_into().unwrap());
+
         let invoice = utils::create_invoice_from_channelmanager(
             &self.channel_manager,
             self.keys_manager.clone(),
             currency,
             Some(amt_msat),
             description.clone(),
-            3600, // FIXME invoice_expiry_delta_secs
+            invoice_expiry_delta_secs,
         )?;
 
         let payment_hash = hex_utils::hex_str(&(*invoice.payment_hash()).into_inner());
@@ -1563,8 +1573,9 @@ impl LightningNode {
             NodeRequest::GetInvoice {
                 amt_msat,
                 description,
+                expiry,
             } => {
-                let invoice = self.get_invoice(amt_msat, description).await?;
+                let invoice = self.get_invoice(amt_msat, description, expiry).await?;
                 let invoice_str = format!("{}", invoice);
                 Ok(NodeResponse::GetInvoice {
                     invoice: invoice_str,

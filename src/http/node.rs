@@ -31,6 +31,7 @@ use super::utils::get_macaroon_hex_str_from_cookies_or_header;
 pub struct GetInvoiceParams {
     pub amt_msat: u64,
     pub description: String,
+    pub expiry: Option<u32>,
 }
 
 impl From<GetInvoiceParams> for NodeRequest {
@@ -38,6 +39,7 @@ impl From<GetInvoiceParams> for NodeRequest {
         Self::GetInvoice {
             amt_msat: params.amt_msat,
             description: params.description,
+            expiry: params.expiry,
         }
     }
 }
