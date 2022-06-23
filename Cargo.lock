@@ -986,18 +986,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77f3309417938f28bf8228fcff79a4a37103981e3e186d2ccd19c74b38f4eb71"
 
 [[package]]
-name = "fallible-iterator"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
-
-[[package]]
-name = "fallible-streaming-iterator"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
-
-[[package]]
 name = "fastrand"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1760,7 +1748,6 @@ dependencies = [
 name = "migration"
 version = "0.1.0"
 dependencies = [
- "entity",
  "sea-schema",
 ]
 
@@ -2082,15 +2069,6 @@ dependencies = [
  "log",
  "wepoll-ffi",
  "winapi",
-]
-
-[[package]]
-name = "portpicker"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be97d76faf1bfab666e1375477b23fde79eccf0276e9b63b92a39d676a889ba9"
-dependencies = [
- "rand 0.8.5",
 ]
 
 [[package]]
@@ -2533,22 +2511,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rusqlite"
-version = "0.25.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c4b1eaf239b47034fb450ee9cdedd7d0226571689d8823030c4b6c2cb407152"
-dependencies = [
- "bitflags",
- "fallible-iterator",
- "fallible-streaming-iterator",
- "hashlink",
- "libsqlite3-sys",
- "memchr",
- "smallvec",
- "uuid",
-]
-
-[[package]]
 name = "rust-embed"
 version = "6.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2869,11 +2831,9 @@ dependencies = [
  "migration",
  "mime_guess",
  "pin-project",
- "portpicker",
  "prost",
  "public-ip",
  "rand 0.8.5",
- "rusqlite",
  "rust-embed",
  "senseicore",
  "serde",
@@ -2893,7 +2853,6 @@ dependencies = [
 name = "senseicore"
 version = "0.1.0"
 dependencies = [
- "axum",
  "base64 0.13.0",
  "bdk",
  "bech32",
@@ -2905,9 +2864,7 @@ dependencies = [
  "clap 3.1.18",
  "dirs 4.0.0",
  "entity",
- "env_logger",
  "futures",
- "headers",
  "http",
  "hyper",
  "lightning",
@@ -2920,12 +2877,9 @@ dependencies = [
  "log",
  "macaroon",
  "migration",
- "mime_guess",
  "pin-project",
- "portpicker",
  "public-ip",
  "rand 0.8.5",
- "rust-embed",
  "serde",
  "serde_json",
  "serial_test",

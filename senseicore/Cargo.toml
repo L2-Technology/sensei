@@ -23,28 +23,22 @@ bech32 = "0.8"
 futures = "0.3"
 chrono = "0.4"
 rand = "0.8.4"
-axum = { version = "0.4.2", features = ["headers"] }
 http = "0.2"
 tower = { version = "0.4", features = ["full"] }
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 tokio = { version = "1", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
 log = "0.4.16"
-env_logger = "0.9.0"
 bitcoincore-rpc = "0.15"
 bdk = "0.19"
 pin-project = "1.0"
 hyper = "0.14"
 clap = { version = "3.0", features = [ "derive", "env" ] }
-headers = "0.3"
 tindercrypt = { version = "0.3.2", default-features = false }
-portpicker = "0.1"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 macaroon = "0.2"
 dirs = "4.0"
 public-ip = "0.2"
-rust-embed="6.3.0"
-mime_guess = { version = "2" }
 entity = { path = "../entity" }
 migration = { path = "../migration" }
 
