@@ -7,10 +7,14 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-use std::sync::Arc;
+use std::{
+    fmt::{self, Display},
+    sync::Arc,
+};
 
 use axum::{
     extract::{Extension, Query},
+    response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -21,6 +25,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use senseicore::{
+    error::Error as SenseiError,
     services::{
         admin::{AdminRequest, AdminResponse, AdminService, NodeCreateInfo},
         PaginationRequest,
@@ -180,16 +185,82 @@ impl From<StartAdminParams> for AdminRequest {
     }
 }
 
+#[derive(Debug)]
+pub enum HttpError {
+    Db(migration::DbErr),
+    SerdeJson(serde_json::Error),
+    Unauthenticated(String),
+    AdminNodeNotFound,
+    AdminNodeService(senseicore::services::admin::Error),
+    UnknownResponse,
+}
+
+impl Display for HttpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let str = match self {
+            HttpError::Db(e) => format!("db error: {}", e),
+            HttpError::SerdeJson(e) => format!("invalid json: {}", e),
+            HttpError::Unauthenticated(e) => format!("unauthenticated: {}", e),
+            HttpError::AdminNodeNotFound => String::from("admin node not found"),
+            HttpError::AdminNodeService(e) => format!("admin node service error: {}", e),
+            HttpError::UnknownResponse => String::from("unknown response"),
+        };
+        write!(f, "{}", str)
+    }
+}
+
+impl IntoResponse for HttpError {
+    fn into_response(self) -> Response {
+        let status = StatusCode::BAD_REQUEST;
+        let (body, status) = match self {
+            HttpError::Db(e) => (format!("db error: {}", e), status),
+            HttpError::SerdeJson(e) => (
+                format!("invalid json: {}", e),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+            HttpError::Unauthenticated(e) => {
+                (format!("unauthenticated: {}", e), StatusCode::UNAUTHORIZED)
+            }
+            HttpError::AdminNodeNotFound => {
+                (String::from("admin node not found"), StatusCode::NOT_FOUND)
+            }
+            HttpError::AdminNodeService(e) => (format!("admin node service error: {}", e), status),
+            HttpError::UnknownResponse => (String::from("unknown response"), status),
+        };
+
+        (status, body).into_response()
+    }
+}
+
+impl From<SenseiError> for HttpError {
+    fn from(err: SenseiError) -> Self {
+        match err {
+            SenseiError::Db(e) => HttpError::Db(e),
+            SenseiError::AdminNodeService(e) => HttpError::AdminNodeService(e),
+            _ => HttpError::UnknownResponse,
+        }
+    }
+}
+
+impl From<senseicore::services::admin::Error> for HttpError {
+    fn from(err: senseicore::services::admin::Error) -> Self {
+        match err.into() {
+            SenseiError::Db(e) => HttpError::Db(e),
+            SenseiError::AdminNodeService(e) => HttpError::AdminNodeService(e),
+            _ => HttpError::UnknownResponse,
+        }
+    }
+}
+
 pub fn get_token_from_cookies_or_header(
     cookies: &Cookies,
     token: Option<HeaderValue>,
-) -> Result<String, StatusCode> {
+) -> Result<String, HttpError> {
     match token {
         Some(token) => {
-            let res = token
-                .to_str()
-                .map(|str| str.to_string())
-                .map_err(|_| StatusCode::UNAUTHORIZED);
+            let res = token.to_str().map(|str| str.to_string()).map_err(|e| {
+                HttpError::Unauthenticated(format!("token couldn't be converted to string: {}", e))
+            });
             res
         }
         None => match cookies.get("token") {
@@ -197,7 +268,9 @@ pub fn get_token_from_cookies_or_header(
                 let token_cookie_str = token_cookie.value().to_string();
                 Ok(token_cookie_str)
             }
-            None => Err(StatusCode::UNAUTHORIZED),
+            None => Err(HttpError::Unauthenticated(String::from(
+                "no token provided in header or cookies",
+            ))),
         },
     }
 }
@@ -207,14 +280,13 @@ pub async fn authenticate_request(
     scope: &str,
     cookies: &Cookies,
     token: Option<HeaderValue>,
-) -> Result<bool, StatusCode> {
+) -> Result<bool, HttpError> {
     let token = get_token_from_cookies_or_header(cookies, token)?;
 
     let access_token = admin_service
         .database
         .get_access_token_by_token(token)
-        .await
-        .map_err(|_e| StatusCode::UNAUTHORIZED)?;
+        .await?;
 
     match access_token {
         Some(access_token) => {
@@ -258,7 +330,7 @@ pub async fn list_tokens(
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated =
         authenticate_request(&admin_service, "tokens/list", &cookies, token).await?;
     if authenticated {
@@ -267,10 +339,10 @@ pub async fn list_tokens(
             .await
         {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -279,24 +351,24 @@ pub async fn create_token(
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated =
         authenticate_request(&admin_service, "tokens/create", &cookies, token).await?;
     let request = {
         let params: Result<CreateTokenParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            Err(err) => Err(HttpError::SerdeJson(err)),
         }
     }?;
 
     if authenticated {
         match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -305,24 +377,24 @@ pub async fn delete_token(
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated =
         authenticate_request(&admin_service, "tokens/delete", &cookies, token).await?;
     let request = {
         let params: Result<DeleteTokenParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            Err(err) => Err(HttpError::SerdeJson(err)),
         }
     }?;
 
     if authenticated {
         match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -331,7 +403,7 @@ pub async fn list_nodes(
     cookies: Cookies,
     Query(pagination): Query<PaginationRequest>,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated = authenticate_request(&admin_service, "nodes/list", &cookies, token).await?;
     if authenticated {
         match admin_service
@@ -339,10 +411,10 @@ pub async fn list_nodes(
             .await
         {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -350,15 +422,13 @@ pub async fn login(
     Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
-) -> Result<Json<Value>, StatusCode> {
-    let params: LoginNodeParams =
-        serde_json::from_value(payload).map_err(|_e| StatusCode::UNPROCESSABLE_ENTITY)?;
+) -> Result<Json<Value>, HttpError> {
+    let params: LoginNodeParams = serde_json::from_value(payload).map_err(HttpError::SerdeJson)?;
 
     let node = admin_service
         .database
         .get_node_by_username(&params.username)
-        .await
-        .map_err(|_e| StatusCode::UNPROCESSABLE_ENTITY)?;
+        .await?;
 
     match node {
         Some(node) => {
@@ -407,12 +477,12 @@ pub async fn login(
                             "token": token
                         })))
                     }
-                    _ => Err(StatusCode::UNPROCESSABLE_ENTITY),
+                    _ => Err(HttpError::UnknownResponse),
                 },
-                Err(_err) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+                Err(e) => Err(HttpError::AdminNodeService(e)),
             }
         }
-        None => Err(StatusCode::NOT_FOUND),
+        None => Err(HttpError::AdminNodeNotFound),
     }
 }
 
@@ -426,11 +496,11 @@ pub async fn init_sensei(
     Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let params: Result<CreateAdminParams, _> = serde_json::from_value(payload);
     let request = match params {
         Ok(params) => Ok(params.into()),
-        Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        Err(err) => Err(HttpError::SerdeJson(err)),
     }?;
 
     match admin_service.call(request).await {
@@ -460,9 +530,9 @@ pub async fn init_sensei(
                     token,
                 }))
             }
-            _ => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            _ => Err(HttpError::UnknownResponse),
         },
-        Err(err) => Ok(Json(AdminResponse::Error(err))),
+        Err(err) => Err(err.into()),
     }
 }
 
@@ -544,24 +614,25 @@ pub async fn create_node(
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated =
         authenticate_request(&admin_service, "nodes/create", &cookies, token).await?;
+
     let request = {
         let params: Result<CreateNodeParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            Err(err) => Err(HttpError::SerdeJson(err)),
         }
     }?;
 
     if authenticated {
         match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -570,24 +641,24 @@ pub async fn batch_create_nodes(
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated =
         authenticate_request(&admin_service, "nodes/create/batch", &cookies, token).await?;
     let request = {
         let params: Result<BatchCreateNodeParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            Err(e) => Err(HttpError::SerdeJson(e)),
         }
     }?;
 
     if authenticated {
         match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -596,24 +667,24 @@ pub async fn start_node(
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated =
         authenticate_request(&admin_service, "nodes/start", &cookies, token).await?;
     let request = {
         let params: Result<StartNodeParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            Err(err) => Err(HttpError::SerdeJson(err)),
         }
     }?;
 
     if authenticated {
         match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -622,23 +693,23 @@ pub async fn stop_node(
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated = authenticate_request(&admin_service, "nodes/stop", &cookies, token).await?;
     let request = {
         let params: Result<StopNodeParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            Err(err) => Err(HttpError::SerdeJson(err)),
         }
     }?;
 
     if authenticated {
         match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }
 
@@ -647,23 +718,23 @@ pub async fn delete_node(
     Json(payload): Json<Value>,
     cookies: Cookies,
     AuthHeader { macaroon: _, token }: AuthHeader,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, HttpError> {
     let authenticated =
         authenticate_request(&admin_service, "nodes/delete", &cookies, token).await?;
     let request = {
         let params: Result<DeleteNodeParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            Err(err) => Err(HttpError::SerdeJson(err)),
         }
     }?;
 
     if authenticated {
         match admin_service.call(request).await {
             Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Err(err) => Err(err.into()),
         }
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(HttpError::Unauthenticated("invalid token".to_string()))
     }
 }

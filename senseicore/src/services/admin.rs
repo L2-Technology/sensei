@@ -23,6 +23,7 @@ use lightning_background_processor::BackgroundProcessor;
 use macaroon::Macaroon;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::{self, Display};
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
@@ -214,6 +215,16 @@ impl AdminService {
 #[derive(Serialize, Debug)]
 pub enum Error {
     Generic(String),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // nEED TO DO THIS MATCH HERE???
+        let str = match self {
+            Error::Generic(e) => e.to_string(),
+        };
+        write!(f, "{}", str)
+    }
 }
 
 impl From<std::io::Error> for Error {
