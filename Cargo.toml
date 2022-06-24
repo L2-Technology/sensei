@@ -46,8 +46,6 @@ hyper = "0.14"
 clap = { version = "3.0", features = [ "derive", "env" ] }
 headers = "0.3"
 tindercrypt = { version = "0.3.2", default-features = false }
-portpicker = "0.1"
-rusqlite = { version = "0.25.3", features = ["uuid", "bundled"] }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 macaroon = "0.2"
 tower-http = { version = "0.2.5", features = ["fs", "trace", "cors"] }
