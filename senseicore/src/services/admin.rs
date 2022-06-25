@@ -551,7 +551,7 @@ impl AdminService {
         let listen_addr = self.config.api_host.clone();
 
         let listen_port: i32 = match role {
-            node::NodeRole::Root => 9735,
+            node::NodeRole::Root => self.config.root_node_port.into(),
             node::NodeRole::Default => {
                 let mut available_ports = self.available_ports.lock().await;
                 available_ports.pop_front().unwrap().into()

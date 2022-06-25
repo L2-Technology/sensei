@@ -77,6 +77,8 @@ struct SenseiArgs {
     bitcoind_rpc_password: Option<String>,
     #[clap(long, env = "DEVELOPMENT_MODE")]
     development_mode: Option<bool>,
+    #[clap(long, env = "ROOT_NODE_PORT")]
+    root_node_port: Option<u16>,
     #[clap(long, env = "PORT_RANGE_MIN")]
     port_range_min: Option<u16>,
     #[clap(long, env = "PORT_RANGE_MAX")]
@@ -130,6 +132,9 @@ fn main() {
     }
     if let Some(bitcoind_rpc_password) = args.bitcoind_rpc_password {
         config.bitcoind_rpc_password = bitcoind_rpc_password
+    }
+    if let Some(root_node_port) = args.root_node_port {
+        config.root_node_port = root_node_port;
     }
     if let Some(port_range_min) = args.port_range_min {
         config.port_range_min = port_range_min;
