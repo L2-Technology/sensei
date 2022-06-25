@@ -278,7 +278,7 @@ impl TryFrom<NodeResponse> for OpenChannelsResponse {
                     .map(|result| sensei::OpenChannelResult {
                         error: result.error,
                         error_message: result.error_message,
-                        temp_channel_id: result.temp_channel_id,
+                        channel_id: result.channel_id,
                     })
                     .collect::<Vec<_>>(),
             }),

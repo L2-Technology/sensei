@@ -217,7 +217,7 @@ message OpenChannelRequest {
 message OpenChannelResult {
     bool error = 1;
     optional string error_message = 2;
-    optional string temp_channel_id = 3;
+    optional string channel_id = 3;
 }
 
 message OpenChannelsRequest {

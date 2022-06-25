@@ -398,13 +398,31 @@ impl EventHandler for LightningNodeEventHandler {
             Event::ChannelClosed {
                 channel_id,
                 reason,
-                user_channel_id: _,
+                user_channel_id,
             } => {
                 println!(
                     "\nEVENT: Channel {} closed due to: {:?}",
                     hex_utils::hex_str(channel_id),
                     reason
                 );
+
+                let reason = match reason {
+                    lightning::util::events::ClosureReason::CounterpartyForceClosed {
+                        peer_msg,
+                    } => peer_msg.clone(),
+                    lightning::util::events::ClosureReason::ProcessingError { err } => err.clone(),
+                    _ => format!("{:}", reason),
+                };
+
+                let _res = self
+                    .event_sender
+                    .send(SenseiEvent::ChannelClosed {
+                        node_id: self.node_id.clone(),
+                        channel_id: *channel_id,
+                        user_channel_id: *user_channel_id,
+                        reason,
+                    })
+                    .unwrap();
             }
             Event::DiscardFunding { .. } => {
                 // A "real" node should probably "lock" the UTXOs spent in funding transactions until

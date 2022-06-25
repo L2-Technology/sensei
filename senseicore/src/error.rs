@@ -36,6 +36,7 @@ pub enum Error {
     AdminNodeNotStarted,
     AdminNodeNotCreated,
     FundingGenerationNeverHappened,
+    ChannelOpenRejected(String),
     NodeBeingStartedAlready,
 }
 
@@ -66,6 +67,9 @@ impl Display for Error {
             Error::NodeBeingStartedAlready => String::from("node already being started"),
             Error::FundingGenerationNeverHappened => {
                 String::from("funding generation for request never happened")
+            }
+            Error::ChannelOpenRejected(reason) => {
+                format!("Channel open rejected by peer: {:?}", reason)
             }
         };
         write!(f, "{}", str)

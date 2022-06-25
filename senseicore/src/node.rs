@@ -1017,7 +1017,7 @@ impl LightningNode {
     pub async fn open_channels(
         &self,
         requests: Vec<OpenChannelRequest>,
-    ) -> Vec<(OpenChannelRequest, Result<[u8; 32], Error>)> {
+    ) -> Result<Vec<(OpenChannelRequest, Result<[u8; 32], Error>)>, Error> {
         let mut opener = ChannelOpener::new(
             self.id.clone(),
             self.channel_manager.clone(),
@@ -1034,7 +1034,7 @@ impl LightningNode {
     // allows use to tie the create_channel call with the event
     pub async fn open_channel(&self, request: OpenChannelRequest) -> Result<[u8; 32], Error> {
         let requests = vec![request];
-        let mut responses = self.open_channels(requests).await;
+        let mut responses = self.open_channels(requests).await?;
         let (_request, result) = responses.pop().unwrap();
         result
     }
@@ -1492,52 +1492,28 @@ impl LightningNode {
                     usable_channel_inbound_capacity_msats,
                 })
             }
-            NodeRequest::OpenChannels { requests } => {
-                // for channel in &channels {
-
-                //     // pub counterparty_pubkey: String,
-                //     // pub amount_sats: u64,
-                //     // pub public: bool,
-                //     // pub counterparty_host_port: Option<String>,
-                //     // pub push_amount_sats: Option<u64>,
-                //     // pub forwarding_fee_proportional_millionths: Option<u32>,
-                //     // pub forwarding_fee_base_msat: Option<u32>,
-                //     // pub cltv_expiry_delta: Option<u16>,
-                //     // pub max_dust_htlc_exposure_msat: Option<u64>,
-                //     // pub force_close_avoidance_max_fee_satoshis: Option<u64>
-
-                //     // TODO: these panics are terribile. need to filter them out of the requests instead.
-
-                //     requests.push(ChannelOpenRequest {
-                //         peer_pubkey: pubkey,
-                //         amount_sats: channel.amount_sats,
-                //         push_amount_msats: channel.push_amount_msats.unwrap_or(0),
-                //         custom_id: channel.custom_id.unwrap_or_else(|| { thread_rng().gen_range(1..u64::MAX)}),
-                //         announced_channel: channel.public,
-                //     });
-                // }
-
-                let responses = self.open_channels(requests.clone()).await;
-
-                Ok(NodeResponse::OpenChannels {
+            NodeRequest::OpenChannels { requests } => self
+                .open_channels(requests.clone())
+                .await
+                .map(|responses| NodeResponse::OpenChannels {
                     requests,
                     results: responses
                         .into_iter()
                         .map(|(_request, result)| match result {
-                            Ok(temp_channel_id) => OpenChannelResult {
+                            Ok(channel_id) => OpenChannelResult {
                                 error: false,
                                 error_message: None,
-                                temp_channel_id: Some(hex_utils::hex_str(&temp_channel_id)),
+                                channel_id: Some(hex_utils::hex_str(&channel_id)),
                             },
                             Err(e) => OpenChannelResult {
                                 error: true,
-                                error_message: Some(e.to_string()),
-                                temp_channel_id: None,
+                                error_message: Some(format!("{:?}", e)),
+                                channel_id: None,
                             },
                         })
                         .collect::<Vec<_>>(),
                 })
-            }
+                .map_err(|e| NodeRequestError::Sensei(e.to_string())),
             NodeRequest::SendPayment { invoice } => {
                 let invoice = self.get_invoice_from_str(&invoice)?;
                 self.send_payment(&invoice).await?;

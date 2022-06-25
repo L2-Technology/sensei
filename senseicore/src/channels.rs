@@ -80,11 +80,8 @@ impl ChannelOpener {
         events
     }
 
-    pub async fn open_batch(
-        &mut self,
-        requests: Vec<OpenChannelRequest>,
-    ) -> Vec<(OpenChannelRequest, Result<[u8; 32], Error>)> {
-        let requests = requests
+    fn ensure_custom_ids(&self, requests: Vec<OpenChannelRequest>) -> Vec<OpenChannelRequest> {
+        requests
             .into_iter()
             .map(|request| OpenChannelRequest {
                 custom_id: Some(
@@ -94,32 +91,44 @@ impl ChannelOpener {
                 ),
                 ..request
             })
-            .collect::<Vec<_>>();
+            .collect::<Vec<_>>()
+    }
+
+    fn event_filter_for_request(
+        &self,
+        request: &OpenChannelRequest,
+    ) -> impl Fn(SenseiEvent) -> bool {
+        let filter_node_id = self.node_id.clone();
+        let request_user_channel_id = request.custom_id.unwrap();
+        move |event| match event {
+            SenseiEvent::FundingGenerationReady {
+                node_id,
+                user_channel_id,
+                ..
+            } => *node_id == filter_node_id && user_channel_id == request_user_channel_id,
+            SenseiEvent::ChannelClosed {
+                node_id,
+                user_channel_id,
+                ..
+            } => *node_id == filter_node_id && user_channel_id == request_user_channel_id,
+            _ => false,
+        }
+    }
+
+    pub async fn open_batch(
+        &mut self,
+        requests: Vec<OpenChannelRequest>,
+    ) -> Result<Vec<(OpenChannelRequest, Result<[u8; 32], Error>)>, Error> {
+        let requests = self.ensure_custom_ids(requests);
         let mut requests_with_results = vec![];
         let mut filters = vec![];
 
         for request in requests {
             let result = self.initiate_channel_open(&request).await;
-
             if result.is_ok() {
-                let filter_node_id = self.node_id.clone();
-                let request_user_channel_id = request.custom_id.unwrap();
-                let filter = move |event| {
-                    if let SenseiEvent::FundingGenerationReady {
-                        node_id,
-                        user_channel_id,
-                        ..
-                    } = event
-                    {
-                        if *node_id == filter_node_id && user_channel_id == request_user_channel_id
-                        {
-                            return true;
-                        }
-                    }
-                    false
-                };
-
-                filters.push(EventFilter { f: filter })
+                filters.push(EventFilter {
+                    f: self.event_filter_for_request(&request),
+                })
             }
             requests_with_results.push((request, result));
         }
@@ -132,31 +141,45 @@ impl ChannelOpener {
             .drain(..)
             .map(|(request, result)| {
                 if result.is_ok() {
-                    let mut channel_counterparty_node_id = None;
-                    let event_opt = events.iter().find(|event| {
-                        if let SenseiEvent::FundingGenerationReady {
-                            user_channel_id,
-                            counterparty_node_id,
-                            ..
-                        } = event
-                        {
-                            if *user_channel_id == request.custom_id.unwrap() {
-                                channel_counterparty_node_id = Some(*counterparty_node_id);
-                                return true;
-                            }
-                        }
-                        false
+                    let event_opt = events.iter().find(|event| match event {
+                        SenseiEvent::FundingGenerationReady {
+                            user_channel_id, ..
+                        } => *user_channel_id == request.custom_id.unwrap(),
+                        SenseiEvent::ChannelClosed {
+                            user_channel_id, ..
+                        } => *user_channel_id == request.custom_id.unwrap(),
+                        _ => false,
                     });
 
                     match event_opt {
-                        None => (request, Err(Error::FundingGenerationNeverHappened), None),
-                        Some(_) => (request, result, channel_counterparty_node_id),
+                        Some(SenseiEvent::FundingGenerationReady {
+                            counterparty_node_id,
+                            ..
+                        }) => (request, result, Some(*counterparty_node_id)),
+                        Some(SenseiEvent::ChannelClosed { reason, .. }) => (
+                            request,
+                            Err(Error::ChannelOpenRejected(reason.clone())),
+                            None,
+                        ),
+                        _ => (request, Err(Error::FundingGenerationNeverHappened), None),
                     }
                 } else {
                     (request, result, None)
                 }
             })
             .collect::<Vec<_>>();
+
+        let ok_results = requests_with_results
+            .iter()
+            .filter(|(_, result, _)| result.is_ok())
+            .count();
+
+        if ok_results == 0 {
+            return Ok(requests_with_results
+                .into_iter()
+                .map(|(req, res, _)| (req, res))
+                .collect::<Vec<_>>());
+        }
 
         // build a tx with these events and requests
         let wallet = self.wallet.lock().unwrap();
@@ -187,7 +210,21 @@ impl ChannelOpener {
         });
 
         tx_builder.fee_rate(fee_rate).enable_rbf();
-        let (mut psbt, _tx_details) = tx_builder.finish().unwrap();
+        let tx_result = tx_builder.finish();
+
+        if let Err(e) = tx_result {
+            for (_request, result, counterparty) in requests_with_results.iter() {
+                if let Ok(tcid) = result {
+                    let _res = self
+                        .channel_manager
+                        .force_close_channel(tcid, counterparty.as_ref().unwrap());
+                }
+            }
+            return Err(Error::Bdk(e));
+        }
+
+        let (mut psbt, _tx_details) = tx_result.unwrap();
+
         let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
         let funding_tx = psbt.extract_tx();
 
@@ -199,7 +236,7 @@ impl ChannelOpener {
         self.broadcaster
             .set_debounce(funding_tx.txid(), channels_to_open);
 
-        requests_with_results
+        let requests_with_results = requests_with_results
             .into_iter()
             .map(|(request, result, counterparty_node_id)| {
                 if let Ok(tcid) = result {
@@ -209,14 +246,23 @@ impl ChannelOpener {
                         &counterparty_node_id,
                         funding_tx.clone(),
                     ) {
-                        Ok(()) => (request, result),
+                        Ok(()) => {
+                            let channels = self.channel_manager.list_channels();
+                            let channel = channels.iter().find(|channel| {
+                                channel.user_channel_id == request.custom_id.unwrap()
+                            });
+                            let channel = channel.expect("to find channel we opened");
+                            (request, Ok(channel.channel_id))
+                        }
                         Err(e) => (request, Err(Error::LdkApi(e))),
                     }
                 } else {
                     (request, result)
                 }
             })
-            .collect()
+            .collect();
+
+        Ok(requests_with_results)
     }
 
     async fn initiate_channel_open(&self, request: &OpenChannelRequest) -> Result<[u8; 32], Error> {
