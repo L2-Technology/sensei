@@ -169,7 +169,7 @@ impl From<&OpenChannelRequest> for UserConfig {
 pub struct OpenChannelResult {
     pub error: bool,
     pub error_message: Option<String>,
-    pub temp_channel_id: Option<String>,
+    pub channel_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]

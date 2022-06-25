@@ -3,6 +3,7 @@ import { Form, Input, Select } from "../../components/form";
 import { z } from "zod";
 import openChannel from "../mutations/openChannel";
 import { useSearchParams } from "react-router-dom";
+import { useError } from "src/contexts/error";
 
 export const OpenChannelInput = z.object({
   node_connection_string: z.string(),
@@ -11,6 +12,7 @@ export const OpenChannelInput = z.object({
 });
 
 const OpenChannelForm = () => {
+  const { showError } = useError();
   let navigate = useNavigate();
   let [searchParams, _setSearchParams] = useSearchParams();
   let initialConnectionString = searchParams.get("connection") || "";
@@ -33,14 +35,18 @@ const OpenChannelForm = () => {
       layout="default"
       onSubmit={async ({ node_connection_string, amt_sats, pub }) => {
         try {
-          await openChannel(
+          const result = await openChannel(
             node_connection_string,
             parseInt(amt_sats, 10),
             pub === "true"
           );
-          navigate("/admin/channels");
+          if(result.error) {
+            showError(result.errorMessage)
+          } else {
+            navigate("/admin/channels");
+          }
         } catch (e) {
-          // TODO: handle error
+          showError(e.message)
         }
       }}
     >

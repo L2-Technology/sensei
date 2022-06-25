@@ -15,4 +15,10 @@ pub enum SenseiEvent {
         user_channel_id: u64,
         counterparty_node_id: PublicKey,
     },
+    ChannelClosed {
+        node_id: String,
+        channel_id: [u8; 32],
+        user_channel_id: u64,
+        reason: String,
+    },
 }
