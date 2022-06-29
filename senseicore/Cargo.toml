@@ -41,6 +41,7 @@ dirs = "4.0"
 public-ip = "0.2"
 entity = { path = "../entity" }
 migration = { path = "../migration" }
+reqwest = { version = "0.11", default-features = false, features = [ "blocking", "json", "rustls-tls-webpki-roots" ] }
 
 [dev-dependencies]
 bitcoind = { version = "0.26", features = [ "22_0" ] }
