@@ -18,7 +18,7 @@ use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::events::SenseiEvent;
-use crate::network_graph::OptionalNetworkGraphMsgHandler;
+use crate::p2p::{OptionalNetworkGraphMsgHandler, SenseiP2P};
 use crate::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
 use crate::services::node::{
     Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest,
@@ -406,12 +406,10 @@ pub struct LightningNode {
     pub chain_monitor: Arc<ChainMonitor>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub peer_manager: Arc<PeerManager>,
-    pub network_graph: Arc<NetworkGraph>,
-    pub network_graph_msg_handler: Arc<NetworkGraphMessageHandler>,
+    pub p2p: Arc<SenseiP2P>,
     pub keys_manager: Arc<KeysManager>,
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
-    pub scorer: Arc<Mutex<Scorer>>,
     pub stop_listen: Arc<AtomicBool>,
     pub persister: Arc<SenseiPersister>,
     pub event_sender: broadcast::Sender<SenseiEvent>,
@@ -551,9 +549,7 @@ impl LightningNode {
         data_dir: String,
         passphrase: String,
         external_router: bool,
-        network_graph: Option<Arc<NetworkGraph>>,
-        network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
-        scorer: Option<Arc<Mutex<Scorer>>>,
+        p2p: Arc<SenseiP2P>,
         chain_manager: Arc<SenseiChainManager>,
         database: Arc<SenseiDatabase>,
         event_sender: broadcast::Sender<SenseiEvent>,
@@ -753,27 +749,12 @@ impl LightningNode {
             .await
             .unwrap();
 
-        let network_graph = match network_graph {
-            Some(network_graph) => network_graph,
-            None => Arc::new(persister.read_network_graph()),
-        };
-
-        let network_graph_msg_handler: Arc<NetworkGraphMessageHandler> =
-            match network_graph_msg_handler {
-                Some(network_graph_msg_handler) => network_graph_msg_handler,
-                None => Arc::new(NetworkGraphMessageHandler::new(
-                    Arc::clone(&network_graph),
-                    None::<Arc<dyn chain::Access + Send + Sync>>,
-                    logger.clone(),
-                )),
-            };
-
         let route_handler = match external_router {
             true => Arc::new(OptionalNetworkGraphMsgHandler {
                 network_graph_msg_handler: None,
             }),
             false => Arc::new(OptionalNetworkGraphMsgHandler {
-                network_graph_msg_handler: Some(network_graph_msg_handler.clone()),
+                network_graph_msg_handler: Some(p2p.network_graph_message_handler.clone()),
             }),
         };
 
@@ -794,19 +775,6 @@ impl LightningNode {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
-        let scorer = match scorer {
-            Some(scorer) => scorer,
-            None => Arc::new(Mutex::new(
-                persister.read_scorer(Arc::clone(&network_graph)),
-            )),
-        };
-
-        let router = DefaultRouter::new(
-            network_graph.clone(),
-            logger.clone(),
-            keys_manager.get_secure_random_bytes(),
-        );
-
         let event_handler = Arc::new(LightningNodeEventHandler {
             node_id: id.clone(),
             config: config.clone(),
@@ -818,13 +786,13 @@ impl LightningNode {
             chain_manager: chain_manager.clone(),
             event_sender: event_sender.clone(),
             broadcaster: broadcaster.clone(),
-            network_graph: network_graph.clone(),
+            network_graph: p2p.network_graph.clone(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
             channel_manager.clone(),
-            router,
-            scorer.clone(),
+            p2p.get_router(),
+            p2p.scorer.clone(),
             logger.clone(),
             event_handler,
             payment::Retry::Attempts(5),
@@ -859,24 +827,6 @@ impl LightningNode {
             }
         }));
 
-        let scorer_persister = Arc::clone(&persister);
-        let scorer_persist = Arc::clone(&scorer);
-
-        handles.push(tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(600));
-            loop {
-                interval.tick().await;
-                if scorer_persister
-                    .persist_scorer(&scorer_persist.lock().unwrap())
-                    .is_err()
-                {
-                    // Persistence errors here are non-fatal as channels will be re-scored as payments
-                    // fail, but they may indicate a disk error which could be fatal elsewhere.
-                    eprintln!("Warning: Failed to persist scorer, check your disk and permissions");
-                }
-            }
-        }));
-
         let bg_persister = Arc::clone(&persister);
 
         // TODO: should we allow all nodes to update NetworkGraph based on payment failures?
@@ -886,10 +836,10 @@ impl LightningNode {
             invoice_payer.clone(),
             chain_monitor.clone(),
             channel_manager.clone(),
-            GossipSync::P2P(network_graph_msg_handler.clone()),
+            GossipSync::P2P(p2p.network_graph_message_handler.clone()),
             peer_manager.clone(),
             logger.clone(),
-            Some(scorer.clone()),
+            Some(p2p.scorer.clone()),
         );
 
         // Reconnect to channel peers if possible.
@@ -897,7 +847,7 @@ impl LightningNode {
         let channel_manager_reconnect = channel_manager.clone();
         let peer_manager_reconnect = peer_manager.clone();
         let _persister_peer = persister.clone();
-        let network_graph_reconnect = network_graph.clone();
+        let network_graph_reconnect = p2p.network_graph.clone();
         handles.push(tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(5));
             loop {
@@ -1002,11 +952,9 @@ impl LightningNode {
             chain_monitor,
             chain_manager,
             peer_manager,
-            network_graph,
-            network_graph_msg_handler,
+            p2p: p2p.clone(),
             keys_manager,
             logger,
-            scorer,
             invoice_payer,
             stop_listen,
             persister,
@@ -1324,6 +1272,7 @@ impl LightningNode {
         let node_id = NodeId::from_pubkey(&channel_details.counterparty.node_id);
 
         let alias = self
+            .p2p
             .network_graph
             .read_only()
             .nodes()
@@ -1628,7 +1577,7 @@ impl LightningNode {
                 Ok(NodeResponse::ListUnspent { utxos })
             }
             NodeRequest::NetworkGraphInfo {} => {
-                let graph = self.network_graph.read_only();
+                let graph = self.p2p.network_graph.read_only();
                 let channels = graph.channels();
 
                 let mut num_known_edge_policies: u64 = 0;

@@ -9,49 +9,94 @@
 
 use bitcoin::secp256k1::PublicKey;
 use lightning::{
+    chain,
     ln::msgs::{self, Init, LightningError, RoutingMessageHandler},
     util::events::{MessageSendEvent, MessageSendEventsProvider},
 };
+use lightning_invoice::utils::DefaultRouter;
+use rand::RngCore;
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use crate::node::{NetworkGraph, NetworkGraphMessageHandler, Scorer};
+use crate::{
+    config::SenseiConfig,
+    database::SenseiDatabase,
+    disk::FilesystemLogger,
+    node::{NetworkGraph, NetworkGraphMessageHandler, Router, Scorer},
+    persist::{AnyKVStore, DatabaseStore, SenseiPersister},
+};
 
 #[derive(Clone)]
-pub struct SenseiNetworkGraph {
-    pub graph: Option<Arc<NetworkGraph>>,
-    pub msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
-    pub scorer: Option<Arc<Mutex<Scorer>>>,
+pub struct SenseiP2P {
+    pub config: Arc<SenseiConfig>,
+    pub persister: Arc<SenseiPersister>,
+    pub network_graph: Arc<NetworkGraph>,
+    pub network_graph_message_handler: Arc<NetworkGraphMessageHandler>,
+    pub scorer: Arc<Mutex<Scorer>>,
+    pub logger: Arc<FilesystemLogger>,
 }
 
-impl SenseiNetworkGraph {
-    pub fn set_graph(&mut self, graph: Arc<NetworkGraph>) {
-        self.graph = Some(graph);
+impl SenseiP2P {
+    pub fn new(
+        config: Arc<SenseiConfig>,
+        database: Arc<SenseiDatabase>,
+        logger: Arc<FilesystemLogger>,
+    ) -> Self {
+        let persistence_store =
+            AnyKVStore::Database(DatabaseStore::new(database, "SENSEI".to_string()));
+
+        let persister = Arc::new(SenseiPersister::new(
+            persistence_store,
+            config.network,
+            logger.clone(),
+        ));
+        let network_graph = Arc::new(persister.read_network_graph());
+        let scorer = Arc::new(Mutex::new(
+            persister.read_scorer(Arc::clone(&network_graph)),
+        ));
+        let network_graph_message_handler = Arc::new(NetworkGraphMessageHandler::new(
+            Arc::clone(&network_graph),
+            None::<Arc<dyn chain::Access + Send + Sync>>,
+            logger.clone(),
+        ));
+
+        let scorer_persister = Arc::clone(&persister);
+        let scorer_persist = Arc::clone(&scorer);
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(600));
+            loop {
+                interval.tick().await;
+                if scorer_persister
+                    .persist_scorer(&scorer_persist.lock().unwrap())
+                    .is_err()
+                {
+                    // Persistence errors here are non-fatal as channels will be re-scored as payments
+                    // fail, but they may indicate a disk error which could be fatal elsewhere.
+                    eprintln!("Warning: Failed to persist scorer, check your disk and permissions");
+                }
+            }
+        });
+
+        Self {
+            config,
+            persister,
+            logger,
+            network_graph,
+            scorer,
+            network_graph_message_handler,
+        }
     }
 
-    pub fn get_graph(&self) -> Option<Arc<NetworkGraph>> {
-        self.graph.clone()
-    }
-
-    pub fn set_msg_handler(&mut self, msg_handler: Arc<NetworkGraphMessageHandler>) {
-        self.msg_handler = Some(msg_handler);
-    }
-
-    pub fn get_msg_handler(&self) -> Option<Arc<NetworkGraphMessageHandler>> {
-        self.msg_handler.clone()
-    }
-
-    pub fn set_scorer(&mut self, scorer: Arc<Mutex<Scorer>>) {
-        self.scorer = Some(scorer);
-    }
-
-    pub fn get_scorer(&self) -> Option<Arc<Mutex<Scorer>>> {
-        self.scorer.clone()
+    pub fn get_router(&self) -> Router {
+        let mut randomness: [u8; 32] = [0; 32];
+        rand::thread_rng().fill_bytes(&mut randomness);
+        DefaultRouter::new(self.network_graph.clone(), self.logger.clone(), randomness)
     }
 }
-
 pub struct OptionalNetworkGraphMsgHandler {
     pub network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
 }

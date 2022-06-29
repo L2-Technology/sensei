@@ -13,7 +13,7 @@ use crate::database::SenseiDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
-use crate::network_graph::SenseiNetworkGraph;
+use crate::p2p::SenseiP2P;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
 
 use entity::node::{self, NodeRole};
@@ -27,9 +27,7 @@ use lightning::routing::scoring::Score;
 use lightning::util::ser::{Readable, Writeable};
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::payment::Router;
-use lightning_invoice::utils::DefaultRouter;
 use macaroon::Macaroon;
-use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Cursor;
@@ -195,7 +193,7 @@ pub struct AdminService {
     pub chain_manager: Arc<SenseiChainManager>,
     pub event_sender: broadcast::Sender<SenseiEvent>,
     pub available_ports: Arc<Mutex<VecDeque<u16>>>,
-    pub network_graph: Arc<Mutex<SenseiNetworkGraph>>,
+    pub p2p: Arc<SenseiP2P>,
     pub logger: Arc<FilesystemLogger>,
 }
 
@@ -224,20 +222,25 @@ impl AdminService {
             }
         }
 
+        let logger = Arc::new(FilesystemLogger::new(String::from(data_dir)));
+        let database = Arc::new(database);
+        let config = Arc::new(config);
+        let p2p = Arc::new(SenseiP2P::new(
+            config.clone(),
+            database.clone(),
+            logger.clone(),
+        ));
+
         Self {
             data_dir: String::from(data_dir),
-            config: Arc::new(config),
+            config,
             node_directory: Arc::new(Mutex::new(HashMap::new())),
-            database: Arc::new(database),
+            database,
             chain_manager,
             event_sender,
             available_ports: Arc::new(Mutex::new(available_ports)),
-            network_graph: Arc::new(Mutex::new(SenseiNetworkGraph {
-                graph: None,
-                msg_handler: None,
-                scorer: None,
-            })),
-            logger: Arc::new(FilesystemLogger::new(String::from(data_dir))),
+            logger,
+            p2p,
         }
     }
 }
@@ -519,22 +522,8 @@ impl AdminService {
                 let route_params = RouteParameters::read(&mut route_params_readable).unwrap();
                 let payment_hash = PaymentHash::read(&mut payment_hash_readable).unwrap();
 
-                let (network_graph, _network_graph_msg_handler, scorer) = {
-                    let ng = self.network_graph.lock().await;
-                    (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
-                };
-
-                if network_graph.is_none() || scorer.is_none() {
-                    return Err(Error::Generic("root node not started".to_string()));
-                }
-
-                let mut randomness: [u8; 32] = [0; 32];
-                thread_rng().fill_bytes(&mut randomness);
-
-                let router =
-                    DefaultRouter::new(network_graph.unwrap(), self.logger.clone(), randomness);
-                let scorer = scorer.unwrap();
-                let scorer = scorer.lock().unwrap();
+                let scorer = self.p2p.scorer.lock().unwrap();
+                let router = self.p2p.get_router();
                 router
                     .find_route(
                         &payer,
@@ -556,18 +545,7 @@ impl AdminService {
                         RouteHop::read(&mut readable_hop).unwrap()
                     })
                     .collect::<Vec<_>>();
-
-                let (_network_graph, _network_graph_msg_handler, scorer) = {
-                    let ng = self.network_graph.lock().await;
-                    (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
-                };
-
-                if scorer.is_none() {
-                    return Err(Error::Generic("root node not started".to_string()));
-                }
-
-                let scorer = scorer.unwrap();
-                let mut scorer = scorer.lock().unwrap();
+                let mut scorer = self.p2p.scorer.lock().unwrap();
                 scorer.payment_path_successful(&path.iter().collect::<Vec<_>>());
                 Ok(AdminResponse::PathSuccessful {})
             }
@@ -582,18 +560,7 @@ impl AdminService {
                         RouteHop::read(&mut readable_hop).unwrap()
                     })
                     .collect::<Vec<_>>();
-
-                let (_network_graph, _network_graph_msg_handler, scorer) = {
-                    let ng = self.network_graph.lock().await;
-                    (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
-                };
-
-                if scorer.is_none() {
-                    return Err(Error::Generic("root node not started".to_string()));
-                }
-
-                let scorer = scorer.unwrap();
-                let mut scorer = scorer.lock().unwrap();
+                let mut scorer = self.p2p.scorer.lock().unwrap();
                 scorer.payment_path_failed(&path.iter().collect::<Vec<_>>(), short_channel_id);
                 Ok(AdminResponse::PathFailed {})
             }
@@ -804,10 +771,6 @@ impl AdminService {
         };
 
         let external_router = node.get_role() == node::NodeRole::Default;
-        let (network_graph, network_graph_msg_handler, scorer) = {
-            let ng = self.network_graph.lock().await;
-            (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
-        };
 
         match status {
             None => {
@@ -825,9 +788,7 @@ impl AdminService {
                     ),
                     passphrase,
                     external_router,
-                    network_graph,
-                    network_graph_msg_handler,
-                    scorer,
+                    self.p2p.clone(),
                     self.chain_manager.clone(),
                     self.database.clone(),
                     self.event_sender.clone(),
@@ -840,12 +801,6 @@ impl AdminService {
                     self.config.api_host.clone(),
                     node.listen_port
                 );
-
-                if !external_router {
-                    let mut ng = self.network_graph.lock().await;
-                    ng.set_graph(lightning_node.network_graph.clone());
-                    ng.set_msg_handler(lightning_node.network_graph_msg_handler.clone());
-                }
 
                 {
                     let mut node_directory = self.node_directory.lock().await;
