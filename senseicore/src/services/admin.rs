@@ -10,6 +10,7 @@
 use super::{PaginationRequest, PaginationResponse};
 use crate::chain::manager::SenseiChainManager;
 use crate::database::SenseiDatabase;
+use crate::disk::FilesystemLogger;
 use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
 use crate::network_graph::SenseiNetworkGraph;
@@ -19,10 +20,19 @@ use entity::node::{self, NodeRole};
 use entity::sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait};
 use entity::{access_token, seconds_since_epoch};
 use futures::stream::{self, StreamExt};
+use lightning::ln::channelmanager::ChannelDetails;
+use lightning::ln::PaymentHash;
+use lightning::routing::router::{RouteHop, RouteParameters};
+use lightning::routing::scoring::Score;
+use lightning::util::ser::{Readable, Writeable};
 use lightning_background_processor::BackgroundProcessor;
+use lightning_invoice::payment::Router;
+use lightning_invoice::utils::DefaultRouter;
 use macaroon::Macaroon;
+use rand::{thread_rng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::Cursor;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
@@ -99,6 +109,19 @@ pub enum AdminRequest {
     DeleteToken {
         id: String,
     },
+    FindRoute {
+        payer_public_key_hex: String,
+        route_params_hex: String,
+        payment_hash_hex: String,
+        first_hops: Vec<String>,
+    },
+    PathSuccessful {
+        path: Vec<String>,
+    },
+    PathFailed {
+        path: Vec<String>,
+        short_channel_id: u64,
+    },
 }
 
 #[derive(Serialize)]
@@ -153,6 +176,11 @@ pub enum AdminResponse {
         pagination: PaginationResponse,
     },
     DeleteToken {},
+    FindRoute {
+        route: String,
+    },
+    PathSuccessful {},
+    PathFailed {},
     Error(Error),
 }
 
@@ -168,6 +196,7 @@ pub struct AdminService {
     pub event_sender: broadcast::Sender<SenseiEvent>,
     pub available_ports: Arc<Mutex<VecDeque<u16>>>,
     pub network_graph: Arc<Mutex<SenseiNetworkGraph>>,
+    pub logger: Arc<FilesystemLogger>,
 }
 
 impl AdminService {
@@ -206,7 +235,9 @@ impl AdminService {
             network_graph: Arc::new(Mutex::new(SenseiNetworkGraph {
                 graph: None,
                 msg_handler: None,
+                scorer: None,
             })),
+            logger: Arc::new(FilesystemLogger::new(String::from(data_dir))),
         }
     }
 }
@@ -464,6 +495,108 @@ impl AdminService {
                 self.database.delete_access_token(id).await?;
                 Ok(AdminResponse::DeleteToken {})
             }
+            AdminRequest::FindRoute {
+                payer_public_key_hex,
+                route_params_hex,
+                payment_hash_hex,
+                first_hops,
+            } => {
+                let payer = hex_utils::to_compressed_pubkey(&payer_public_key_hex)
+                    .expect("valid payer public key hex");
+                let mut route_params_readable =
+                    Cursor::new(hex_utils::to_vec(&route_params_hex).unwrap());
+                let mut payment_hash_readable =
+                    Cursor::new(hex_utils::to_vec(&payment_hash_hex).unwrap());
+                let first_hops = first_hops
+                    .iter()
+                    .map(|hop| {
+                        let mut channel_details_readable =
+                            Cursor::new(hex_utils::to_vec(hop).unwrap());
+                        ChannelDetails::read(&mut channel_details_readable).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+
+                let route_params = RouteParameters::read(&mut route_params_readable).unwrap();
+                let payment_hash = PaymentHash::read(&mut payment_hash_readable).unwrap();
+
+                let (network_graph, _network_graph_msg_handler, scorer) = {
+                    let ng = self.network_graph.lock().await;
+                    (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
+                };
+
+                if network_graph.is_none() || scorer.is_none() {
+                    return Err(Error::Generic("root node not started".to_string()));
+                }
+
+                let mut randomness: [u8; 32] = [0; 32];
+                thread_rng().fill_bytes(&mut randomness);
+
+                let router =
+                    DefaultRouter::new(network_graph.unwrap(), self.logger.clone(), randomness);
+                let scorer = scorer.unwrap();
+                let scorer = scorer.lock().unwrap();
+                router
+                    .find_route(
+                        &payer,
+                        &route_params,
+                        &payment_hash,
+                        Some(&first_hops.iter().collect::<Vec<_>>()),
+                        &scorer,
+                    )
+                    .map(|route| AdminResponse::FindRoute {
+                        route: hex_utils::hex_str(&route.encode()),
+                    })
+                    .map_err(|e| Error::Generic(format!("{:?}", e)))
+            }
+            AdminRequest::PathSuccessful { path } => {
+                let path = path
+                    .iter()
+                    .map(|route_hop| {
+                        let mut readable_hop = Cursor::new(hex_utils::to_vec(route_hop).unwrap());
+                        RouteHop::read(&mut readable_hop).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+
+                let (_network_graph, _network_graph_msg_handler, scorer) = {
+                    let ng = self.network_graph.lock().await;
+                    (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
+                };
+
+                if scorer.is_none() {
+                    return Err(Error::Generic("root node not started".to_string()));
+                }
+
+                let scorer = scorer.unwrap();
+                let mut scorer = scorer.lock().unwrap();
+                scorer.payment_path_successful(&path.iter().collect::<Vec<_>>());
+                Ok(AdminResponse::PathSuccessful {})
+            }
+            AdminRequest::PathFailed {
+                path,
+                short_channel_id,
+            } => {
+                let path = path
+                    .iter()
+                    .map(|route_hop| {
+                        let mut readable_hop = Cursor::new(hex_utils::to_vec(route_hop).unwrap());
+                        RouteHop::read(&mut readable_hop).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+
+                let (_network_graph, _network_graph_msg_handler, scorer) = {
+                    let ng = self.network_graph.lock().await;
+                    (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
+                };
+
+                if scorer.is_none() {
+                    return Err(Error::Generic("root node not started".to_string()));
+                }
+
+                let scorer = scorer.unwrap();
+                let mut scorer = scorer.lock().unwrap();
+                scorer.payment_path_failed(&path.iter().collect::<Vec<_>>(), short_channel_id);
+                Ok(AdminResponse::PathFailed {})
+            }
         }
     }
 
@@ -671,9 +804,9 @@ impl AdminService {
         };
 
         let external_router = node.get_role() == node::NodeRole::Default;
-        let (network_graph, network_graph_msg_handler) = {
+        let (network_graph, network_graph_msg_handler, scorer) = {
             let ng = self.network_graph.lock().await;
-            (ng.get_graph(), ng.get_msg_handler())
+            (ng.get_graph(), ng.get_msg_handler(), ng.get_scorer())
         };
 
         match status {
@@ -694,6 +827,7 @@ impl AdminService {
                     external_router,
                     network_graph,
                     network_graph_msg_handler,
+                    scorer,
                     self.chain_manager.clone(),
                     self.database.clone(),
                     self.event_sender.clone(),

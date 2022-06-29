@@ -15,9 +15,10 @@ use super::{
         AdminStartNodeRequest, AdminStartNodeResponse, AdminStopNodeRequest, AdminStopNodeResponse,
         CreateAdminRequest, CreateAdminResponse, CreateNodeRequest, CreateNodeResponse,
         CreateTokenRequest, DeleteNodeRequest, DeleteNodeResponse, DeleteTokenRequest,
-        DeleteTokenResponse, GetStatusRequest, GetStatusResponse, ListNode, ListNodesRequest,
-        ListNodesResponse, ListTokensRequest, ListTokensResponse, StartAdminRequest,
-        StartAdminResponse, Token,
+        DeleteTokenResponse, FindRouteRequest, FindRouteResponse, GetStatusRequest,
+        GetStatusResponse, ListNode, ListNodesRequest, ListNodesResponse, ListTokensRequest,
+        ListTokensResponse, PathFailedRequest, PathFailedResponse, PathSuccessfulRequest,
+        PathSuccessfulResponse, StartAdminRequest, StartAdminResponse, Token,
     },
     utils::raw_macaroon_from_metadata,
 };
@@ -320,6 +321,66 @@ impl TryFrom<AdminResponse> for DeleteTokenResponse {
         }
     }
 }
+
+impl From<FindRouteRequest> for AdminRequest {
+    fn from(req: FindRouteRequest) -> Self {
+        AdminRequest::FindRoute {
+            payer_public_key_hex: req.payer_public_key_hex,
+            route_params_hex: req.route_params_hex,
+            payment_hash_hex: req.payment_hash_hex,
+            first_hops: req.first_hops,
+        }
+    }
+}
+
+impl TryFrom<AdminResponse> for FindRouteResponse {
+    type Error = String;
+
+    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
+        match res {
+            AdminResponse::FindRoute { route } => Ok(Self { route }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<PathSuccessfulRequest> for AdminRequest {
+    fn from(req: PathSuccessfulRequest) -> Self {
+        AdminRequest::PathSuccessful { path: req.path }
+    }
+}
+
+impl TryFrom<AdminResponse> for PathSuccessfulResponse {
+    type Error = String;
+
+    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
+        match res {
+            AdminResponse::PathSuccessful {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<PathFailedRequest> for AdminRequest {
+    fn from(req: PathFailedRequest) -> Self {
+        AdminRequest::PathFailed {
+            path: req.path,
+            short_channel_id: req.short_channel_id,
+        }
+    }
+}
+
+impl TryFrom<AdminResponse> for PathFailedResponse {
+    type Error = String;
+
+    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
+        match res {
+            AdminResponse::PathFailed {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
 pub struct AdminService {
     pub admin_service: Arc<senseicore::services::admin::AdminService>,
 }
@@ -526,6 +587,38 @@ impl Admin for AdminService {
         &self,
         request: tonic::Request<DeleteTokenRequest>,
     ) -> Result<Response<DeleteTokenResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn find_route(
+        &self,
+        request: tonic::Request<FindRouteRequest>,
+    ) -> Result<Response<FindRouteResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+
+    async fn path_successful(
+        &self,
+        request: tonic::Request<PathSuccessfulRequest>,
+    ) -> Result<Response<PathSuccessfulResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+
+    async fn path_failed(
+        &self,
+        request: tonic::Request<PathFailedRequest>,
+    ) -> Result<Response<PathFailedResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

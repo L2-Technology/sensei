@@ -12,14 +12,18 @@ use lightning::{
     ln::msgs::{self, Init, LightningError, RoutingMessageHandler},
     util::events::{MessageSendEvent, MessageSendEventsProvider},
 };
-use std::{ops::Deref, sync::Arc};
+use std::{
+    ops::Deref,
+    sync::{Arc, Mutex},
+};
 
-use crate::node::{NetworkGraph, NetworkGraphMessageHandler};
+use crate::node::{NetworkGraph, NetworkGraphMessageHandler, Scorer};
 
 #[derive(Clone)]
 pub struct SenseiNetworkGraph {
     pub graph: Option<Arc<NetworkGraph>>,
     pub msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
+    pub scorer: Option<Arc<Mutex<Scorer>>>,
 }
 
 impl SenseiNetworkGraph {
@@ -37,6 +41,14 @@ impl SenseiNetworkGraph {
 
     pub fn get_msg_handler(&self) -> Option<Arc<NetworkGraphMessageHandler>> {
         self.msg_handler.clone()
+    }
+
+    pub fn set_scorer(&mut self, scorer: Arc<Mutex<Scorer>>) {
+        self.scorer = Some(scorer);
+    }
+
+    pub fn get_scorer(&self) -> Option<Arc<Mutex<Scorer>>> {
+        self.scorer.clone()
     }
 }
 

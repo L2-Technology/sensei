@@ -255,8 +255,12 @@ impl EventHandler for LightningNodeEventHandler {
                     );
                 }
             }
-            Event::PaymentPathSuccessful { .. } => {}
-            Event::PaymentPathFailed { .. } => {}
+            Event::PaymentPathSuccessful { path: _, .. } => {}
+            Event::PaymentPathFailed {
+                path: _,
+                short_channel_id: _,
+                ..
+            } => {}
             Event::PaymentFailed { payment_hash, .. } => {
                 print!(
                     "\nEVENT: Failed to send payment to payment hash {:?}: exhausted payment retry attempts",

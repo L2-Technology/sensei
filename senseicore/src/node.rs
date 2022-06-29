@@ -553,6 +553,7 @@ impl LightningNode {
         external_router: bool,
         network_graph: Option<Arc<NetworkGraph>>,
         network_graph_msg_handler: Option<Arc<NetworkGraphMessageHandler>>,
+        scorer: Option<Arc<Mutex<Scorer>>>,
         chain_manager: Arc<SenseiChainManager>,
         database: Arc<SenseiDatabase>,
         event_sender: broadcast::Sender<SenseiEvent>,
@@ -793,10 +794,12 @@ impl LightningNode {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
-        // need to move this to AdminService or root node only
-        let scorer = Arc::new(Mutex::new(
-            persister.read_scorer(Arc::clone(&network_graph)),
-        ));
+        let scorer = match scorer {
+            Some(scorer) => scorer,
+            None => Arc::new(Mutex::new(
+                persister.read_scorer(Arc::clone(&network_graph)),
+            )),
+        };
 
         let router = DefaultRouter::new(
             network_graph.clone(),
