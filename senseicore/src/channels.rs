@@ -231,8 +231,16 @@ impl ChannelOpener {
 
         let (psbt, _tx_details) = tx_result.unwrap();
 
-        // let _finalized = wallet.sign(&mut psbt, SignOptions::default()).unwrap();
-        let derivations = (0..psbt.inputs.len()).map(|_| 0).collect::<Vec<_>>();
+        // TODO move this into sign_from_wallet
+        let derivations = psbt
+            .inputs
+            .iter()
+            .map(|inp| {
+                let derivation = &inp.bip32_derivation.iter().next().unwrap().1 .1;
+                assert_eq!(derivation.len(), 1);
+                derivation[0].into()
+            })
+            .collect::<Vec<_>>();
         let psbt = self.keys_manager.sign_from_wallet(&psbt, derivations);
         let funding_tx = psbt.extract_tx();
 

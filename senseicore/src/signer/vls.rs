@@ -218,17 +218,8 @@ pub(crate) async fn make_null_signer(
     let secp = Secp256k1::new();
     let pub0 = xpub.ckd_pub(&secp, ChildNumber::from(0)).unwrap().to_pub();
     let sweep_address = Address::p2wpkh(&pub0, network).unwrap();
-    info!(
-        "initialize allowlist {} for node {}",
-        sweep_address, node_id
-    );
-    transport
-        .handler
-        .node
-        .add_allowlist(&vec![sweep_address.to_string()])
-        .unwrap();
     let client = KeysManagerClient::new(Arc::new(transport), network.to_string());
-    // FIXME replace with sweep address generated from xpub
+    // TODO dynamically derived sweep address
     let keys_manager = KeysManager {
         client,
         sweep_address,

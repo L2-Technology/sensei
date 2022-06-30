@@ -28,7 +28,6 @@ use crate::services::{PaginationRequest, PaginationResponse, PaymentsFilter};
 use crate::signer::get_keys_manager;
 use crate::utils::PagedVec;
 use crate::{hex_utils, version};
-use bdk::keys::ExtendedKey;
 use bdk::wallet::time;
 use bdk::wallet::AddressIndex;
 use bdk::TransactionDetails;
@@ -41,12 +40,11 @@ use lightning::ln::msgs::NetAddress;
 use lightning_invoice::payment::PaymentError;
 use tindercrypt::cryptors::RingCryptor;
 
-use bdk::template::DescriptorTemplateOut;
 use bitcoin::hashes::hex::ToHex;
 use bitcoin::hashes::sha256::Hash as Sha256;
 use bitcoin::network::constants::Network;
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use bitcoin::util::bip32::{ChildNumber, DerivationPath};
+use bitcoin::secp256k1::PublicKey;
+use bitcoin::util::bip32::DerivationPath;
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
 use lightning::chain::keysinterface::{KeysInterface, Recipient};
@@ -349,40 +347,6 @@ pub type SyncableMonitor = (
 pub type NetworkGraphMessageHandler =
     P2PGossipSync<Arc<NetworkGraph>, Arc<dyn chain::Access + Send + Sync>, Arc<FilesystemLogger>>;
 
-// FIXME remove
-#[allow(unused)]
-fn get_wpkh_descriptors_for_extended_key(
-    xkey: ExtendedKey,
-    network: Network,
-    base_path: &str,
-    account_number: u32,
-) -> (DescriptorTemplateOut, DescriptorTemplateOut) {
-    let master_xprv = xkey.into_xprv(network).unwrap();
-    let coin_type = match network {
-        Network::Bitcoin => 0,
-        _ => 1,
-    };
-
-    let base_path = DerivationPath::from_str(base_path).unwrap();
-    let derivation_path = base_path.extend(&[
-        ChildNumber::from_hardened_idx(coin_type).unwrap(),
-        ChildNumber::from_hardened_idx(account_number).unwrap(),
-    ]);
-
-    let receive_descriptor_template = bdk::descriptor!(wpkh((
-        master_xprv,
-        derivation_path.extend(&[ChildNumber::Normal { index: 0 }])
-    )))
-    .unwrap();
-    let change_descriptor_template = bdk::descriptor!(wpkh((
-        master_xprv,
-        derivation_path.extend(&[ChildNumber::Normal { index: 1 }])
-    )))
-    .unwrap();
-
-    (receive_descriptor_template, change_descriptor_template)
-}
-
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct MacaroonSession {
     pub id: String,
@@ -564,20 +528,14 @@ impl LightningNode {
             .unwrap();
         let keys_manager = Arc::new(DynKeysInterface::new(manager));
 
-        let secp = Secp256k1::new();
-        let pub0 = xpub.ckd_pub(&secp, ChildNumber::from(0)).unwrap().to_pub();
-        let receive_descriptor_template = bdk::descriptor!(wpkh(pub0)).unwrap();
-        let change_descriptor_template = bdk::descriptor!(wpkh(pub0)).unwrap();
+        let receive_descriptor_template =
+            bdk::descriptor!(wpkh((xpub, DerivationPath::default()))).unwrap();
 
         let bdk_database = WalletDatabase::new(id.clone(), database.clone(), database.get_handle());
         let wallet_database = bdk_database.clone();
 
-        let bdk_wallet = bdk::Wallet::new(
-            receive_descriptor_template,
-            Some(change_descriptor_template),
-            network,
-            bdk_database,
-        )?;
+        let bdk_wallet =
+            bdk::Wallet::new(receive_descriptor_template, None, network, bdk_database)?;
 
         // TODO: probably can do this later, assuming this is REALLY slow
         bdk_wallet.ensure_addresses_cached(100).unwrap();
