@@ -11,5 +11,6 @@ pub mod network_graph;
 pub mod node;
 pub mod persist;
 pub mod services;
+pub mod signer;
 pub mod utils;
 pub mod version;

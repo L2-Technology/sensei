@@ -41,6 +41,37 @@ dirs = "4.0"
 public-ip = "0.2"
 entity = { path = "../entity" }
 migration = { path = "../migration" }
+triggered = "0.1"
+anyhow = "1.0"
+
+[dependencies.lightning-signer-core]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
+#path = "../../vls/lightning-signer-core"
+
+[dependencies.lightning-signer-server]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
+#path = "../../vls/lightning-signer-server"
+default_features = false
+features = ["persist_kv_json"]
+
+[dependencies.vls-protocol-signer]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
+#path = "../../vls/vls-protocol-signer"
+
+[dependencies.vls-protocol-client]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
+#path = "../../vls/vls-protocol-client"
+
+[dependencies.vls-proxy]
+git = "https://gitlab.com/lightning-signer/validating-lightning-signer.git"
+rev = "5a7f67dbf0245f35b61342d62b99ddedbc6243c8"
+#path = "../../vls/vls-proxy"
+default-features = false
+features = ["grpc"]
 
 [dev-dependencies]
 bitcoind = { version = "0.26", features = [ "22_0" ] }
