@@ -838,11 +838,8 @@ impl LightningNode {
         );
 
         // Reconnect to channel peers if possible.
-        p2p.channel_peer_reconnector.register_node(
-            id.clone(),
-            peer_manager.clone(),
-            channel_manager.clone(),
-        );
+        p2p.peer_connector
+            .register_node(id.clone(), peer_manager.clone(), channel_manager.clone());
 
         // Regularly broadcast our node_announcement. This is only required (or possible) if we have
         // some public channels, and is only useful if we have public listen address(es) to announce.

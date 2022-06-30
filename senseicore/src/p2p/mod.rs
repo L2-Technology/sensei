@@ -6,7 +6,6 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
 // You may not use this file except in accordance with one or both of these
 // licenses.
-pub mod channel_peer_reconnector;
 pub mod peer_connector;
 pub mod utils;
 
@@ -32,7 +31,7 @@ use crate::{
     persist::{AnyKVStore, DatabaseStore, SenseiPersister},
 };
 
-use self::{channel_peer_reconnector::ChannelPeerReconnector, peer_connector::PeerConnector};
+use self::peer_connector::PeerConnector;
 
 #[derive(Clone)]
 pub struct SenseiP2P {
@@ -43,7 +42,6 @@ pub struct SenseiP2P {
     pub scorer: Arc<Mutex<Scorer>>,
     pub logger: Arc<FilesystemLogger>,
     pub peer_manager: Arc<RoutingPeerManager>,
-    pub channel_peer_reconnector: Arc<ChannelPeerReconnector>,
     pub peer_connector: Arc<PeerConnector>,
 }
 
@@ -107,13 +105,9 @@ impl SenseiP2P {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
-        let peer_connector = Arc::new(PeerConnector {
-            routing_peer_manager: peer_manager.clone(),
-        });
-
-        let channel_peer_reconnector = Arc::new(ChannelPeerReconnector::new(
-            peer_connector.clone(),
+        let peer_connector = Arc::new(PeerConnector::new(
             network_graph.clone(),
+            peer_manager.clone(),
         ));
 
         let scorer_persister = Arc::clone(&persister);
@@ -133,8 +127,8 @@ impl SenseiP2P {
             }
         });
 
-        let channel_peer_reconnector_run = channel_peer_reconnector.clone();
-        tokio::spawn(async move { channel_peer_reconnector_run.run().await });
+        let peer_connector_run = peer_connector.clone();
+        tokio::spawn(async move { peer_connector_run.run().await });
 
         Self {
             config,
@@ -144,7 +138,6 @@ impl SenseiP2P {
             scorer,
             network_graph_message_handler,
             peer_manager,
-            channel_peer_reconnector,
             peer_connector,
         }
     }

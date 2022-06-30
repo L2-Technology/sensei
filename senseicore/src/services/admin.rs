@@ -832,7 +832,7 @@ impl AdminService {
                 node_handle.node.peer_manager.disconnect_all_peers();
                 node_handle.node.stop_listen.store(true, Ordering::Release);
                 self.p2p
-                    .channel_peer_reconnector
+                    .peer_connector
                     .unregister_node(node_handle.node.id.clone());
                 let _res = node_handle.background_processor.stop();
                 for handle in node_handle.handles {
