@@ -18,7 +18,8 @@ use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::events::SenseiEvent;
-use crate::p2p::{OptionalNetworkGraphMsgHandler, SenseiP2P};
+use crate::p2p::utils::parse_peer_info;
+use crate::p2p::SenseiP2P;
 use crate::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
 use crate::services::node::{
     Channel, NodeInfo, NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest,
@@ -54,7 +55,7 @@ use lightning::chain::{self, Filter};
 use lightning::ln::channelmanager::{self, ChannelDetails, ChannelManager as LdkChannelManager};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
-    IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
+    ErroringMessageHandler, IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::routing::gossip::{
@@ -76,7 +77,7 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::Cursor;
 use std::io::Write;
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -309,7 +310,7 @@ pub type SimpleArcChannelManager<M, T, F, L> =
 pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
     SD,
     Arc<SimpleArcChannelManager<M, T, F, L>>,
-    Arc<OptionalNetworkGraphMsgHandler>,
+    Arc<IgnoringMessageHandler>,
     Arc<L>,
     Arc<IgnoringMessageHandler>,
 >;
@@ -321,6 +322,15 @@ pub type PeerManager = SimpleArcPeerManager<
     SenseiFeeEstimator,
     FilesystemLogger,
 >;
+
+pub type SimpleArcRoutingPeerManager<SD, L> = LdkPeerManager<
+    SD,
+    Arc<ErroringMessageHandler>,
+    Arc<NetworkGraphMessageHandler>,
+    Arc<L>,
+    Arc<IgnoringMessageHandler>,
+>;
+pub type RoutingPeerManager = SimpleArcRoutingPeerManager<SocketDescriptor, FilesystemLogger>;
 
 pub type ChannelManager =
     SimpleArcChannelManager<ChainMonitor, SenseiBroadcaster, SenseiFeeEstimator, FilesystemLogger>;
@@ -548,7 +558,6 @@ impl LightningNode {
         alias: String,
         data_dir: String,
         passphrase: String,
-        external_router: bool,
         p2p: Arc<SenseiP2P>,
         chain_manager: Arc<SenseiChainManager>,
         database: Arc<SenseiDatabase>,
@@ -734,8 +743,6 @@ impl LightningNode {
 
         let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 
-        // is it safe to start this now instead of in `start`
-        // need to better understand separation; will depend on actual creation and startup flows
         let channel_manager_sync = channel_manager.clone();
         let chain_monitor_sync = chain_monitor.clone();
 
@@ -749,21 +756,11 @@ impl LightningNode {
             .await
             .unwrap();
 
-        let route_handler = match external_router {
-            true => Arc::new(OptionalNetworkGraphMsgHandler {
-                network_graph_msg_handler: None,
-            }),
-            false => Arc::new(OptionalNetworkGraphMsgHandler {
-                network_graph_msg_handler: Some(p2p.network_graph_message_handler.clone()),
-            }),
-        };
-
         let lightning_msg_handler = MessageHandler {
             chan_handler: channel_manager.clone(),
-            route_handler,
+            route_handler: Arc::new(IgnoringMessageHandler {}),
         };
 
-        // Step 13: Initialize the PeerManager
         let mut ephemeral_bytes = [0; 32];
         rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
 
@@ -829,8 +826,6 @@ impl LightningNode {
 
         let bg_persister = Arc::clone(&persister);
 
-        // TODO: should we allow all nodes to update NetworkGraph based on payment failures?
-        //       feels like probably but depends on exactly what is updated
         let background_processor = BackgroundProcessor::start(
             bg_persister,
             invoice_payer.clone(),
@@ -843,61 +838,11 @@ impl LightningNode {
         );
 
         // Reconnect to channel peers if possible.
-
-        let channel_manager_reconnect = channel_manager.clone();
-        let peer_manager_reconnect = peer_manager.clone();
-        let _persister_peer = persister.clone();
-        let network_graph_reconnect = p2p.network_graph.clone();
-        handles.push(tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
-            loop {
-                interval.tick().await;
-
-                for chan_info in channel_manager_reconnect.list_channels() {
-                    let pubkey = chan_info.counterparty.node_id;
-                    if !chan_info.is_usable
-                        && !connected_to_peer(&pubkey, peer_manager_reconnect.clone())
-                    {
-                        let node_id = NodeId::from_pubkey(&pubkey);
-                        let addresses = {
-                            let network_graph = network_graph_reconnect.read_only();
-                            network_graph.nodes().get(&node_id).and_then(|info| {
-                                info.announcement_info
-                                    .as_ref()
-                                    .map(|info| info.addresses.clone())
-                            })
-                        };
-
-                        if let Some(addresses) = addresses {
-                            for address in addresses {
-                                let addr = match address {
-                                    NetAddress::IPv4 { addr, port } => {
-                                        Some(SocketAddr::new(IpAddr::from(addr), port))
-                                    }
-                                    NetAddress::IPv6 { addr, port } => {
-                                        Some(SocketAddr::new(IpAddr::from(addr), port))
-                                    }
-                                    NetAddress::OnionV2(_) => None,
-                                    NetAddress::OnionV3 { .. } => None,
-                                };
-
-                                if let Some(addr) = addr {
-                                    if let Ok(()) = connect_peer_if_necessary(
-                                        pubkey,
-                                        addr,
-                                        peer_manager_reconnect.clone(),
-                                    )
-                                    .await
-                                    {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }));
+        p2p.channel_peer_reconnector.register_node(
+            id.clone(),
+            peer_manager.clone(),
+            channel_manager.clone(),
+        );
 
         // Regularly broadcast our node_announcement. This is only required (or possible) if we have
         // some public channels, and is only useful if we have public listen address(es) to announce.
@@ -977,6 +922,7 @@ impl LightningNode {
             self.event_sender.subscribe(),
             self.broadcaster.clone(),
             self.peer_manager.clone(),
+            self.p2p.peer_connector.clone(),
         );
         opener.open_batch(requests).await
     }
@@ -1636,100 +1582,6 @@ impl LightningNode {
     }
 }
 
-pub fn parse_pubkey(pubkey: &str) -> Result<PublicKey, std::io::Error> {
-    let pubkey = hex_utils::to_compressed_pubkey(pubkey);
-    if pubkey.is_none() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "ERROR: unable to parse given pubkey for node",
-        ));
-    }
-    Ok(pubkey.unwrap())
-}
-
-pub async fn parse_peer_addr(peer_addr_str: &str) -> Result<SocketAddr, std::io::Error> {
-    let peer_addr = peer_addr_str.to_socket_addrs().map(|mut r| r.next());
-
-    if peer_addr.is_err() || peer_addr.as_ref().unwrap().is_none() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "ERROR: couldn't parse host:port into a socket address",
-        ));
-    }
-
-    let addr = peer_addr.unwrap().unwrap();
-
-    let listen_addr = public_ip::addr()
-        .await
-        .unwrap_or_else(|| [127, 0, 0, 1].into());
-
-    let connect_address = match listen_addr == addr.ip() {
-        true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
-        false => addr,
-    };
-
-    Ok(connect_address)
-}
-
-pub async fn parse_peer_info(
-    peer_pubkey_and_ip_addr: String,
-) -> Result<(PublicKey, SocketAddr), std::io::Error> {
-    let mut pubkey_and_addr = peer_pubkey_and_ip_addr.split('@');
-    let pubkey = pubkey_and_addr.next();
-    let peer_addr_str = pubkey_and_addr.next();
-    if pubkey.is_none() || peer_addr_str.is_none() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "ERROR: incorrectly formatted peer info. Should be formatted as: `pubkey@host:port`",
-        ));
-    }
-
-    let pubkey = parse_pubkey(pubkey.unwrap())?;
-    let connect_address = parse_peer_addr(peer_addr_str.unwrap()).await?;
-
-    Ok((pubkey, connect_address))
-}
-
 pub fn connected_to_peer(pubkey: &PublicKey, peer_manager: Arc<PeerManager>) -> bool {
     peer_manager.get_peer_node_ids().contains(pubkey)
-}
-
-pub(crate) async fn connect_peer_if_necessary(
-    pubkey: PublicKey,
-    peer_addr: SocketAddr,
-    peer_manager: Arc<PeerManager>,
-) -> Result<(), ()> {
-    if connected_to_peer(&pubkey, peer_manager.clone()) {
-        return Ok(());
-    }
-
-    match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr).await
-    {
-        Some(connection_closed_future) => {
-            let mut connection_closed_future = Box::pin(connection_closed_future);
-            loop {
-                match futures::poll!(&mut connection_closed_future) {
-                    std::task::Poll::Ready(_) => {
-                        println!("ERROR: Peer disconnected before we finished the handshake");
-                        return Err(());
-                    }
-                    std::task::Poll::Pending => {}
-                }
-                // Avoid blocking the tokio context by sleeping a bit
-                match peer_manager
-                    .get_peer_node_ids()
-                    .iter()
-                    .find(|id| **id == pubkey)
-                {
-                    Some(_) => break,
-                    None => tokio::time::sleep(Duration::from_millis(10)).await,
-                }
-            }
-        }
-        None => {
-            //println!("ERROR: failed to connect to peer");
-            return Err(());
-        }
-    }
-    Ok(())
 }

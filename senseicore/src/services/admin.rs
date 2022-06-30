@@ -769,9 +769,6 @@ impl AdminService {
                 }
             }
         };
-
-        let external_router = node.get_role() == node::NodeRole::Default;
-
         match status {
             None => {
                 let (lightning_node, handles, background_processor) = LightningNode::new(
@@ -787,7 +784,6 @@ impl AdminService {
                         node.id.clone()
                     ),
                     passphrase,
-                    external_router,
                     self.p2p.clone(),
                     self.chain_manager.clone(),
                     self.database.clone(),
@@ -835,6 +831,9 @@ impl AdminService {
                 // updating our channel data after we've stopped the background processor.
                 node_handle.node.peer_manager.disconnect_all_peers();
                 node_handle.node.stop_listen.store(true, Ordering::Release);
+                self.p2p
+                    .channel_peer_reconnector
+                    .unregister_node(node_handle.node.id.clone());
                 let _res = node_handle.background_processor.stop();
                 for handle in node_handle.handles {
                     handle.abort();

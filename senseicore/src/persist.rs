@@ -8,7 +8,8 @@ use std::{
     sync::Arc,
 };
 
-use crate::{disk::FilesystemLogger, node::NetworkGraph};
+use super::database::SenseiDatabase;
+use crate::{disk::FilesystemLogger, node::NetworkGraph, p2p::utils::parse_peer_info};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{
     blockdata::constants::genesis_block, hashes::hex::FromHex, BlockHash, Network, Txid,
@@ -26,10 +27,6 @@ use lightning::{
     },
 };
 use lightning_persister::FilesystemPersister;
-
-use crate::node;
-
-use super::database::SenseiDatabase;
 
 pub trait KVStoreReader {
     fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>>;
@@ -241,7 +238,7 @@ impl SenseiPersister {
         let mut peer_data = HashMap::new();
         let raw_peer_data = self.get_raw_channel_peer_data();
         for line in raw_peer_data.lines() {
-            match node::parse_peer_info(line.to_string()).await {
+            match parse_peer_info(line.to_string()).await {
                 Ok((pubkey, socket_addr)) => {
                     peer_data.insert(pubkey, socket_addr);
                 }

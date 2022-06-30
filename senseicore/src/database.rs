@@ -573,8 +573,22 @@ impl SenseiDatabase {
             .map(|model| model.map(|model| model.v))
     }
 
+    pub fn get_seed_sync(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.get_seed(node_id).await })
+        })
+    }
+
     pub async fn set_seed(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
         self.set_value(node_id, String::from("seed"), seed).await
+    }
+
+    pub fn set_seed_sync(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.set_seed(node_id, seed).await })
+        })
     }
 
     pub async fn create_seed(
