@@ -1,5 +1,3 @@
-use std::io::Cursor;
-
 use bitcoin::secp256k1::PublicKey;
 use lightning::ln::channelmanager::ChannelDetails;
 use lightning::ln::msgs::{ErrorAction, LightningError};
@@ -8,10 +6,96 @@ use lightning::routing::gossip::NodeId;
 use lightning::routing::router::{Route, RouteHop, RouteParameters};
 use lightning::routing::scoring::{ChannelUsage, Score};
 use lightning::util::ser::{Readable, Writeable};
-use lightning_invoice::payment::Router;
+use lightning_invoice::payment::Router as LdkRouterTrait;
 use serde::Deserialize;
+use std::io::Cursor;
 
 use crate::hex_utils;
+use crate::node::{Router, Scorer};
+
+pub enum AnyRouter {
+    Local(Router),
+    Remote(RemoteRouter),
+}
+
+impl AnyRouter {
+    pub fn new_remote(host: String, token: String) -> Self {
+        AnyRouter::Remote(RemoteRouter::new(host, token))
+    }
+}
+
+impl<S: Score> LdkRouterTrait<S> for AnyRouter {
+    fn find_route(
+        &self,
+        payer: &PublicKey,
+        route_params: &RouteParameters,
+        payment_hash: &PaymentHash,
+        first_hops: Option<&[&ChannelDetails]>,
+        scorer: &S,
+    ) -> Result<Route, LightningError> {
+        match self {
+            AnyRouter::Local(router) => {
+                router.find_route(payer, route_params, payment_hash, first_hops, scorer)
+            }
+            AnyRouter::Remote(router) => {
+                router.find_route(payer, route_params, payment_hash, first_hops, scorer)
+            }
+        }
+    }
+}
+
+pub enum AnyScorer {
+    Local(Scorer),
+    Remote(RemoteScorer),
+}
+
+impl AnyScorer {
+    pub fn new_remote(host: String, token: String) -> Self {
+        AnyScorer::Remote(RemoteScorer::new(host, token))
+    }
+}
+
+impl Score for AnyScorer {
+    fn channel_penalty_msat(
+        &self,
+        short_channel_id: u64,
+        source: &NodeId,
+        target: &NodeId,
+        usage: ChannelUsage,
+    ) -> u64 {
+        match self {
+            AnyScorer::Local(scorer) => {
+                scorer.channel_penalty_msat(short_channel_id, source, target, usage)
+            }
+            AnyScorer::Remote(scorer) => {
+                scorer.channel_penalty_msat(short_channel_id, source, target, usage)
+            }
+        }
+    }
+
+    fn payment_path_failed(&mut self, path: &[&RouteHop], short_channel_id: u64) {
+        match self {
+            AnyScorer::Local(scorer) => scorer.payment_path_failed(path, short_channel_id),
+            AnyScorer::Remote(scorer) => scorer.payment_path_failed(path, short_channel_id),
+        }
+    }
+
+    fn payment_path_successful(&mut self, path: &[&RouteHop]) {
+        match self {
+            AnyScorer::Local(scorer) => scorer.payment_path_successful(path),
+            AnyScorer::Remote(scorer) => scorer.payment_path_successful(path),
+        }
+    }
+}
+
+impl Writeable for AnyScorer {
+    fn write<W: lightning::util::ser::Writer>(&self, writer: &mut W) -> Result<(), std::io::Error> {
+        match self {
+            AnyScorer::Local(scorer) => writer.write_all(&scorer.encode()),
+            AnyScorer::Remote(_scorer) => writer.write_all(&[0]),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct RemoteSenseiInfo {
@@ -25,6 +109,11 @@ pub struct RemoteScorer {
 }
 
 impl RemoteScorer {
+    pub fn new(host: String, token: String) -> Self {
+        Self {
+            remote_sensei: RemoteSenseiInfo { host, token },
+        }
+    }
     fn payment_path_failed_route(&self) -> String {
         format!("{}/v1/ldk/network/path/failed", self.remote_sensei.host)
     }
@@ -76,17 +165,22 @@ struct FindRouteResponse {
 }
 
 #[derive(Clone)]
-struct RemoteRouter {
-    remote_sensei: RemoteSenseiInfo,
+pub struct RemoteRouter {
+    pub remote_sensei: RemoteSenseiInfo,
 }
 
 impl RemoteRouter {
+    pub fn new(host: String, token: String) -> Self {
+        Self {
+            remote_sensei: RemoteSenseiInfo { host, token },
+        }
+    }
     fn find_route_route(&self) -> String {
         format!("{}/v1/ldk/network/route", self.remote_sensei.host)
     }
 }
 
-impl<S: Score> Router<S> for RemoteRouter {
+impl<S: Score> LdkRouterTrait<S> for RemoteRouter {
     fn find_route(
         &self,
         payer: &PublicKey,

@@ -28,6 +28,8 @@ pub struct SenseiConfig {
     pub port_range_min: u16,
     pub port_range_max: u16,
     pub database_url: String,
+    pub remote_p2p_host: Option<String>,
+    pub remote_p2p_token: Option<String>,
 }
 
 impl Default for SenseiConfig {
@@ -47,6 +49,8 @@ impl Default for SenseiConfig {
             port_range_min: 10000,
             port_range_max: 65535,
             database_url: String::from("sensei.db"),
+            remote_p2p_host: None,
+            remote_p2p_token: None,
         }
     }
 }

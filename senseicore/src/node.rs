@@ -18,6 +18,7 @@ use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::events::SenseiEvent;
+use crate::p2p::router::{AnyRouter, AnyScorer};
 use crate::p2p::utils::parse_peer_info;
 use crate::p2p::SenseiP2P;
 use crate::persist::{AnyKVStore, DatabaseStore, SenseiPersister};
@@ -340,8 +341,8 @@ pub type Scorer = ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 
 pub type InvoicePayer = payment::InvoicePayer<
     Arc<ChannelManager>,
-    Router,
-    Arc<Mutex<Scorer>>,
+    AnyRouter,
+    Arc<Mutex<AnyScorer>>,
     Arc<FilesystemLogger>,
     Arc<LightningNodeEventHandler>,
 >;

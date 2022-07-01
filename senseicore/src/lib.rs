@@ -10,7 +10,6 @@ pub mod hex_utils;
 pub mod node;
 pub mod p2p;
 pub mod persist;
-pub mod router;
 pub mod services;
 pub mod utils;
 pub mod version;

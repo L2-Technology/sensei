@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 pub mod peer_connector;
+pub mod router;
 pub mod utils;
 
 use lightning::{
@@ -19,6 +20,7 @@ use lightning::{
 use lightning_invoice::utils::DefaultRouter;
 use rand::RngCore;
 use std::{
+    ops::Deref,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
@@ -27,11 +29,14 @@ use crate::{
     config::SenseiConfig,
     database::SenseiDatabase,
     disk::FilesystemLogger,
-    node::{NetworkGraph, NetworkGraphMessageHandler, Router, RoutingPeerManager, Scorer},
+    node::{NetworkGraph, NetworkGraphMessageHandler, RoutingPeerManager},
     persist::{AnyKVStore, DatabaseStore, SenseiPersister},
 };
 
-use self::peer_connector::PeerConnector;
+use self::{
+    peer_connector::PeerConnector,
+    router::{AnyRouter, AnyScorer},
+};
 
 #[derive(Clone)]
 pub struct SenseiP2P {
@@ -39,7 +44,7 @@ pub struct SenseiP2P {
     pub persister: Arc<SenseiPersister>,
     pub network_graph: Arc<NetworkGraph>,
     pub network_graph_message_handler: Arc<NetworkGraphMessageHandler>,
-    pub scorer: Arc<Mutex<Scorer>>,
+    pub scorer: Arc<Mutex<AnyScorer>>,
     pub logger: Arc<FilesystemLogger>,
     pub peer_manager: Arc<RoutingPeerManager>,
     pub peer_connector: Arc<PeerConnector>,
@@ -62,9 +67,20 @@ impl SenseiP2P {
             logger.clone(),
         ));
         let network_graph = Arc::new(persister.read_network_graph());
-        let scorer = Arc::new(Mutex::new(
-            persister.read_scorer(Arc::clone(&network_graph)),
-        ));
+
+        let scorer = match (
+            config.remote_p2p_host.as_ref(),
+            config.remote_p2p_token.as_ref(),
+        ) {
+            (Some(host), Some(token)) => Arc::new(Mutex::new(AnyScorer::new_remote(
+                host.clone(),
+                token.clone(),
+            ))),
+            _ => Arc::new(Mutex::new(AnyScorer::Local(
+                persister.read_scorer(Arc::clone(&network_graph)),
+            ))),
+        };
+
         let network_graph_message_handler = Arc::new(NetworkGraphMessageHandler::new(
             Arc::clone(&network_graph),
             None::<Arc<dyn chain::Access + Send + Sync>>,
@@ -116,13 +132,15 @@ impl SenseiP2P {
             let mut interval = tokio::time::interval(Duration::from_secs(600));
             loop {
                 interval.tick().await;
-                if scorer_persister
-                    .persist_scorer(&scorer_persist.lock().unwrap())
-                    .is_err()
-                {
-                    // Persistence errors here are non-fatal as channels will be re-scored as payments
-                    // fail, but they may indicate a disk error which could be fatal elsewhere.
-                    eprintln!("Warning: Failed to persist scorer, check your disk and permissions");
+                let scorer = scorer_persist.lock().unwrap();
+                if let AnyScorer::Local(scorer) = scorer.deref() {
+                    if scorer_persister.persist_scorer(scorer).is_err() {
+                        // Persistence errors here are non-fatal as channels will be re-scored as payments
+                        // fail, but they may indicate a disk error which could be fatal elsewhere.
+                        eprintln!(
+                            "Warning: Failed to persist scorer, check your disk and permissions"
+                        );
+                    }
                 }
             }
         });
@@ -142,9 +160,19 @@ impl SenseiP2P {
         }
     }
 
-    pub fn get_router(&self) -> Router {
-        let mut randomness: [u8; 32] = [0; 32];
-        rand::thread_rng().fill_bytes(&mut randomness);
-        DefaultRouter::new(self.network_graph.clone(), self.logger.clone(), randomness)
+    pub fn get_router(&self) -> AnyRouter {
+        match (
+            self.config.remote_p2p_host.as_ref(),
+            self.config.remote_p2p_token.as_ref(),
+        ) {
+            (Some(host), Some(token)) => AnyRouter::new_remote(host.clone(), token.clone()),
+            _ => {
+                let mut randomness: [u8; 32] = [0; 32];
+                rand::thread_rng().fill_bytes(&mut randomness);
+                let local_router =
+                    DefaultRouter::new(self.network_graph.clone(), self.logger.clone(), randomness);
+                AnyRouter::Local(local_router)
+            }
+        }
     }
 }
