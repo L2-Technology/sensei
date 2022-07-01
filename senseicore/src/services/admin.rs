@@ -204,6 +204,7 @@ impl AdminService {
         database: SenseiDatabase,
         chain_manager: Arc<SenseiChainManager>,
         event_sender: broadcast::Sender<SenseiEvent>,
+        runtime_handle: tokio::runtime::Handle,
     ) -> Self {
         let mut used_ports = HashSet::new();
         let mut available_ports = VecDeque::new();
@@ -229,6 +230,7 @@ impl AdminService {
             config.clone(),
             database.clone(),
             logger.clone(),
+            runtime_handle.clone(),
         ));
 
         Self {

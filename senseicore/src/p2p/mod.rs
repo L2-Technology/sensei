@@ -48,6 +48,7 @@ pub struct SenseiP2P {
     pub logger: Arc<FilesystemLogger>,
     pub peer_manager: Arc<RoutingPeerManager>,
     pub peer_connector: Arc<PeerConnector>,
+    pub runtime_handle: tokio::runtime::Handle,
 }
 
 impl SenseiP2P {
@@ -55,6 +56,7 @@ impl SenseiP2P {
         config: Arc<SenseiConfig>,
         database: Arc<SenseiDatabase>,
         logger: Arc<FilesystemLogger>,
+        runtime_handle: tokio::runtime::Handle,
     ) -> Self {
         let p2p_node_id = "SENSEI".to_string();
 
@@ -75,6 +77,7 @@ impl SenseiP2P {
             (Some(host), Some(token)) => Arc::new(Mutex::new(AnyScorer::new_remote(
                 host.clone(),
                 token.clone(),
+                runtime_handle.clone(),
             ))),
             _ => Arc::new(Mutex::new(AnyScorer::Local(
                 persister.read_scorer(Arc::clone(&network_graph)),
@@ -157,6 +160,7 @@ impl SenseiP2P {
             network_graph_message_handler,
             peer_manager,
             peer_connector,
+            runtime_handle,
         }
     }
 
@@ -165,7 +169,9 @@ impl SenseiP2P {
             self.config.remote_p2p_host.as_ref(),
             self.config.remote_p2p_token.as_ref(),
         ) {
-            (Some(host), Some(token)) => AnyRouter::new_remote(host.clone(), token.clone()),
+            (Some(host), Some(token)) => {
+                AnyRouter::new_remote(host.clone(), token.clone(), self.runtime_handle.clone())
+            }
             _ => {
                 let mut randomness: [u8; 32] = [0; 32];
                 rand::thread_rng().fill_bytes(&mut randomness);
