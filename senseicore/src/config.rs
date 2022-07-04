@@ -30,6 +30,7 @@ pub struct SenseiConfig {
     pub database_url: String,
     pub remote_p2p_host: Option<String>,
     pub remote_p2p_token: Option<String>,
+    pub gossip_peers: String,
 }
 
 impl Default for SenseiConfig {
@@ -51,6 +52,7 @@ impl Default for SenseiConfig {
             database_url: String::from("sensei.db"),
             remote_p2p_host: None,
             remote_p2p_token: None,
+            gossip_peers: String::from(""),
         }
     }
 }

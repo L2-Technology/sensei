@@ -38,6 +38,7 @@ use self::{
     node_info::NodeInfoLookup,
     peer_connector::PeerConnector,
     router::{AnyRouter, AnyScorer},
+    utils::parse_peer_info,
 };
 
 #[derive(Clone)]
@@ -54,7 +55,7 @@ pub struct SenseiP2P {
 }
 
 impl SenseiP2P {
-    pub fn new(
+    pub async fn new(
         config: Arc<SenseiConfig>,
         database: Arc<SenseiDatabase>,
         logger: Arc<FilesystemLogger>,
@@ -143,6 +144,12 @@ impl SenseiP2P {
             node_info_lookup,
             peer_manager.clone(),
         ));
+
+        for gossip_peer in config.gossip_peers.split(',') {
+            if let Ok((pubkey, peer_addr)) = parse_peer_info(gossip_peer.to_string()).await {
+                let _res = peer_connector.connect_routing_peer(pubkey, peer_addr).await;
+            }
+        }
 
         let scorer_persister = Arc::clone(&persister);
         let scorer_persist = Arc::clone(&scorer);

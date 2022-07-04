@@ -238,12 +238,15 @@ impl AdminService {
         let logger = Arc::new(FilesystemLogger::new(String::from(data_dir)));
         let database = Arc::new(database);
         let config = Arc::new(config);
-        let p2p = Arc::new(SenseiP2P::new(
-            config.clone(),
-            database.clone(),
-            logger.clone(),
-            runtime_handle.clone(),
-        ));
+        let p2p = Arc::new(
+            SenseiP2P::new(
+                config.clone(),
+                database.clone(),
+                logger.clone(),
+                runtime_handle.clone(),
+            )
+            .await,
+        );
 
         Self {
             data_dir: String::from(data_dir),
