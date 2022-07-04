@@ -13,7 +13,9 @@ service Admin {
     rpc ListTokens (ListTokensRequest) returns (ListTokensResponse);
     rpc CreateToken (CreateTokenRequest) returns (Token);
     rpc DeleteToken (DeleteTokenRequest) returns (DeleteTokenResponse);
+    rpc ConnectGossipPeer (ConnectGossipPeerRequest) returns (ConnectGossipPeerResponse);
     rpc FindRoute (FindRouteRequest) returns (FindRouteResponse);
+    rpc NodeInfo (NodeInfoRequest) returns (NodeInfoResponse);
     rpc PathSuccessful (PathSuccessfulRequest) returns (PathSuccessfulResponse);
     rpc PathFailed (PathFailedRequest) returns (PathFailedResponse);
 }
@@ -187,6 +189,11 @@ message AdminStopNodeRequest {
 }
 message AdminStopNodeResponse {}
 
+message ConnectGossipPeerRequest {
+    string node_connection_string = 1;
+}
+message ConnectGossipPeerResponse {}
+
 message FindRouteRequest {
     string payer_public_key_hex = 1;
     string route_params_hex = 2;
@@ -195,6 +202,13 @@ message FindRouteRequest {
 }
 message FindRouteResponse {
     string route = 1;
+}
+
+message NodeInfoRequest {
+    string node_id_hex = 1;
+}
+message NodeInfoResponse {
+    optional string node_info = 1;
 }
 
 message PathSuccessfulRequest {

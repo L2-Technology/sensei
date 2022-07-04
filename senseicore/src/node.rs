@@ -78,7 +78,7 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::Cursor;
 use std::io::Write;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -784,7 +784,6 @@ impl LightningNode {
             chain_manager: chain_manager.clone(),
             event_sender: event_sender.clone(),
             broadcaster: broadcaster.clone(),
-            network_graph: p2p.network_graph.clone(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -932,48 +931,6 @@ impl LightningNode {
         let mut responses = self.open_channels(requests).await?;
         let (_request, result) = responses.pop().unwrap();
         result
-    }
-
-    pub async fn connect_to_peer(&self, pubkey: PublicKey, addr: SocketAddr) -> Result<(), Error> {
-        match lightning_net_tokio::connect_outbound(Arc::clone(&self.peer_manager), pubkey, addr)
-            .await
-        {
-            Some(connection_closed_future) => {
-                let mut connection_closed_future = Box::pin(connection_closed_future);
-                loop {
-                    match futures::poll!(&mut connection_closed_future) {
-                        std::task::Poll::Ready(_) => {
-                            println!("ERROR: Peer disconnected before we finished the handshake");
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                "ERROR: peer disconnected before we finished the handshake",
-                            )
-                            .into());
-                        }
-                        std::task::Poll::Pending => {}
-                    }
-                    // Avoid blocking the tokio context by sleeping a bit
-                    match self
-                        .peer_manager
-                        .get_peer_node_ids()
-                        .iter()
-                        .find(|id| **id == pubkey)
-                    {
-                        Some(_) => break,
-                        None => tokio::time::sleep(Duration::from_millis(10)).await,
-                    }
-                }
-            }
-            None => {
-                println!("ERROR: failed to connect to peer");
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "ERROR: failed to connect to peer",
-                )
-                .into());
-            }
-        }
-        Ok(())
     }
 
     async fn keysend<K: KeysInterface>(
@@ -1136,9 +1093,7 @@ impl LightningNode {
             .filter_map(|chan_info| {
                 let mut channel: Channel = chan_info.clone().into();
 
-                channel.alias = self
-                    .get_alias_for_channel_counterparty(&chan_info)
-                    .map(|alias_bytes| hex_utils::sanitize_string(&alias_bytes));
+                channel.alias = self.get_alias_for_channel_counterparty(&chan_info);
 
                 let match_channel = channel.clone();
                 let matches_channel_id = match_channel.channel_id.contains(&query);
@@ -1212,23 +1167,34 @@ impl LightningNode {
     pub fn get_alias_for_channel_counterparty(
         &self,
         channel_details: &ChannelDetails,
-    ) -> Option<[u8; 32]> {
-        let node_id = NodeId::from_pubkey(&channel_details.counterparty.node_id);
+    ) -> Option<String> {
+        let db_alias = match self
+            .database
+            .find_peer_sync(&self.id, &channel_details.counterparty.node_id.to_string())
+        {
+            Ok(Some(peer)) => peer.alias,
+            _ => None,
+        };
+        match db_alias {
+            Some(db_alias) => Some(db_alias),
+            None => {
+                let node_id = NodeId::from_pubkey(&channel_details.counterparty.node_id);
+                let alias = self
+                    .p2p
+                    .network_graph
+                    .read_only()
+                    .nodes()
+                    .get(&node_id)
+                    .and_then(|node_info| {
+                        node_info
+                            .announcement_info
+                            .clone()
+                            .map(|ann_info| ann_info.alias)
+                    });
 
-        let alias = self
-            .p2p
-            .network_graph
-            .read_only()
-            .nodes()
-            .get(&node_id)
-            .and_then(|node_info| {
-                node_info
-                    .announcement_info
-                    .clone()
-                    .map(|ann_info| ann_info.alias)
-            });
-
-        alias
+                alias.map(|alias_bytes| hex_utils::sanitize_string(&alias_bytes))
+            }
+        }
     }
 
     pub async fn list_payments(
@@ -1458,15 +1424,11 @@ impl LightningNode {
             } => {
                 let (pubkey, addr) = parse_peer_info(node_connection_string).await?;
 
-                let found_peer = self
-                    .peer_manager
-                    .get_peer_node_ids()
-                    .into_iter()
-                    .find(|node_pubkey| *node_pubkey == pubkey);
-
-                if found_peer.is_none() {
-                    self.connect_to_peer(pubkey, addr).await?;
-                }
+                let _res = self
+                    .p2p
+                    .peer_connector
+                    .connect_peer_if_necessary(&self.id, pubkey, addr, self.peer_manager.clone())
+                    .await;
 
                 Ok(NodeResponse::ConnectPeer {})
             }
@@ -1549,11 +1511,27 @@ impl LightningNode {
                 label,
                 zero_conf,
             } => {
+                let public_key = hex_utils::to_compressed_pubkey(&pubkey);
+
+                if public_key.is_none() {
+                    return Err(NodeRequestError::Sensei(String::from("invalid pubkey")));
+                }
+
+                let node_id = NodeId::from_pubkey(&public_key.unwrap());
+                let alias = self
+                    .p2p
+                    .peer_connector
+                    .node_info_lookup
+                    .get_alias(node_id)?;
+
                 let peer = match self.database.find_peer(&self.id, &pubkey).await? {
                     Some(peer) => {
                         let mut peer: entity::peer::ActiveModel = peer.into();
                         peer.label = ActiveValue::Set(Some(label));
                         peer.zero_conf = ActiveValue::Set(zero_conf);
+                        if alias.is_some() {
+                            peer.alias = ActiveValue::Set(alias);
+                        }
                         peer.update(self.database.get_connection())
                     }
                     None => {
@@ -1562,6 +1540,7 @@ impl LightningNode {
                             pubkey: ActiveValue::Set(pubkey),
                             label: ActiveValue::Set(Some(label)),
                             zero_conf: ActiveValue::Set(zero_conf),
+                            alias: ActiveValue::Set(alias),
                             ..Default::default()
                         };
                         peer.insert(self.database.get_connection())
@@ -1573,13 +1552,9 @@ impl LightningNode {
                 Ok(NodeResponse::AddKnownPeer {})
             }
             NodeRequest::RemoveKnownPeer { pubkey } => {
-                let _res = self.database.delete_peer(&self.id, &pubkey).await?;
+                self.database.delete_peer(&self.id, &pubkey).await?;
                 Ok(NodeResponse::RemoveKnownPeer {})
             }
         }
     }
-}
-
-pub fn connected_to_peer(pubkey: &PublicKey, peer_manager: Arc<PeerManager>) -> bool {
-    peer_manager.get_peer_node_ids().contains(pubkey)
 }

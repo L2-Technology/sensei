@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{fmt::Write, time::SystemTime};
 
 pub use sea_orm;
 
@@ -11,6 +11,7 @@ pub mod macaroon;
 pub mod node;
 pub mod payment;
 pub mod peer;
+pub mod peer_address;
 pub mod script_pubkey;
 pub mod transaction;
 pub mod utxo;
@@ -55,7 +56,7 @@ pub fn to_vec_unsafe(hex: &str) -> Vec<u8> {
 pub fn hex_str(value: &[u8]) -> String {
     let mut res = String::with_capacity(64);
     for v in value {
-        res += &format!("{:02x}", v);
+        let _ = write!(res, "{:02x}", v);
     }
     res
 }

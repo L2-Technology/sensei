@@ -1,35 +1,63 @@
 use bitcoin::secp256k1::PublicKey;
-use std::net::{SocketAddr, ToSocketAddrs};
+use lightning::ln::msgs::NetAddress;
+use socks::{TargetAddr, ToTargetAddr};
+use std::net::{IpAddr, SocketAddr};
 
 use crate::hex_utils;
 
-pub async fn parse_peer_addr(peer_addr_str: &str) -> Result<SocketAddr, std::io::Error> {
-    let peer_addr = peer_addr_str.to_socket_addrs().map(|mut r| r.next());
+pub fn net_address_to_socket_addr(net_address: NetAddress) -> Option<SocketAddr> {
+    match net_address {
+        NetAddress::IPv4 { addr, port } => Some(SocketAddr::new(IpAddr::from(addr), port)),
+        NetAddress::IPv6 { addr, port } => Some(SocketAddr::new(IpAddr::from(addr), port)),
+        NetAddress::OnionV2(_) => None,
+        NetAddress::OnionV3 { .. } => None,
+    }
+}
 
-    if peer_addr.is_err() || peer_addr.as_ref().unwrap().is_none() {
+pub async fn parse_peer_addr(peer_addr_str: &str) -> Result<NetAddress, std::io::Error> {
+    let peer_addr = peer_addr_str.to_target_addr();
+
+    if peer_addr.is_err() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
-            "ERROR: couldn't parse host:port into a socket address",
+            "ERROR: couldn't parse host:port into a target address",
         ));
     }
 
-    let addr = peer_addr.unwrap().unwrap();
+    let addr = peer_addr.unwrap();
 
-    let listen_addr = public_ip::addr()
-        .await
-        .unwrap_or_else(|| [127, 0, 0, 1].into());
+    match addr {
+        TargetAddr::Ip(socket_addr) => {
+            let listen_addr = public_ip::addr()
+                .await
+                .unwrap_or_else(|| [127, 0, 0, 1].into());
 
-    let connect_address = match listen_addr == addr.ip() {
-        true => format!("127.0.0.1:{}", addr.port()).parse().unwrap(),
-        false => addr,
-    };
+            let connect_address = match listen_addr == socket_addr.ip() {
+                true => format!("127.0.0.1:{}", socket_addr.port()).parse().unwrap(),
+                false => socket_addr,
+            };
 
-    Ok(connect_address)
+            match connect_address {
+                SocketAddr::V4(v4) => Ok(NetAddress::IPv4 {
+                    addr: v4.ip().octets(),
+                    port: v4.port(),
+                }),
+                SocketAddr::V6(v6) => Ok(NetAddress::IPv6 {
+                    addr: v6.ip().octets(),
+                    port: v6.port(),
+                }),
+            }
+        }
+        TargetAddr::Domain(_host, _port) => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "ERROR: we don't support tor addresses yet",
+        )),
+    }
 }
 
 pub async fn parse_peer_info(
     peer_pubkey_and_ip_addr: String,
-) -> Result<(PublicKey, SocketAddr), std::io::Error> {
+) -> Result<(PublicKey, NetAddress), std::io::Error> {
     let mut pubkey_and_addr = peer_pubkey_and_ip_addr.split('@');
     let pubkey = pubkey_and_addr.next();
     let peer_addr_str = pubkey_and_addr.next();

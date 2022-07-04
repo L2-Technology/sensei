@@ -285,14 +285,15 @@ impl ChannelOpener {
                 .expect("failed to parse host port for counterparty");
             self.peer_connector
                 .connect_peer_if_necessary(
+                    &self.node_id,
                     counterparty_pubkey,
-                    counterparty_addr,
+                    counterparty_addr.clone(),
                     self.peer_manager.clone(),
                 )
                 .await
                 .unwrap_or_else(|_| {
                     panic!(
-                        "failed to connect to peer {}@{}",
+                        "failed to connect to peer {}@{:?}",
                         counterparty_pubkey, counterparty_addr
                     )
                 });

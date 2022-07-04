@@ -119,6 +119,19 @@ impl From<CreateNodeParams> for AdminRequest {
 }
 
 #[derive(Deserialize)]
+pub struct ConnectGossipPeerParams {
+    node_connection_string: String,
+}
+
+impl From<ConnectGossipPeerParams> for AdminRequest {
+    fn from(params: ConnectGossipPeerParams) -> Self {
+        Self::ConnectGossipPeer {
+            node_connection_string: params.node_connection_string,
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct FindRouteParams {
     pub payer_public_key_hex: String,
     pub route_params_hex: String,
@@ -133,6 +146,19 @@ impl From<FindRouteParams> for AdminRequest {
             route_params_hex: params.route_params_hex,
             payment_hash_hex: params.payment_hash_hex,
             first_hops: params.first_hops,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct NodeInfoParams {
+    pub node_id_hex: String,
+}
+
+impl From<NodeInfoParams> for AdminRequest {
+    fn from(params: NodeInfoParams) -> Self {
+        Self::NodeInfo {
+            node_id_hex: params.node_id_hex,
         }
     }
 }
@@ -296,9 +322,36 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/start", post(start_sensei))
         .route("/v1/login", post(login))
         .route("/v1/logout", post(logout))
+        .route("/v1/peers/connect", post(connect_gossip_peer))
         .route("/v1/ldk/network/route", post(find_route))
         .route("/v1/ldk/network/path/successful", post(path_successful))
         .route("/v1/ldk/network/path/failed", post(path_failed))
+        .route("/v1/ldk/network/node_info", post(node_info))
+}
+
+pub async fn connect_gossip_peer(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    cookies: Cookies,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon: _, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated = authenticate_request(&admin_service, "routing", &cookies, token).await?;
+    let request = {
+        let params: Result<ConnectGossipPeerParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+
+    if authenticated {
+        match admin_service.call(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
 }
 
 pub async fn find_route(
@@ -310,6 +363,31 @@ pub async fn find_route(
     let authenticated = authenticate_request(&admin_service, "routing", &cookies, token).await?;
     let request = {
         let params: Result<FindRouteParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        }
+    }?;
+
+    if authenticated {
+        match admin_service.call(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+pub async fn node_info(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    cookies: Cookies,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon: _, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated = authenticate_request(&admin_service, "routing", &cookies, token).await?;
+    let request = {
+        let params: Result<NodeInfoParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),

@@ -1,13 +1,24 @@
 use bitcoin::secp256k1::PublicKey;
-use lightning::{ln::msgs::NetAddress, routing::gossip::NodeId};
+use entity::{
+    peer_address::PeerAddressSource,
+    sea_orm::{ActiveModelTrait, ActiveValue},
+    seconds_since_epoch,
+};
+use lightning::{ln::msgs::NetAddress, routing::gossip::NodeId, util::ser::Readable};
 
-use crate::node::{ChannelManager, NetworkGraph, PeerManager, RoutingPeerManager};
+use crate::{
+    database::SenseiDatabase,
+    error::Error,
+    node::{ChannelManager, PeerManager, RoutingPeerManager},
+};
 use std::{
     collections::{HashMap, VecDeque},
-    net::{IpAddr, SocketAddr},
+    io::Cursor,
     sync::{Arc, Mutex},
     time::Duration,
 };
+
+use super::{node_info::NodeInfoLookup, utils::net_address_to_socket_addr};
 
 pub enum PeerConnectorRequest {
     RegisterNode(String, Arc<PeerManager>, Arc<ChannelManager>),
@@ -15,38 +26,72 @@ pub enum PeerConnectorRequest {
 }
 
 pub struct PeerConnector {
+    pub database: Arc<SenseiDatabase>,
     pub routing_peer_manager: Arc<RoutingPeerManager>,
     pub requests: Arc<Mutex<VecDeque<PeerConnectorRequest>>>,
-    pub network_graph: Arc<NetworkGraph>,
+    pub node_info_lookup: Arc<NodeInfoLookup>,
     pub interval: Duration,
     pub target_routing_peers: u16,
-    pub pubkey_addr_map: Arc<Mutex<HashMap<PublicKey, SocketAddr>>>,
 }
 
 impl PeerConnector {
     pub fn new(
-        network_graph: Arc<NetworkGraph>,
+        database: Arc<SenseiDatabase>,
+        node_info_lookup: Arc<NodeInfoLookup>,
         routing_peer_manager: Arc<RoutingPeerManager>,
     ) -> Self {
         Self {
+            database,
             routing_peer_manager,
             requests: Arc::new(Mutex::new(VecDeque::new())),
-            network_graph,
+            node_info_lookup,
             interval: Duration::from_secs(5),
             target_routing_peers: 10,
-            pubkey_addr_map: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    pub async fn get_addresses_for_pubkey(
+        &self,
+        node_id: &str,
+        pubkey: &PublicKey,
+    ) -> Result<Vec<NetAddress>, Error> {
+        let target_node_id = NodeId::from_pubkey(pubkey);
+
+        let mut network_graph_addresses = self.node_info_lookup.get_addresses(target_node_id)?;
+
+        let mut database_addresses = self
+            .database
+            .list_peer_addresses(node_id, &pubkey.to_string()[..])
+            .await?
+            .into_iter()
+            .map(|peer_address| {
+                let mut readable_peer_address = Cursor::new(peer_address.address);
+                NetAddress::read(&mut readable_peer_address).unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        database_addresses.append(&mut network_graph_addresses);
+
+        // TODO: filter duplicates?
+
+        Ok(database_addresses)
     }
 
     pub async fn connect_routing_peer(
         &self,
         pubkey: PublicKey,
-        peer_addr: SocketAddr,
+        peer_addr: NetAddress,
     ) -> Result<(), ()> {
+        let socket_addr = net_address_to_socket_addr(peer_addr.clone());
+        if socket_addr.is_none() {
+            return Err(());
+        }
+        let socket_addr = socket_addr.unwrap();
+
         match lightning_net_tokio::connect_outbound(
             Arc::clone(&self.routing_peer_manager),
             pubkey,
-            peer_addr,
+            socket_addr,
         )
         .await
         {
@@ -82,11 +127,17 @@ impl PeerConnector {
 
     pub async fn connect_peer(
         &self,
+        local_node_id: &str,
         pubkey: PublicKey,
-        peer_addr: SocketAddr,
+        peer_addr: NetAddress,
         peer_manager: Arc<PeerManager>,
     ) -> Result<(), ()> {
-        match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, peer_addr)
+        let socket_addr = net_address_to_socket_addr(peer_addr.clone());
+        if socket_addr.is_none() {
+            return Err(());
+        }
+        let socket_addr = socket_addr.unwrap();
+        match lightning_net_tokio::connect_outbound(Arc::clone(&peer_manager), pubkey, socket_addr)
             .await
         {
             Some(connection_closed_future) => {
@@ -109,10 +160,39 @@ impl PeerConnector {
                         None => tokio::time::sleep(Duration::from_millis(10)).await,
                     }
                 }
+
+                if let Ok(known_addresses) = self
+                    .database
+                    .list_peer_addresses(local_node_id, &pubkey.to_string())
+                    .await
                 {
-                    let mut pubkey_addr_map = self.pubkey_addr_map.lock().unwrap();
-                    pubkey_addr_map.insert(pubkey, peer_addr);
+                    let known_address = known_addresses.iter().find(|address| {
+                        let mut existing_address_readable = Cursor::new(address.address.clone());
+                        let address = NetAddress::read(&mut existing_address_readable).unwrap();
+                        address == peer_addr
+                    });
+
+                    let now: i64 = seconds_since_epoch();
+
+                    match known_address {
+                        Some(address) => {
+                            let mut peer_address: entity::peer_address::ActiveModel =
+                                address.clone().into();
+                            peer_address.last_connected_at = ActiveValue::Set(now);
+                            peer_address.update(self.database.get_connection())
+                        }
+                        None => {
+                            let peer_address = entity::peer_address::ActiveModel {
+                                node_id: ActiveValue::Set(local_node_id.to_string()),
+                                pubkey: ActiveValue::Set(pubkey.to_string()),
+                                source: ActiveValue::Set(PeerAddressSource::OutboundConnect.into()),
+                                ..Default::default()
+                            };
+                            peer_address.insert(self.database.get_connection())
+                        }
+                    };
                 }
+
                 if self.router_should_connect_to_peer(&pubkey) {
                     let _res = self.connect_routing_peer(pubkey, peer_addr).await;
                 }
@@ -142,12 +222,14 @@ impl PeerConnector {
 
     pub async fn connect_peer_if_necessary(
         &self,
+        local_node_id: &str,
         pubkey: PublicKey,
-        peer_addr: SocketAddr,
+        peer_addr: NetAddress,
         peer_manager: Arc<PeerManager>,
     ) -> Result<(), ()> {
         if !peer_manager.get_peer_node_ids().contains(&pubkey) {
-            self.connect_peer(pubkey, peer_addr, peer_manager).await?
+            self.connect_peer(local_node_id, pubkey, peer_addr, peer_manager)
+                .await?
         }
         Ok(())
     }
@@ -176,44 +258,24 @@ impl PeerConnector {
         let mut interval = tokio::time::interval(self.interval);
         loop {
             interval.tick().await;
-            for (peer_manager, channel_manager) in nodes.values() {
+            for (node_id, (peer_manager, channel_manager)) in nodes.iter() {
                 for chan_info in channel_manager.list_channels() {
                     let pubkey = chan_info.counterparty.node_id;
                     if !chan_info.is_usable && !peer_manager.get_peer_node_ids().contains(&pubkey) {
-                        let node_id = NodeId::from_pubkey(&pubkey);
-                        let addresses = {
-                            let network_graph = self.network_graph.read_only();
-                            network_graph.nodes().get(&node_id).and_then(|info| {
-                                info.announcement_info
-                                    .as_ref()
-                                    .map(|info| info.addresses.clone())
-                            })
-                        };
-
-                        if let Some(addresses) = addresses {
+                        if let Ok(addresses) =
+                            self.get_addresses_for_pubkey(&node_id[..], &pubkey).await
+                        {
                             for address in addresses {
-                                let addr = match address {
-                                    NetAddress::IPv4 { addr, port } => {
-                                        Some(SocketAddr::new(IpAddr::from(addr), port))
-                                    }
-                                    NetAddress::IPv6 { addr, port } => {
-                                        Some(SocketAddr::new(IpAddr::from(addr), port))
-                                    }
-                                    NetAddress::OnionV2(_) => None,
-                                    NetAddress::OnionV3 { .. } => None,
-                                };
-
-                                if let Some(addr) = addr {
-                                    if let Ok(()) = self
-                                        .connect_peer_if_necessary(
-                                            pubkey,
-                                            addr,
-                                            peer_manager.clone(),
-                                        )
-                                        .await
-                                    {
-                                        break;
-                                    }
+                                if let Ok(()) = self
+                                    .connect_peer_if_necessary(
+                                        node_id,
+                                        pubkey,
+                                        address,
+                                        peer_manager.clone(),
+                                    )
+                                    .await
+                                {
+                                    break;
                                 }
                             }
                         }
@@ -224,22 +286,22 @@ impl PeerConnector {
             // if routing peers disconnected then try to add some more
             let mut routing_peer_node_ids = self.routing_peer_manager.get_peer_node_ids();
             if routing_peer_node_ids.len() < self.target_routing_peers.into() {
-                for (peer_manager, _channel_manager) in nodes.values() {
+                for (node_id, (peer_manager, _channel_manager)) in nodes.iter() {
                     let peer_node_ids = peer_manager.get_peer_node_ids();
                     for peer_node_id in peer_node_ids.into_iter() {
                         if routing_peer_node_ids.len() < self.target_routing_peers.into()
                             && !routing_peer_node_ids.contains(&peer_node_id)
                         {
-                            let peer_addr_opt = {
-                                let peer_addr_map = self.pubkey_addr_map.lock().unwrap();
-                                peer_addr_map.get(&peer_node_id).copied()
-                            };
-
-                            if let Some(peer_addr) = peer_addr_opt {
-                                if let Ok(()) =
-                                    self.connect_routing_peer(peer_node_id, peer_addr).await
-                                {
-                                    routing_peer_node_ids.push(peer_node_id);
+                            if let Ok(peer_addresses) =
+                                self.get_addresses_for_pubkey(node_id, &peer_node_id).await
+                            {
+                                for peer_addr in peer_addresses {
+                                    if let Ok(()) =
+                                        self.connect_routing_peer(peer_node_id, peer_addr).await
+                                    {
+                                        routing_peer_node_ids.push(peer_node_id);
+                                        break;
+                                    }
                                 }
                             }
                         }

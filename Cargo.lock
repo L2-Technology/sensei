@@ -322,6 +322,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc19a4937b4fbd3fe3379793130e42060d10627a360f2127802b10b87e7baf74"
 
 [[package]]
+name = "base32"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23ce669cd6c8588f79e15cf450314f9638f967fc5770ff1c7c1deb0925ea7cfa"
+
+[[package]]
 name = "base64"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2923,6 +2929,7 @@ dependencies = [
 name = "senseicore"
 version = "0.1.0"
 dependencies = [
+ "base32",
  "base64 0.13.0",
  "bdk",
  "bech32",
@@ -2954,6 +2961,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "socks",
  "tindercrypt",
  "tokio",
  "tower",

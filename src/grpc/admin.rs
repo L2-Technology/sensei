@@ -13,12 +13,14 @@ pub use super::sensei::admin_server::{Admin, AdminServer};
 use super::{
     sensei::{
         AdminStartNodeRequest, AdminStartNodeResponse, AdminStopNodeRequest, AdminStopNodeResponse,
-        CreateAdminRequest, CreateAdminResponse, CreateNodeRequest, CreateNodeResponse,
-        CreateTokenRequest, DeleteNodeRequest, DeleteNodeResponse, DeleteTokenRequest,
-        DeleteTokenResponse, FindRouteRequest, FindRouteResponse, GetStatusRequest,
-        GetStatusResponse, ListNode, ListNodesRequest, ListNodesResponse, ListTokensRequest,
-        ListTokensResponse, PathFailedRequest, PathFailedResponse, PathSuccessfulRequest,
-        PathSuccessfulResponse, StartAdminRequest, StartAdminResponse, Token,
+        ConnectGossipPeerRequest, ConnectGossipPeerResponse, CreateAdminRequest,
+        CreateAdminResponse, CreateNodeRequest, CreateNodeResponse, CreateTokenRequest,
+        DeleteNodeRequest, DeleteNodeResponse, DeleteTokenRequest, DeleteTokenResponse,
+        FindRouteRequest, FindRouteResponse, GetStatusRequest, GetStatusResponse, ListNode,
+        ListNodesRequest, ListNodesResponse, ListTokensRequest, ListTokensResponse,
+        NodeInfoRequest, NodeInfoResponse, PathFailedRequest, PathFailedResponse,
+        PathSuccessfulRequest, PathSuccessfulResponse, StartAdminRequest, StartAdminResponse,
+        Token,
     },
     utils::raw_macaroon_from_metadata,
 };
@@ -322,6 +324,25 @@ impl TryFrom<AdminResponse> for DeleteTokenResponse {
     }
 }
 
+impl TryFrom<AdminResponse> for ConnectGossipPeerResponse {
+    type Error = String;
+
+    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
+        match res {
+            AdminResponse::ConnectGossipPeer {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<ConnectGossipPeerRequest> for AdminRequest {
+    fn from(req: ConnectGossipPeerRequest) -> Self {
+        AdminRequest::ConnectGossipPeer {
+            node_connection_string: req.node_connection_string,
+        }
+    }
+}
+
 impl From<FindRouteRequest> for AdminRequest {
     fn from(req: FindRouteRequest) -> Self {
         AdminRequest::FindRoute {
@@ -339,6 +360,25 @@ impl TryFrom<AdminResponse> for FindRouteResponse {
     fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
         match res {
             AdminResponse::FindRoute { route } => Ok(Self { route }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<NodeInfoRequest> for AdminRequest {
+    fn from(req: NodeInfoRequest) -> Self {
+        AdminRequest::NodeInfo {
+            node_id_hex: req.node_id_hex,
+        }
+    }
+}
+
+impl TryFrom<AdminResponse> for NodeInfoResponse {
+    type Error = String;
+
+    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
+        match res {
+            AdminResponse::NodeInfo { node_info } => Ok(Self { node_info }),
             _ => Err("impossible".to_string()),
         }
     }
@@ -593,10 +633,33 @@ impl Admin for AdminService {
             .map(Response::new)
             .map_err(|_e| Status::unknown("unknown error"))
     }
+
+    async fn connect_gossip_peer(
+        &self,
+        request: tonic::Request<ConnectGossipPeerRequest>,
+    ) -> Result<Response<ConnectGossipPeerResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+
     async fn find_route(
         &self,
         request: tonic::Request<FindRouteRequest>,
     ) -> Result<Response<FindRouteResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+
+    async fn node_info(
+        &self,
+        request: tonic::Request<NodeInfoRequest>,
+    ) -> Result<Response<NodeInfoResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

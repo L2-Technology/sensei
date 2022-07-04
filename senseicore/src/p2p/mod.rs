@@ -6,6 +6,7 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
 // You may not use this file except in accordance with one or both of these
 // licenses.
+pub mod node_info;
 pub mod peer_connector;
 pub mod router;
 pub mod utils;
@@ -34,6 +35,7 @@ use crate::{
 };
 
 use self::{
+    node_info::NodeInfoLookup,
     peer_connector::PeerConnector,
     router::{AnyRouter, AnyScorer},
 };
@@ -124,8 +126,21 @@ impl SenseiP2P {
             Arc::new(IgnoringMessageHandler {}),
         ));
 
+        let node_info_lookup = match (
+            config.remote_p2p_host.as_ref(),
+            config.remote_p2p_token.as_ref(),
+        ) {
+            (Some(host), Some(token)) => Arc::new(NodeInfoLookup::new_remote(
+                host.clone(),
+                token.clone(),
+                runtime_handle.clone(),
+            )),
+            _ => Arc::new(NodeInfoLookup::Local(network_graph.clone())),
+        };
+
         let peer_connector = Arc::new(PeerConnector::new(
-            network_graph.clone(),
+            database,
+            node_info_lookup,
             peer_manager.clone(),
         ));
 

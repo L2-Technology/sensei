@@ -8,6 +8,7 @@
 // licenses.
 
 use bitcoin::secp256k1::PublicKey;
+use std::fmt::Write;
 
 #[allow(dead_code)]
 pub fn to_vec(hex: &str) -> Option<Vec<u8>> {
@@ -35,7 +36,7 @@ pub fn to_vec(hex: &str) -> Option<Vec<u8>> {
 pub fn hex_str(value: &[u8]) -> String {
     let mut res = String::with_capacity(64);
     for v in value {
-        res += &format!("{:02x}", v);
+        let _ = write!(res, "{:02x}", v);
     }
     res
 }

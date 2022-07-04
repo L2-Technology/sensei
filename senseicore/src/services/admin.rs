@@ -13,6 +13,7 @@ use crate::database::SenseiDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
+use crate::p2p::utils::parse_peer_info;
 use crate::p2p::SenseiP2P;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
 
@@ -22,6 +23,7 @@ use entity::{access_token, seconds_since_epoch};
 use futures::stream::{self, StreamExt};
 use lightning::ln::channelmanager::ChannelDetails;
 use lightning::ln::PaymentHash;
+use lightning::routing::gossip::NodeId;
 use lightning::routing::router::{RouteHop, RouteParameters};
 use lightning::routing::scoring::Score;
 use lightning::util::ser::{Readable, Writeable};
@@ -107,11 +109,17 @@ pub enum AdminRequest {
     DeleteToken {
         id: String,
     },
+    ConnectGossipPeer {
+        node_connection_string: String,
+    },
     FindRoute {
         payer_public_key_hex: String,
         route_params_hex: String,
         payment_hash_hex: String,
         first_hops: Vec<String>,
+    },
+    NodeInfo {
+        node_id_hex: String,
     },
     PathSuccessful {
         path: Vec<String>,
@@ -174,8 +182,12 @@ pub enum AdminResponse {
         pagination: PaginationResponse,
     },
     DeleteToken {},
+    ConnectGossipPeer {},
     FindRoute {
         route: String,
+    },
+    NodeInfo {
+        node_info: Option<String>,
     },
     PathSuccessful {},
     PathFailed {},
@@ -500,6 +512,19 @@ impl AdminService {
                 self.database.delete_access_token(id).await?;
                 Ok(AdminResponse::DeleteToken {})
             }
+            AdminRequest::ConnectGossipPeer {
+                node_connection_string,
+            } => {
+                let (pubkey, addr) = parse_peer_info(node_connection_string).await?;
+
+                let _res = self
+                    .p2p
+                    .peer_connector
+                    .connect_routing_peer(pubkey, addr)
+                    .await;
+
+                Ok(AdminResponse::ConnectGossipPeer {})
+            }
             AdminRequest::FindRoute {
                 payer_public_key_hex,
                 route_params_hex,
@@ -538,6 +563,17 @@ impl AdminService {
                         route: hex_utils::hex_str(&route.encode()),
                     })
                     .map_err(|e| Error::Generic(format!("{:?}", e)))
+            }
+            AdminRequest::NodeInfo { node_id_hex } => {
+                let mut node_id_readable = Cursor::new(hex_utils::to_vec(&node_id_hex).unwrap());
+                let node_id = NodeId::read(&mut node_id_readable).unwrap();
+                let network_graph = self.p2p.network_graph.read_only();
+                Ok(AdminResponse::NodeInfo {
+                    node_info: network_graph
+                        .nodes()
+                        .get(&node_id)
+                        .map(|node_info| hex_utils::hex_str(&node_info.encode())),
+                })
             }
             AdminRequest::PathSuccessful { path } => {
                 let path = path

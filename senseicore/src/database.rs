@@ -18,6 +18,8 @@ use entity::payment;
 use entity::payment::Entity as Payment;
 use entity::peer;
 use entity::peer::Entity as Peer;
+use entity::peer_address;
+use entity::peer_address::Entity as PeerAddress;
 use entity::sea_orm;
 use entity::sea_orm::ActiveValue;
 use entity::sea_orm::QueryOrder;
@@ -357,6 +359,39 @@ impl SenseiDatabase {
                 total: total.try_into().unwrap(),
             },
         ))
+    }
+
+    pub async fn find_peer_address_by_id(
+        &self,
+        id: &str,
+    ) -> Result<Option<peer_address::Model>, Error> {
+        Ok(PeerAddress::find()
+            .filter(entity::peer_address::Column::Id.eq(id))
+            .one(&self.connection)
+            .await?)
+    }
+
+    pub async fn list_peer_addresses(
+        &self,
+        node_id: &str,
+        pubkey: &str,
+    ) -> Result<Vec<peer_address::Model>, Error> {
+        Ok(PeerAddress::find()
+            .filter(entity::peer_address::Column::NodeId.eq(node_id))
+            .filter(entity::peer_address::Column::Pubkey.eq(pubkey))
+            .order_by_desc(entity::peer_address::Column::LastConnectedAt)
+            .all(&self.connection)
+            .await?)
+    }
+
+    pub async fn delete_peer_address(&self, id: &str) -> Result<(), Error> {
+        match self.find_peer_address_by_id(id).await? {
+            Some(peer_address) => {
+                let _deleted = peer_address.delete(&self.connection).await?;
+                Ok(())
+            }
+            None => Ok(()),
+        }
     }
 
     pub async fn delete_peer(&self, node_id: &str, pubkey: &str) -> Result<(), Error> {
