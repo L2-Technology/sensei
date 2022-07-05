@@ -20,7 +20,7 @@ use bdk::wallet::AddressIndex;
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use entity::sea_orm::ActiveValue;
-use lightning::chain::chaininterface::BroadcasterInterface;
+use lightning::chain::chaininterface::{BroadcasterInterface, FeeEstimator};
 use lightning::{
     chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
     util::events::{Event, EventHandler, PaymentPurpose},

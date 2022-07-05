@@ -597,16 +597,12 @@ impl LightningNode {
             network,
             bdk_database,
         )?;
-
         // TODO: probably can do this later, assuming this is REALLY slow
         bdk_wallet.ensure_addresses_cached(100).unwrap();
 
         let bdk_wallet = Arc::new(Mutex::new(bdk_wallet));
-        let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
 
-        let fee_estimator = Arc::new(SenseiFeeEstimator {
-            fee_estimator: chain_manager.fee_estimator.clone(),
-        });
+        let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
 
         let broadcaster = Arc::new(SenseiBroadcaster::new(
             id.clone(),
@@ -628,7 +624,7 @@ impl LightningNode {
             None,
             broadcaster.clone(),
             logger.clone(),
-            fee_estimator.clone(),
+            chain_manager.fee_estimator.clone(),
             persister.clone(),
         ));
 
@@ -652,7 +648,7 @@ impl LightningNode {
                 }
                 let read_args = ChannelManagerReadArgs::new(
                     keys_manager.clone(),
-                    fee_estimator.clone(),
+                    chain_manager.fee_estimator.clone(),
                     chain_monitor.clone(),
                     broadcaster.clone(),
                     logger.clone(),
@@ -673,7 +669,7 @@ impl LightningNode {
                     best_block,
                 };
                 let fresh_channel_manager = channelmanager::ChannelManager::new(
-                    fee_estimator.clone(),
+                    chain_manager.fee_estimator.clone(),
                     chain_monitor.clone(),
                     broadcaster.clone(),
                     logger.clone(),
@@ -693,7 +689,7 @@ impl LightningNode {
                 (
                     channel_monitor,
                     broadcaster.clone(),
-                    fee_estimator.clone(),
+                    chain_manager.fee_estimator.clone(),
                     logger.clone(),
                 ),
                 outpoint,

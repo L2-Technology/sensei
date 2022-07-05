@@ -21,13 +21,15 @@ use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use std::ops::Deref;
 use tokio::{sync::Mutex, task::JoinHandle};
 
-use super::{database::WalletDatabase, listener::SenseiChainListener};
+use super::{
+    database::WalletDatabase, fee_estimator::SenseiFeeEstimator, listener::SenseiChainListener,
+};
 
 pub struct SenseiChainManager {
     config: SenseiConfig,
     pub listener: Arc<SenseiChainListener>,
     pub block_source: Arc<dyn BlockSource + Send + Sync>,
-    pub fee_estimator: Arc<dyn FeeEstimator + Send + Sync>,
+    pub fee_estimator: Arc<SenseiFeeEstimator>,
     pub broadcaster: Arc<dyn BroadcasterInterface + Send + Sync>,
     poller_paused: Arc<AtomicBool>,
     poller_running: Arc<AtomicBool>,
@@ -70,7 +72,7 @@ impl SenseiChainManager {
             poller_paused,
             poller_running,
             block_source,
-            fee_estimator,
+            fee_estimator: Arc::new(SenseiFeeEstimator { fee_estimator }),
             broadcaster,
             poller_handle: Mutex::new(Some(poller_handle)),
         })

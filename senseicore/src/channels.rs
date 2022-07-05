@@ -7,7 +7,7 @@ use crate::p2p::utils::{parse_peer_addr, parse_pubkey};
 use crate::services::node::OpenChannelRequest;
 use crate::{chain::database::WalletDatabase, events::SenseiEvent, node::ChannelManager};
 use bdk::{FeeRate, SignOptions};
-use lightning::chain::chaininterface::ConfirmationTarget;
+use lightning::chain::chaininterface::{ConfirmationTarget, FeeEstimator};
 use rand::{thread_rng, Rng};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
