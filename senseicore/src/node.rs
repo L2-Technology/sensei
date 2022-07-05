@@ -831,10 +831,22 @@ impl LightningNode {
             invoice_payer.clone(),
             chain_monitor.clone(),
             channel_manager.clone(),
-            GossipSync::P2P(p2p.network_graph_message_handler.clone()),
+            lightning_background_processor::GossipSync::None::<
+                Arc<
+                    P2PGossipSync<
+                        Arc<NetworkGraph>,
+                        Arc<dyn chain::Access + Send + Sync>,
+                        Arc<FilesystemLogger>,
+                    >,
+                >,
+                Arc<RapidGossipSync<Arc<NetworkGraph>, Arc<FilesystemLogger>>>,
+                Arc<NetworkGraph>,
+                Arc<dyn chain::Access + Send + Sync>,
+                Arc<FilesystemLogger>,
+            >,
             peer_manager.clone(),
             logger.clone(),
-            Some(p2p.scorer.clone()),
+            None::<Arc<Mutex<AnyScorer>>>,
         );
 
         // Reconnect to channel peers if possible.

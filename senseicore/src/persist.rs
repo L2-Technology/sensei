@@ -200,6 +200,10 @@ impl SenseiPersister {
         self.store.persist("scorer", scorer)
     }
 
+    pub fn persist_graph(&self, graph: &NetworkGraph) -> std::io::Result<()> {
+        self.store.persist("graph", graph)
+    }
+
     /// Read `ChannelMonitor`s from disk.
     pub fn read_channelmonitors<Signer: Sign, K: Deref>(
         &self,

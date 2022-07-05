@@ -6,6 +6,7 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
 // You may not use this file except in accordance with one or both of these
 // licenses.
+pub mod background_processor;
 pub mod node_info;
 pub mod peer_connector;
 pub mod router;
@@ -18,12 +19,12 @@ use lightning::{
     },
     ln::peer_handler::{ErroringMessageHandler, IgnoringMessageHandler, MessageHandler},
 };
+
 use lightning_invoice::utils::DefaultRouter;
 use rand::RngCore;
 use std::{
-    ops::Deref,
     sync::{Arc, Mutex},
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 use crate::{
@@ -35,6 +36,7 @@ use crate::{
 };
 
 use self::{
+    background_processor::BackgroundProcessor,
     node_info::NodeInfoLookup,
     peer_connector::PeerConnector,
     router::{AnyRouter, AnyScorer},
@@ -46,7 +48,7 @@ pub struct SenseiP2P {
     pub config: Arc<SenseiConfig>,
     pub persister: Arc<SenseiPersister>,
     pub network_graph: Arc<NetworkGraph>,
-    pub network_graph_message_handler: Arc<NetworkGraphMessageHandler>,
+    pub p2p_gossip: Arc<NetworkGraphMessageHandler>,
     pub scorer: Arc<Mutex<AnyScorer>>,
     pub logger: Arc<FilesystemLogger>,
     pub peer_manager: Arc<RoutingPeerManager>,
@@ -87,7 +89,7 @@ impl SenseiP2P {
             ))),
         };
 
-        let network_graph_message_handler = Arc::new(NetworkGraphMessageHandler::new(
+        let p2p_gossip = Arc::new(NetworkGraphMessageHandler::new(
             Arc::clone(&network_graph),
             None::<Arc<dyn chain::Access + Send + Sync>>,
             logger.clone(),
@@ -95,7 +97,7 @@ impl SenseiP2P {
 
         let lightning_msg_handler = MessageHandler {
             chan_handler: Arc::new(ErroringMessageHandler::new()),
-            route_handler: network_graph_message_handler.clone(),
+            route_handler: p2p_gossip.clone(),
         };
 
         let mut seed: [u8; 32] = [0; 32];
@@ -151,24 +153,13 @@ impl SenseiP2P {
             }
         }
 
-        let scorer_persister = Arc::clone(&persister);
-        let scorer_persist = Arc::clone(&scorer);
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(600));
-            loop {
-                interval.tick().await;
-                let scorer = scorer_persist.lock().unwrap();
-                if let AnyScorer::Local(scorer) = scorer.deref() {
-                    if scorer_persister.persist_scorer(scorer).is_err() {
-                        // Persistence errors here are non-fatal as channels will be re-scored as payments
-                        // fail, but they may indicate a disk error which could be fatal elsewhere.
-                        eprintln!(
-                            "Warning: Failed to persist scorer, check your disk and permissions"
-                        );
-                    }
-                }
-            }
-        });
+        let p2p_background_processor = BackgroundProcessor::new(
+            peer_manager.clone(),
+            scorer.clone(),
+            network_graph.clone(),
+            persister.clone(),
+        );
+        tokio::spawn(async move { p2p_background_processor.process().await });
 
         let peer_connector_run = peer_connector.clone();
         tokio::spawn(async move { peer_connector_run.run().await });
@@ -179,7 +170,7 @@ impl SenseiP2P {
             logger,
             network_graph,
             scorer,
-            network_graph_message_handler,
+            p2p_gossip,
             peer_manager,
             peer_connector,
             runtime_handle,
