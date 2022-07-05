@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 pub mod background_processor;
+pub mod node_announcer;
 pub mod node_info;
 pub mod peer_connector;
 pub mod router;
@@ -37,6 +38,7 @@ use crate::{
 
 use self::{
     background_processor::BackgroundProcessor,
+    node_announcer::NodeAnnouncer,
     node_info::NodeInfoLookup,
     peer_connector::PeerConnector,
     router::{AnyRouter, AnyScorer},
@@ -53,6 +55,7 @@ pub struct SenseiP2P {
     pub logger: Arc<FilesystemLogger>,
     pub peer_manager: Arc<RoutingPeerManager>,
     pub peer_connector: Arc<PeerConnector>,
+    pub node_announcer: Arc<NodeAnnouncer>,
     pub runtime_handle: tokio::runtime::Handle,
 }
 
@@ -153,6 +156,8 @@ impl SenseiP2P {
             }
         }
 
+        let node_announcer = Arc::new(NodeAnnouncer::new());
+
         let p2p_background_processor = BackgroundProcessor::new(
             peer_manager.clone(),
             scorer.clone(),
@@ -164,6 +169,9 @@ impl SenseiP2P {
         let peer_connector_run = peer_connector.clone();
         tokio::spawn(async move { peer_connector_run.run().await });
 
+        let node_announcer_run = node_announcer.clone();
+        tokio::spawn(async move { node_announcer_run.run().await });
+
         Self {
             config,
             persister,
@@ -173,6 +181,7 @@ impl SenseiP2P {
             p2p_gossip,
             peer_manager,
             peer_connector,
+            node_announcer,
             runtime_handle,
         }
     }

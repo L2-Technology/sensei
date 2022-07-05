@@ -82,7 +82,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::{convert::From, fmt};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
@@ -822,6 +822,9 @@ impl LightningNode {
 
         let bg_persister = Arc::clone(&persister);
 
+        // TODO: https://github.com/lightningdevkit/rust-lightning/issues/1595
+        // once this lands we should be able to build a tokio BP to prevent starting
+        // a thread per node. might even be able to simplify to a single BP per sensei instance
         let background_processor = BackgroundProcessor::start(
             bg_persister,
             invoice_payer.clone(),
@@ -853,7 +856,6 @@ impl LightningNode {
         // some public channels, and is only useful if we have public listen address(es) to announce.
         // In a production environment, this should occur only after the announcement of new channels
         // to avoid churn in the global network graph.
-        let chan_manager = Arc::clone(&channel_manager);
         let broadcast_listen_addresses = listen_addresses
             .iter()
             .filter_map(|addr| match IpAddr::from_str(addr) {
@@ -875,20 +877,12 @@ impl LightningNode {
         let mut alias_bytes = [0; 32];
         alias_bytes[..alias.len()].copy_from_slice(alias.as_bytes());
 
-        handles.push(tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-
-                if !broadcast_listen_addresses.is_empty() {
-                    chan_manager.broadcast_node_announcement(
-                        [0; 3],
-                        alias_bytes,
-                        broadcast_listen_addresses.clone(),
-                    );
-                }
-            }
-        }));
+        p2p.node_announcer.register_node(
+            id.clone(),
+            channel_manager.clone(),
+            broadcast_listen_addresses,
+            alias_bytes,
+        );
 
         let lightning_node = LightningNode {
             config,
