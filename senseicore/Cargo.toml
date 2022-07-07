@@ -9,13 +9,13 @@ name = "senseicore"
 path = "src/lib.rs"
 
 [dependencies]
-lightning = { version = "0.0.108", features = ["max_level_trace"] }
-lightning-block-sync = { version = "0.0.108", features = [ "rpc-client" ] }
-lightning-invoice = { version = "0.16.0" }
-lightning-net-tokio = { version = "0.0.108" }
-lightning-persister = { version = "0.0.108" }
-lightning-background-processor = { version = "0.0.108" }
-lightning-rapid-gossip-sync = { version = "0.0.108" }
+lightning = { version = "0.0.109", features = ["max_level_trace"] }
+lightning-block-sync = { version = "0.0.109", features = [ "rpc-client" ] }
+lightning-invoice = { version = "0.17.0" }
+lightning-net-tokio = { version = "0.0.109" }
+lightning-persister = { version = "0.0.109" }
+lightning-background-processor = { version = "0.0.109" }
+lightning-rapid-gossip-sync = { version = "0.0.109" }
 base64 = "0.13.0"
 bitcoin = "0.28"
 bitcoin-bech32 = "0.12"

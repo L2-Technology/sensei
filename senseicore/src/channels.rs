@@ -223,7 +223,7 @@ impl ChannelOpener {
                 if let Ok(tcid) = result {
                     let _res = self
                         .channel_manager
-                        .force_close_channel(tcid, counterparty.as_ref().unwrap());
+                        .force_close_broadcasting_latest_txn(tcid, counterparty.as_ref().unwrap());
                 }
             }
             return Err(Error::Bdk(e));

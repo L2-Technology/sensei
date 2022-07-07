@@ -634,7 +634,7 @@ impl LightningNode {
         let mut user_config = UserConfig::default();
 
         user_config
-            .peer_channel_config_limits
+            .channel_handshake_limits
             .force_announced_channel_preference = false;
         user_config.manually_accept_inbound_channels = true;
 
@@ -1194,7 +1194,7 @@ impl LightningNode {
                             .map(|ann_info| ann_info.alias)
                     });
 
-                alias.map(|alias_bytes| hex_utils::sanitize_string(&alias_bytes))
+                alias.map(|node_alias| node_alias.to_string())
             }
         }
     }
@@ -1214,7 +1214,7 @@ impl LightningNode {
         if force {
             Ok(self
                 .channel_manager
-                .force_close_channel(&channel_id, &cp_id)?)
+                .force_close_broadcasting_latest_txn(&channel_id, &cp_id)?)
         } else {
             Ok(self.channel_manager.close_channel(&channel_id, &cp_id)?)
         }

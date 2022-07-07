@@ -185,7 +185,11 @@ impl SenseiPersister {
             let mut cursor = Cursor::new(contents);
             if let Ok(scorer) = ProbabilisticScorer::read(
                 &mut cursor,
-                (params, Arc::clone(&network_graph), self.logger.clone()),
+                (
+                    params.clone(),
+                    Arc::clone(&network_graph),
+                    self.logger.clone(),
+                ),
             ) {
                 return scorer;
             }

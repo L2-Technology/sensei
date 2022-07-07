@@ -50,7 +50,7 @@ impl NodeInfoLookup {
         Ok(self
             .get_node_info(node_id)?
             .and_then(|node_info| node_info.announcement_info.map(|ann_info| ann_info.alias))
-            .map(|alias_bytes| hex_utils::sanitize_string(&alias_bytes)))
+            .map(|node_alias| node_alias.to_string()))
     }
 
     pub fn get_addresses(&self, node_id: NodeId) -> Result<Vec<NetAddress>, Error> {
