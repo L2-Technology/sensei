@@ -8,6 +8,6 @@
 // licenses.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tonic_build::compile_protos("proto/sensei.proto")?;
+    tonic_build::configure().out_dir("./src/grpc").compile(&["proto/sensei.proto"], &["proto"])?;
     Ok(())
 }

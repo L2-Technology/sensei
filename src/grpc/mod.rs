@@ -17,7 +17,7 @@ pub mod sensei {
         LocalInvoice, LocalInvoiceFeatures, LocalRouteHint, LocalRouteHintHop, LocalRoutingFees,
     };
 
-    tonic::include_proto!("sensei");
+    include!("sensei.rs");
 
     impl From<LocalInvoice> for Invoice {
         fn from(invoice: LocalInvoice) -> Self {
