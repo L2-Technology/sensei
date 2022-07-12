@@ -26,6 +26,7 @@ const NewTokenForm = () => {
       value: "nodes/create,nodes/list,nodes/delete,nodes/stop,nodes/start",
       text: "Node Management",
     },
+    { value: "routing", text: "Routing" },
   ];
 
   let expirationOptions = [

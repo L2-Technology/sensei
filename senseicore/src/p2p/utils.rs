@@ -11,6 +11,7 @@ pub fn net_address_to_socket_addr(net_address: NetAddress) -> Option<SocketAddr>
         NetAddress::IPv6 { addr, port } => Some(SocketAddr::new(IpAddr::from(addr), port)),
         NetAddress::OnionV2(_) => None,
         NetAddress::OnionV3 { .. } => None,
+        NetAddress::Hostname { .. } => None,
     }
 }
 

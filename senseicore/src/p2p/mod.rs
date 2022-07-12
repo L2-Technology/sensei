@@ -12,6 +12,7 @@ pub mod node_info;
 pub mod peer_connector;
 pub mod router;
 pub mod utils;
+pub mod bubble_gossip_route_handler;
 
 use lightning::{
     chain::{

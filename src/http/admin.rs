@@ -370,9 +370,17 @@ pub async fn find_route(
     }?;
 
     if authenticated {
+        println!("authenticated find_route request");
+
         match admin_service.call(request).await {
-            Ok(response) => Ok(Json(response)),
-            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+            Ok(response) => {
+                println!("OK:response {:?}", response);
+                Ok(Json(response))
+            },
+            Err(err) => {
+                println!("Err: {:?}", err);
+                Err(StatusCode::UNAUTHORIZED)
+            }
         }
     } else {
         Err(StatusCode::UNAUTHORIZED)

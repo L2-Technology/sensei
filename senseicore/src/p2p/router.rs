@@ -87,6 +87,20 @@ impl Score for AnyScorer {
             AnyScorer::Remote(scorer) => scorer.payment_path_successful(path),
         }
     }
+
+    fn probe_failed(&mut self, path: &[&RouteHop], short_channel_id: u64) {
+        match self {
+            AnyScorer::Local(scorer) => scorer.probe_failed(path, short_channel_id),
+            AnyScorer::Remote(scorer) => scorer.probe_failed(path, short_channel_id),
+        }
+    }
+
+    fn probe_successful(&mut self, path: &[&RouteHop]) {
+        match self {
+            AnyScorer::Local(scorer) => scorer.probe_successful(path),
+            AnyScorer::Remote(scorer) => scorer.probe_successful(path),
+        }
+    }
 }
 
 impl Writeable for AnyScorer {
@@ -177,6 +191,14 @@ impl Score for RemoteScorer {
             })
         })
     }
+
+    fn probe_failed(&mut self, path: &[&RouteHop], short_channel_id: u64) {
+        self.payment_path_failed(path, short_channel_id);
+    }
+
+    fn probe_successful(&mut self, path: &[&RouteHop]) {
+        self.payment_path_successful(path);
+    }
 }
 
 #[derive(Deserialize)]
@@ -229,6 +251,7 @@ impl RemoteRouter {
 
         match response {
             Ok(response) => {
+                println!("response {:?}", response);
                 let find_route_response: FindRouteResponse = response.json().await.unwrap();
                 let mut readable_route =
                     Cursor::new(hex_utils::to_vec(&find_route_response.route).unwrap());

@@ -420,6 +420,8 @@ impl EventHandler for LightningNodeEventHandler {
                 // A "real" node should probably "lock" the UTXOs spent in funding transactions until
                 // the funding transaction either confirms, or this event is generated.
             }
+            Event::ProbeSuccessful { .. } => {}
+            Event::ProbeFailed { .. } => {}
         }
     }
 }

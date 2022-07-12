@@ -130,7 +130,7 @@ pub enum AdminRequest {
     },
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(untagged)]
 pub enum AdminResponse {
     GetStatus {

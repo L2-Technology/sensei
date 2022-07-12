@@ -4,7 +4,7 @@ use entity::{
     sea_orm::{ActiveModelTrait, ActiveValue},
     seconds_since_epoch,
 };
-use lightning::{ln::msgs::NetAddress, routing::gossip::NodeId, util::ser::Readable};
+use lightning::{ln::msgs::NetAddress, routing::gossip::NodeId, util::ser::{Readable, Writeable}};
 
 use crate::{
     database::SenseiDatabase,
@@ -116,6 +116,8 @@ impl PeerConnector {
                         None => tokio::time::sleep(Duration::from_millis(10)).await,
                     }
                 }
+
+                println!("p2p peer manager connected to {:?}", pubkey.to_string());
             }
             None => {
                 //println!("ERROR: failed to connect to peer");
@@ -161,11 +163,14 @@ impl PeerConnector {
                     }
                 }
 
-                if let Ok(known_addresses) = self
+                println!("successfully connected to peer {:?}", peer_addr);
+
+                match self
                     .database
                     .list_peer_addresses(local_node_id, &pubkey.to_string())
                     .await
                 {
+                    Ok(known_addresses) => {
                     let known_address = known_addresses.iter().find(|address| {
                         let mut existing_address_readable = Cursor::new(address.address.clone());
                         let address = NetAddress::read(&mut existing_address_readable).unwrap();
@@ -174,23 +179,35 @@ impl PeerConnector {
 
                     let now: i64 = seconds_since_epoch();
 
-                    match known_address {
+                    let result = match known_address {
                         Some(address) => {
+                            println!("had peer address, updating last_connected_at");
                             let mut peer_address: entity::peer_address::ActiveModel =
                                 address.clone().into();
                             peer_address.last_connected_at = ActiveValue::Set(now);
-                            peer_address.update(self.database.get_connection())
+                            peer_address.update(self.database.get_connection()).await
                         }
                         None => {
+                            println!("new peer address, adding to database");
                             let peer_address = entity::peer_address::ActiveModel {
                                 node_id: ActiveValue::Set(local_node_id.to_string()),
                                 pubkey: ActiveValue::Set(pubkey.to_string()),
+                                last_connected_at: ActiveValue::Set(now),
+                                address: ActiveValue::Set(peer_addr.encode()),
                                 source: ActiveValue::Set(PeerAddressSource::OutboundConnect.into()),
                                 ..Default::default()
                             };
-                            peer_address.insert(self.database.get_connection())
+                            peer_address.insert(self.database.get_connection()).await
                         }
                     };
+
+                    if let Err(e) = result {
+                        println!("failed to update list peers database: {:?}", e);
+                    }
+                },
+                Err(e) => {
+                    println!("{:?}", e);
+                }
                 }
 
                 if self.router_should_connect_to_peer(&pubkey) {
