@@ -138,6 +138,7 @@ pub enum AdminRequest {
     GossipChannelUpdate {
         msg_hex: String,
     },
+    GetNetworkGraph {},
 }
 
 #[derive(Serialize, Debug)]
@@ -204,6 +205,10 @@ pub enum AdminResponse {
     GossipNodeAnnouncement {},
     GossipChannelAnnouncement {},
     GossipChannelUpdate {},
+    GetNetworkGraph {
+        nodes: Vec<String>,
+        channels: Vec<String>,
+    },
     Error(Error),
 }
 
@@ -636,6 +641,46 @@ impl AdminService {
                 let msg = lightning::ln::msgs::ChannelUpdate::read(&mut msg_readable).unwrap();
                 let _res = self.p2p.p2p_gossip.handle_channel_update(&msg);
                 Ok(AdminResponse::GossipChannelUpdate {})
+            }
+            AdminRequest::GetNetworkGraph {} => {
+                let graph = self.p2p.network_graph.read_only();
+                let channels = graph.channels();
+                let nodes = graph.nodes();
+                Ok(AdminResponse::GetNetworkGraph {
+                    channels: channels
+                        .iter()
+                        .map(|(_scid, info)| {
+                            let node_one = nodes
+                                .get(&info.node_one)
+                                .and_then(|info| {
+                                    info.announcement_info
+                                        .as_ref()
+                                        .map(|info| info.alias.to_string())
+                                })
+                                .unwrap_or(format!("{:?}", info.node_one));
+
+                            let node_two = nodes
+                                .get(&info.node_two)
+                                .and_then(|info| {
+                                    info.announcement_info
+                                        .as_ref()
+                                        .map(|info| info.alias.to_string())
+                                })
+                                .unwrap_or(format!("{:?}", info.node_two));
+
+                            format!("{:?} <=> {:?}", node_one, node_two)
+                        })
+                        .collect::<Vec<String>>(),
+                    nodes: nodes
+                        .iter()
+                        .map(|(node_id, info)| {
+                            info.announcement_info
+                                .as_ref()
+                                .map(|info| info.alias.to_string())
+                                .unwrap_or(format!("{:?}", node_id))
+                        })
+                        .collect::<Vec<String>>(),
+                })
             }
         }
     }

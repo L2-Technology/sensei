@@ -54,13 +54,6 @@ impl NodeAnnouncer {
         loop {
             interval.tick().await;
             for (_node_id, (channel_manager, listen_addresses, alias)) in nodes.iter() {
-                println!(
-                    "broadasting node announcement for {:?} with {} addresses [{:?}]",
-                    *alias,
-                    listen_addresses.len(),
-                    listen_addresses.clone()
-                );
-
                 if !listen_addresses.is_empty() {
                     channel_manager.broadcast_node_announcement(
                         [0; 3],

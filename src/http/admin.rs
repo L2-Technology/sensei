@@ -378,6 +378,23 @@ pub fn add_routes(router: Router) -> Router {
             "/v1/ldk/network/gossip/channel-update",
             post(gossip_channel_update),
         )
+        .route("/v1/ldk/network/graph", get(get_network_graph))
+}
+
+pub async fn get_network_graph(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    cookies: Cookies,
+    AuthHeader { macaroon: _, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated = authenticate_request(&admin_service, "routing", &cookies, token).await?;
+    if authenticated {
+        match admin_service.call(AdminRequest::GetNetworkGraph {}).await {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
 }
 
 pub async fn connect_gossip_peer(
@@ -421,17 +438,9 @@ pub async fn find_route(
     }?;
 
     if authenticated {
-        println!("authenticated find_route request");
-
         match admin_service.call(request).await {
-            Ok(response) => {
-                println!("OK:response {:?}", response);
-                Ok(Json(response))
-            }
-            Err(err) => {
-                println!("Err: {:?}", err);
-                Err(StatusCode::UNAUTHORIZED)
-            }
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }
     } else {
         Err(StatusCode::UNAUTHORIZED)

@@ -120,11 +120,8 @@ impl PeerConnector {
                         None => tokio::time::sleep(Duration::from_millis(10)).await,
                     }
                 }
-
-                println!("p2p peer manager connected to {:?}", pubkey.to_string());
             }
             None => {
-                //println!("ERROR: failed to connect to peer");
                 return Err(());
             }
         }
@@ -167,8 +164,6 @@ impl PeerConnector {
                     }
                 }
 
-                println!("successfully connected to peer {:?}", peer_addr);
-
                 match self
                     .database
                     .list_peer_addresses(local_node_id, &pubkey.to_string())
@@ -186,14 +181,12 @@ impl PeerConnector {
 
                         let result = match known_address {
                             Some(address) => {
-                                println!("had peer address, updating last_connected_at");
                                 let mut peer_address: entity::peer_address::ActiveModel =
                                     address.clone().into();
                                 peer_address.last_connected_at = ActiveValue::Set(now);
                                 peer_address.update(self.database.get_connection()).await
                             }
                             None => {
-                                println!("new peer address, adding to database");
                                 let peer_address = entity::peer_address::ActiveModel {
                                     node_id: ActiveValue::Set(local_node_id.to_string()),
                                     pubkey: ActiveValue::Set(pubkey.to_string()),

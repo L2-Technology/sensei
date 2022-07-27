@@ -251,7 +251,6 @@ impl RemoteRouter {
 
         match response {
             Ok(response) => {
-                println!("response {:?}", response);
                 let find_route_response: FindRouteResponse = response.json().await.unwrap();
                 let mut readable_route =
                     Cursor::new(hex_utils::to_vec(&find_route_response.route).unwrap());

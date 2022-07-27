@@ -214,11 +214,10 @@ impl RemoteGossipMessageHandler {
             .post(self.node_announcement_path())
             .header("token", self.remote_sensei.token.clone())
             .json(&serde_json::json!({
-              "msg": hex_utils::hex_str(&msg.encode()),
+              "msg_hex": hex_utils::hex_str(&msg.encode()),
             }))
             .send()
             .await;
-
         Ok(true)
     }
 
@@ -231,7 +230,7 @@ impl RemoteGossipMessageHandler {
             .post(self.channel_announcement_path())
             .header("token", self.remote_sensei.token.clone())
             .json(&serde_json::json!({
-              "msg": hex_utils::hex_str(&msg.encode()),
+              "msg_hex": hex_utils::hex_str(&msg.encode()),
             }))
             .send()
             .await;
@@ -248,7 +247,7 @@ impl RemoteGossipMessageHandler {
             .post(self.channel_update_path())
             .header("token", self.remote_sensei.token.clone())
             .json(&serde_json::json!({
-              "msg": hex_utils::hex_str(&msg.encode()),
+              "msg_hex": hex_utils::hex_str(&msg.encode()),
             }))
             .send()
             .await;
