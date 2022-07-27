@@ -422,6 +422,7 @@ impl EventHandler for LightningNodeEventHandler {
             }
             Event::ProbeSuccessful { .. } => {}
             Event::ProbeFailed { .. } => {}
+            Event::HTLCHandlingFailed { .. } => {}
         }
     }
 }

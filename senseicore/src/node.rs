@@ -18,7 +18,7 @@ use crate::disk::FilesystemLogger;
 use crate::error::Error;
 use crate::event_handler::LightningNodeEventHandler;
 use crate::events::SenseiEvent;
-use crate::p2p::bubble_gossip_route_handler::BubbleGossipRouteHandler;
+use crate::p2p::bubble_gossip_route_handler::{AnyP2PGossipHandler, BubbleGossipRouteHandler};
 use crate::p2p::router::{AnyRouter, AnyScorer};
 use crate::p2p::utils::parse_peer_info;
 use crate::p2p::SenseiP2P;
@@ -328,7 +328,7 @@ pub type PeerManager = SimpleArcPeerManager<
 pub type SimpleArcRoutingPeerManager<SD, L> = LdkPeerManager<
     SD,
     Arc<ErroringMessageHandler>,
-    Arc<NetworkGraphMessageHandler>,
+    Arc<AnyP2PGossipHandler>,
     Arc<L>,
     Arc<IgnoringMessageHandler>,
 >;
@@ -756,7 +756,9 @@ impl LightningNode {
 
         let lightning_msg_handler = MessageHandler {
             chan_handler: channel_manager.clone(),
-            route_handler: Arc::new(BubbleGossipRouteHandler { target: p2p.p2p_gossip.clone() }),
+            route_handler: Arc::new(BubbleGossipRouteHandler {
+                target: p2p.p2p_gossip.clone(),
+            }),
         };
 
         let mut ephemeral_bytes = [0; 32];

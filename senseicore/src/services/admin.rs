@@ -22,6 +22,7 @@ use entity::sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait};
 use entity::{access_token, seconds_since_epoch};
 use futures::stream::{self, StreamExt};
 use lightning::ln::channelmanager::ChannelDetails;
+use lightning::ln::msgs::RoutingMessageHandler;
 use lightning::ln::PaymentHash;
 use lightning::routing::gossip::NodeId;
 use lightning::routing::router::{RouteHop, RouteParameters};
@@ -128,6 +129,15 @@ pub enum AdminRequest {
         path: Vec<String>,
         short_channel_id: u64,
     },
+    GossipNodeAnnouncement {
+        msg_hex: String,
+    },
+    GossipChannelAnnouncement {
+        msg_hex: String,
+    },
+    GossipChannelUpdate {
+        msg_hex: String,
+    },
 }
 
 #[derive(Serialize, Debug)]
@@ -191,6 +201,9 @@ pub enum AdminResponse {
     },
     PathSuccessful {},
     PathFailed {},
+    GossipNodeAnnouncement {},
+    GossipChannelAnnouncement {},
+    GossipChannelUpdate {},
     Error(Error),
 }
 
@@ -604,6 +617,25 @@ impl AdminService {
                 let mut scorer = self.p2p.scorer.lock().unwrap();
                 scorer.payment_path_failed(&path.iter().collect::<Vec<_>>(), short_channel_id);
                 Ok(AdminResponse::PathFailed {})
+            }
+            AdminRequest::GossipNodeAnnouncement { msg_hex } => {
+                let mut msg_readable = Cursor::new(hex_utils::to_vec(&msg_hex).unwrap());
+                let msg = lightning::ln::msgs::NodeAnnouncement::read(&mut msg_readable).unwrap();
+                let _res = self.p2p.p2p_gossip.handle_node_announcement(&msg);
+                Ok(AdminResponse::GossipNodeAnnouncement {})
+            }
+            AdminRequest::GossipChannelAnnouncement { msg_hex } => {
+                let mut msg_readable = Cursor::new(hex_utils::to_vec(&msg_hex).unwrap());
+                let msg =
+                    lightning::ln::msgs::ChannelAnnouncement::read(&mut msg_readable).unwrap();
+                let _res = self.p2p.p2p_gossip.handle_channel_announcement(&msg);
+                Ok(AdminResponse::GossipChannelAnnouncement {})
+            }
+            AdminRequest::GossipChannelUpdate { msg_hex } => {
+                let mut msg_readable = Cursor::new(hex_utils::to_vec(&msg_hex).unwrap());
+                let msg = lightning::ln::msgs::ChannelUpdate::read(&mut msg_readable).unwrap();
+                let _res = self.p2p.p2p_gossip.handle_channel_update(&msg);
+                Ok(AdminResponse::GossipChannelUpdate {})
             }
         }
     }

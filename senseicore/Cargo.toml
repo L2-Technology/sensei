@@ -9,13 +9,13 @@ name = "senseicore"
 path = "src/lib.rs"
 
 [dependencies]
-lightning = { git = "https://github.com/johncantrell97/rust-lightning", rev = "5c06d1d9c8549c04188bee2b60f8224bce26e8bc", features = ["max_level_trace"] }
-lightning-block-sync = { git = "https://github.com/johncantrell97/rust-lightning", rev = "5c06d1d9c8549c04188bee2b60f8224bce26e8bc", features = [ "rpc-client" ] }
-lightning-invoice = { git = "https://github.com/johncantrell97/rust-lightning", rev = "5c06d1d9c8549c04188bee2b60f8224bce26e8bc" }
-lightning-net-tokio = { git = "https://github.com/johncantrell97/rust-lightning", rev = "5c06d1d9c8549c04188bee2b60f8224bce26e8bc" }
-lightning-persister = { git = "https://github.com/johncantrell97/rust-lightning", rev = "5c06d1d9c8549c04188bee2b60f8224bce26e8bc" }
-lightning-background-processor = { git = "https://github.com/johncantrell97/rust-lightning", rev = "5c06d1d9c8549c04188bee2b60f8224bce26e8bc" }
-lightning-rapid-gossip-sync = { git = "https://github.com/johncantrell97/rust-lightning", rev = "5c06d1d9c8549c04188bee2b60f8224bce26e8bc" }
+lightning = { version = "0.0.110", features = ["max_level_trace"] }
+lightning-block-sync = { version = "0.0.110", features = [ "rpc-client" ] }
+lightning-invoice = { version = "0.18.0" }
+lightning-net-tokio = { version = "0.0.110" }
+lightning-persister = { version = "0.0.110" }
+lightning-background-processor = { version = "0.0.110" }
+lightning-rapid-gossip-sync = { version = "0.0.110" }
 base64 = "0.13.0"
 bitcoin = "0.28"
 bitcoin-bech32 = "0.12"

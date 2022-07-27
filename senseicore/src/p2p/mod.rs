@@ -7,12 +7,12 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 pub mod background_processor;
+pub mod bubble_gossip_route_handler;
 pub mod node_announcer;
 pub mod node_info;
 pub mod peer_connector;
 pub mod router;
 pub mod utils;
-pub mod bubble_gossip_route_handler;
 
 use lightning::{
     chain::{
@@ -39,6 +39,7 @@ use crate::{
 
 use self::{
     background_processor::BackgroundProcessor,
+    bubble_gossip_route_handler::AnyP2PGossipHandler,
     node_announcer::NodeAnnouncer,
     node_info::NodeInfoLookup,
     peer_connector::PeerConnector,
@@ -51,7 +52,7 @@ pub struct SenseiP2P {
     pub config: Arc<SenseiConfig>,
     pub persister: Arc<SenseiPersister>,
     pub network_graph: Arc<NetworkGraph>,
-    pub p2p_gossip: Arc<NetworkGraphMessageHandler>,
+    pub p2p_gossip: Arc<AnyP2PGossipHandler>,
     pub scorer: Arc<Mutex<AnyScorer>>,
     pub logger: Arc<FilesystemLogger>,
     pub peer_manager: Arc<RoutingPeerManager>,
@@ -93,11 +94,21 @@ impl SenseiP2P {
             ))),
         };
 
-        let p2p_gossip = Arc::new(NetworkGraphMessageHandler::new(
-            Arc::clone(&network_graph),
-            None::<Arc<dyn chain::Access + Send + Sync>>,
-            logger.clone(),
-        ));
+        let p2p_gossip = match (
+            config.remote_p2p_host.as_ref(),
+            config.remote_p2p_token.as_ref(),
+        ) {
+            (Some(host), Some(token)) => Arc::new(AnyP2PGossipHandler::new_remote(
+                host.clone(),
+                token.clone(),
+                runtime_handle.clone(),
+            )),
+            _ => Arc::new(AnyP2PGossipHandler::Local(NetworkGraphMessageHandler::new(
+                Arc::clone(&network_graph),
+                None::<Arc<dyn chain::Access + Send + Sync>>,
+                logger.clone(),
+            ))),
+        };
 
         let lightning_msg_handler = MessageHandler {
             chan_handler: Arc::new(ErroringMessageHandler::new()),
