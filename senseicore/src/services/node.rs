@@ -10,7 +10,9 @@
 use crate::node::{LightningNode, LocalInvoice};
 use bdk::TransactionDetails;
 use futures::Future;
-use lightning::util::config::{ChannelConfig, ChannelHandshakeLimits, UserConfig};
+use lightning::util::config::{
+    ChannelConfig, ChannelHandshakeConfig, ChannelHandshakeLimits, UserConfig,
+};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tower::Service;
@@ -135,14 +137,13 @@ impl From<&OpenChannelRequest> for UserConfig {
     fn from(request: &OpenChannelRequest) -> Self {
         let default_channel_config = ChannelConfig::default();
         Self {
-            peer_channel_config_limits: ChannelHandshakeLimits {
+            channel_handshake_limits: ChannelHandshakeLimits {
                 // lnd's max to_self_delay is 2016, so we want to be compatible.
                 their_to_self_delay: 2016,
                 trust_own_funding_0conf: true,
                 ..Default::default()
             },
-            channel_options: ChannelConfig {
-                announced_channel: request.public,
+            channel_config: ChannelConfig {
                 forwarding_fee_proportional_millionths: request
                     .forwarding_fee_proportional_millionths
                     .unwrap_or(default_channel_config.forwarding_fee_proportional_millionths),
@@ -158,6 +159,9 @@ impl From<&OpenChannelRequest> for UserConfig {
                 force_close_avoidance_max_fee_satoshis: request
                     .force_close_avoidance_max_fee_satoshis
                     .unwrap_or(default_channel_config.force_close_avoidance_max_fee_satoshis),
+            },
+            channel_handshake_config: ChannelHandshakeConfig {
+                announced_channel: request.public,
                 ..Default::default()
             },
             ..Default::default()

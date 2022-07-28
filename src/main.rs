@@ -89,6 +89,10 @@ struct SenseiArgs {
     api_port: Option<u16>,
     #[clap(long, env = "DATABASE_URL")]
     database_url: Option<String>,
+    #[clap(long, env = "REMOTE_P2P_HOST")]
+    remote_p2p_host: Option<String>,
+    #[clap(long, env = "REMOTE_P2P_TOKEN")]
+    remote_p2p_token: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -150,6 +154,12 @@ fn main() {
     }
     if let Some(database_url) = args.database_url {
         config.database_url = database_url;
+    }
+    if let Some(remote_p2p_host) = args.remote_p2p_host {
+        config.remote_p2p_host = Some(remote_p2p_host);
+    }
+    if let Some(remote_p2p_token) = args.remote_p2p_token {
+        config.remote_p2p_token = Some(remote_p2p_token);
     }
 
     if !config.database_url.starts_with("postgres:") && !config.database_url.starts_with("mysql:") {
@@ -223,6 +233,7 @@ fn main() {
                 database,
                 chain_manager,
                 event_sender,
+                tokio::runtime::Handle::current(),
             )
             .await,
         );

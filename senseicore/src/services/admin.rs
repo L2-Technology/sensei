@@ -10,19 +10,30 @@
 use super::{PaginationRequest, PaginationResponse};
 use crate::chain::manager::SenseiChainManager;
 use crate::database::SenseiDatabase;
+use crate::disk::FilesystemLogger;
 use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
-use crate::network_graph::SenseiNetworkGraph;
+use crate::p2p::utils::parse_peer_info;
+use crate::p2p::SenseiP2P;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
 
 use entity::node::{self, NodeRole};
 use entity::sea_orm::{ActiveModelTrait, ActiveValue, EntityTrait};
 use entity::{access_token, seconds_since_epoch};
 use futures::stream::{self, StreamExt};
+use lightning::ln::channelmanager::ChannelDetails;
+use lightning::ln::msgs::RoutingMessageHandler;
+use lightning::ln::PaymentHash;
+use lightning::routing::gossip::NodeId;
+use lightning::routing::router::{RouteHop, RouteParameters};
+use lightning::routing::scoring::Score;
+use lightning::util::ser::{Readable, Writeable};
 use lightning_background_processor::BackgroundProcessor;
+use lightning_invoice::payment::Router;
 use macaroon::Macaroon;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::Cursor;
 use std::sync::atomic::Ordering;
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
@@ -99,9 +110,38 @@ pub enum AdminRequest {
     DeleteToken {
         id: String,
     },
+    ConnectGossipPeer {
+        node_connection_string: String,
+    },
+    FindRoute {
+        payer_public_key_hex: String,
+        route_params_hex: String,
+        payment_hash_hex: String,
+        first_hops: Vec<String>,
+    },
+    NodeInfo {
+        node_id_hex: String,
+    },
+    PathSuccessful {
+        path: Vec<String>,
+    },
+    PathFailed {
+        path: Vec<String>,
+        short_channel_id: u64,
+    },
+    GossipNodeAnnouncement {
+        msg_hex: String,
+    },
+    GossipChannelAnnouncement {
+        msg_hex: String,
+    },
+    GossipChannelUpdate {
+        msg_hex: String,
+    },
+    GetNetworkGraph {},
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 #[serde(untagged)]
 pub enum AdminResponse {
     GetStatus {
@@ -153,6 +193,22 @@ pub enum AdminResponse {
         pagination: PaginationResponse,
     },
     DeleteToken {},
+    ConnectGossipPeer {},
+    FindRoute {
+        route: String,
+    },
+    NodeInfo {
+        node_info: Option<String>,
+    },
+    PathSuccessful {},
+    PathFailed {},
+    GossipNodeAnnouncement {},
+    GossipChannelAnnouncement {},
+    GossipChannelUpdate {},
+    GetNetworkGraph {
+        nodes: Vec<String>,
+        channels: Vec<String>,
+    },
     Error(Error),
 }
 
@@ -167,7 +223,8 @@ pub struct AdminService {
     pub chain_manager: Arc<SenseiChainManager>,
     pub event_sender: broadcast::Sender<SenseiEvent>,
     pub available_ports: Arc<Mutex<VecDeque<u16>>>,
-    pub network_graph: Arc<Mutex<SenseiNetworkGraph>>,
+    pub p2p: Arc<SenseiP2P>,
+    pub logger: Arc<FilesystemLogger>,
 }
 
 impl AdminService {
@@ -177,6 +234,7 @@ impl AdminService {
         database: SenseiDatabase,
         chain_manager: Arc<SenseiChainManager>,
         event_sender: broadcast::Sender<SenseiEvent>,
+        runtime_handle: tokio::runtime::Handle,
     ) -> Self {
         let mut used_ports = HashSet::new();
         let mut available_ports = VecDeque::new();
@@ -195,18 +253,29 @@ impl AdminService {
             }
         }
 
+        let logger = Arc::new(FilesystemLogger::new(String::from(data_dir)));
+        let database = Arc::new(database);
+        let config = Arc::new(config);
+        let p2p = Arc::new(
+            SenseiP2P::new(
+                config.clone(),
+                database.clone(),
+                logger.clone(),
+                runtime_handle.clone(),
+            )
+            .await,
+        );
+
         Self {
             data_dir: String::from(data_dir),
-            config: Arc::new(config),
+            config,
             node_directory: Arc::new(Mutex::new(HashMap::new())),
-            database: Arc::new(database),
+            database,
             chain_manager,
             event_sender,
             available_ports: Arc::new(Mutex::new(available_ports)),
-            network_graph: Arc::new(Mutex::new(SenseiNetworkGraph {
-                graph: None,
-                msg_handler: None,
-            })),
+            logger,
+            p2p,
         }
     }
 }
@@ -464,6 +533,155 @@ impl AdminService {
                 self.database.delete_access_token(id).await?;
                 Ok(AdminResponse::DeleteToken {})
             }
+            AdminRequest::ConnectGossipPeer {
+                node_connection_string,
+            } => {
+                let (pubkey, addr) = parse_peer_info(node_connection_string).await?;
+
+                let _res = self
+                    .p2p
+                    .peer_connector
+                    .connect_routing_peer(pubkey, addr)
+                    .await;
+
+                Ok(AdminResponse::ConnectGossipPeer {})
+            }
+            AdminRequest::FindRoute {
+                payer_public_key_hex,
+                route_params_hex,
+                payment_hash_hex,
+                first_hops,
+            } => {
+                let payer = hex_utils::to_compressed_pubkey(&payer_public_key_hex)
+                    .expect("valid payer public key hex");
+                let mut route_params_readable =
+                    Cursor::new(hex_utils::to_vec(&route_params_hex).unwrap());
+                let mut payment_hash_readable =
+                    Cursor::new(hex_utils::to_vec(&payment_hash_hex).unwrap());
+                let first_hops = first_hops
+                    .iter()
+                    .map(|hop| {
+                        let mut channel_details_readable =
+                            Cursor::new(hex_utils::to_vec(hop).unwrap());
+                        ChannelDetails::read(&mut channel_details_readable).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+
+                let route_params = RouteParameters::read(&mut route_params_readable).unwrap();
+                let payment_hash = PaymentHash::read(&mut payment_hash_readable).unwrap();
+
+                let scorer = self.p2p.scorer.lock().unwrap();
+                let router = self.p2p.get_router();
+                router
+                    .find_route(
+                        &payer,
+                        &route_params,
+                        &payment_hash,
+                        Some(&first_hops.iter().collect::<Vec<_>>()),
+                        &scorer,
+                    )
+                    .map(|route| AdminResponse::FindRoute {
+                        route: hex_utils::hex_str(&route.encode()),
+                    })
+                    .map_err(|e| Error::Generic(format!("{:?}", e)))
+            }
+            AdminRequest::NodeInfo { node_id_hex } => {
+                let mut node_id_readable = Cursor::new(hex_utils::to_vec(&node_id_hex).unwrap());
+                let node_id = NodeId::read(&mut node_id_readable).unwrap();
+                let network_graph = self.p2p.network_graph.read_only();
+                Ok(AdminResponse::NodeInfo {
+                    node_info: network_graph
+                        .nodes()
+                        .get(&node_id)
+                        .map(|node_info| hex_utils::hex_str(&node_info.encode())),
+                })
+            }
+            AdminRequest::PathSuccessful { path } => {
+                let path = path
+                    .iter()
+                    .map(|route_hop| {
+                        let mut readable_hop = Cursor::new(hex_utils::to_vec(route_hop).unwrap());
+                        RouteHop::read(&mut readable_hop).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                let mut scorer = self.p2p.scorer.lock().unwrap();
+                scorer.payment_path_successful(&path.iter().collect::<Vec<_>>());
+                Ok(AdminResponse::PathSuccessful {})
+            }
+            AdminRequest::PathFailed {
+                path,
+                short_channel_id,
+            } => {
+                let path = path
+                    .iter()
+                    .map(|route_hop| {
+                        let mut readable_hop = Cursor::new(hex_utils::to_vec(route_hop).unwrap());
+                        RouteHop::read(&mut readable_hop).unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                let mut scorer = self.p2p.scorer.lock().unwrap();
+                scorer.payment_path_failed(&path.iter().collect::<Vec<_>>(), short_channel_id);
+                Ok(AdminResponse::PathFailed {})
+            }
+            AdminRequest::GossipNodeAnnouncement { msg_hex } => {
+                let mut msg_readable = Cursor::new(hex_utils::to_vec(&msg_hex).unwrap());
+                let msg = lightning::ln::msgs::NodeAnnouncement::read(&mut msg_readable).unwrap();
+                let _res = self.p2p.p2p_gossip.handle_node_announcement(&msg);
+                Ok(AdminResponse::GossipNodeAnnouncement {})
+            }
+            AdminRequest::GossipChannelAnnouncement { msg_hex } => {
+                let mut msg_readable = Cursor::new(hex_utils::to_vec(&msg_hex).unwrap());
+                let msg =
+                    lightning::ln::msgs::ChannelAnnouncement::read(&mut msg_readable).unwrap();
+                let _res = self.p2p.p2p_gossip.handle_channel_announcement(&msg);
+                Ok(AdminResponse::GossipChannelAnnouncement {})
+            }
+            AdminRequest::GossipChannelUpdate { msg_hex } => {
+                let mut msg_readable = Cursor::new(hex_utils::to_vec(&msg_hex).unwrap());
+                let msg = lightning::ln::msgs::ChannelUpdate::read(&mut msg_readable).unwrap();
+                let _res = self.p2p.p2p_gossip.handle_channel_update(&msg);
+                Ok(AdminResponse::GossipChannelUpdate {})
+            }
+            AdminRequest::GetNetworkGraph {} => {
+                let graph = self.p2p.network_graph.read_only();
+                let channels = graph.channels();
+                let nodes = graph.nodes();
+                Ok(AdminResponse::GetNetworkGraph {
+                    channels: channels
+                        .iter()
+                        .map(|(_scid, info)| {
+                            let node_one = nodes
+                                .get(&info.node_one)
+                                .and_then(|info| {
+                                    info.announcement_info
+                                        .as_ref()
+                                        .map(|info| info.alias.to_string())
+                                })
+                                .unwrap_or(format!("{:?}", info.node_one));
+
+                            let node_two = nodes
+                                .get(&info.node_two)
+                                .and_then(|info| {
+                                    info.announcement_info
+                                        .as_ref()
+                                        .map(|info| info.alias.to_string())
+                                })
+                                .unwrap_or(format!("{:?}", info.node_two));
+
+                            format!("{:?} <=> {:?}", node_one, node_two)
+                        })
+                        .collect::<Vec<String>>(),
+                    nodes: nodes
+                        .iter()
+                        .map(|(node_id, info)| {
+                            info.announcement_info
+                                .as_ref()
+                                .map(|info| info.alias.to_string())
+                                .unwrap_or(format!("{:?}", node_id))
+                        })
+                        .collect::<Vec<String>>(),
+                })
+            }
         }
     }
 
@@ -669,13 +887,6 @@ impl AdminService {
                 }
             }
         };
-
-        let external_router = node.get_role() == node::NodeRole::Default;
-        let (network_graph, network_graph_msg_handler) = {
-            let ng = self.network_graph.lock().await;
-            (ng.get_graph(), ng.get_msg_handler())
-        };
-
         match status {
             None => {
                 let (lightning_node, handles, background_processor) = LightningNode::new(
@@ -691,9 +902,7 @@ impl AdminService {
                         node.id.clone()
                     ),
                     passphrase,
-                    external_router,
-                    network_graph,
-                    network_graph_msg_handler,
+                    self.p2p.clone(),
                     self.chain_manager.clone(),
                     self.database.clone(),
                     self.event_sender.clone(),
@@ -706,12 +915,6 @@ impl AdminService {
                     self.config.api_host.clone(),
                     node.listen_port
                 );
-
-                if !external_router {
-                    let mut ng = self.network_graph.lock().await;
-                    ng.set_graph(lightning_node.network_graph.clone());
-                    ng.set_msg_handler(lightning_node.network_graph_msg_handler.clone());
-                }
 
                 {
                     let mut node_directory = self.node_directory.lock().await;
@@ -746,6 +949,9 @@ impl AdminService {
                 // updating our channel data after we've stopped the background processor.
                 node_handle.node.peer_manager.disconnect_all_peers();
                 node_handle.node.stop_listen.store(true, Ordering::Release);
+                self.p2p
+                    .peer_connector
+                    .unregister_node(node_handle.node.id.clone());
                 let _res = node_handle.background_processor.stop();
                 for handle in node_handle.handles {
                     handle.abort();

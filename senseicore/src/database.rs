@@ -18,6 +18,8 @@ use entity::payment;
 use entity::payment::Entity as Payment;
 use entity::peer;
 use entity::peer::Entity as Peer;
+use entity::peer_address;
+use entity::peer_address::Entity as PeerAddress;
 use entity::sea_orm;
 use entity::sea_orm::ActiveValue;
 use entity::sea_orm::QueryOrder;
@@ -359,6 +361,39 @@ impl SenseiDatabase {
         ))
     }
 
+    pub async fn find_peer_address_by_id(
+        &self,
+        id: &str,
+    ) -> Result<Option<peer_address::Model>, Error> {
+        Ok(PeerAddress::find()
+            .filter(entity::peer_address::Column::Id.eq(id))
+            .one(&self.connection)
+            .await?)
+    }
+
+    pub async fn list_peer_addresses(
+        &self,
+        node_id: &str,
+        pubkey: &str,
+    ) -> Result<Vec<peer_address::Model>, Error> {
+        Ok(PeerAddress::find()
+            .filter(entity::peer_address::Column::NodeId.eq(node_id))
+            .filter(entity::peer_address::Column::Pubkey.eq(pubkey))
+            .order_by_desc(entity::peer_address::Column::LastConnectedAt)
+            .all(&self.connection)
+            .await?)
+    }
+
+    pub async fn delete_peer_address(&self, id: &str) -> Result<(), Error> {
+        match self.find_peer_address_by_id(id).await? {
+            Some(peer_address) => {
+                let _deleted = peer_address.delete(&self.connection).await?;
+                Ok(())
+            }
+            None => Ok(()),
+        }
+    }
+
     pub async fn delete_peer(&self, node_id: &str, pubkey: &str) -> Result<(), Error> {
         match self.find_peer(node_id, pubkey).await? {
             Some(peer) => {
@@ -573,8 +608,22 @@ impl SenseiDatabase {
             .map(|model| model.map(|model| model.v))
     }
 
+    pub fn get_seed_sync(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.get_seed(node_id).await })
+        })
+    }
+
     pub async fn set_seed(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
         self.set_value(node_id, String::from("seed"), seed).await
+    }
+
+    pub fn set_seed_sync(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.set_seed(node_id, seed).await })
+        })
     }
 
     pub async fn create_seed(

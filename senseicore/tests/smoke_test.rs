@@ -594,6 +594,7 @@ mod test {
             database,
             chain_manager,
             event_sender,
+            tokio::runtime::Handle::current(),
         )
         .await
     }

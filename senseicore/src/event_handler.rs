@@ -14,14 +14,13 @@ use crate::config::SenseiConfig;
 use crate::database::SenseiDatabase;
 use crate::events::SenseiEvent;
 use crate::hex_utils;
-use crate::node::{ChannelManager, HTLCStatus, NetworkGraph, PaymentOrigin};
+use crate::node::{ChannelManager, HTLCStatus, PaymentOrigin};
 
 use bdk::wallet::AddressIndex;
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use entity::sea_orm::ActiveValue;
-use lightning::chain::chaininterface::BroadcasterInterface;
-use lightning::routing::gossip::NodeId;
+use lightning::chain::chaininterface::{BroadcasterInterface, FeeEstimator};
 use lightning::{
     chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
     util::events::{Event, EventHandler, PaymentPurpose},
@@ -43,7 +42,6 @@ pub struct LightningNodeEventHandler {
     pub tokio_handle: Handle,
     pub event_sender: broadcast::Sender<SenseiEvent>,
     pub broadcaster: Arc<SenseiBroadcaster>,
-    pub network_graph: Arc<NetworkGraph>,
 }
 
 impl EventHandler for LightningNodeEventHandler {
@@ -255,8 +253,12 @@ impl EventHandler for LightningNodeEventHandler {
                     );
                 }
             }
-            Event::PaymentPathSuccessful { .. } => {}
-            Event::PaymentPathFailed { .. } => {}
+            Event::PaymentPathSuccessful { path: _, .. } => {}
+            Event::PaymentPathFailed {
+                path: _,
+                short_channel_id: _,
+                ..
+            } => {}
             Event::PaymentFailed { payment_hash, .. } => {
                 print!(
                     "\nEVENT: Failed to send payment to payment hash {:?}: exhausted payment retry attempts",
@@ -289,8 +291,6 @@ impl EventHandler for LightningNodeEventHandler {
                 fee_earned_msat,
                 claim_from_onchain_tx,
             } => {
-                let read_only_network_graph = self.network_graph.read_only();
-                let nodes = read_only_network_graph.nodes();
                 let channels = self.channel_manager.list_channels();
 
                 let node_str = |channel_id: &Option<[u8; 32]>| match channel_id {
@@ -299,18 +299,10 @@ impl EventHandler for LightningNodeEventHandler {
                     {
                         None => String::new(),
                         Some(channel) => {
-                            match nodes.get(&NodeId::from_pubkey(&channel.counterparty.node_id)) {
-                                None => " from private node".to_string(),
-                                Some(node) => match &node.announcement_info {
-                                    None => " from unnamed node".to_string(),
-                                    Some(info) => {
-                                        format!(
-                                            " from node {}",
-                                            String::from_utf8_lossy(&info.alias)
-                                        )
-                                    }
-                                },
-                            }
+                            format!(
+                                " from private node {:?}",
+                                channel.counterparty.node_id.to_string()
+                            )
                         }
                     },
                 };
@@ -428,6 +420,9 @@ impl EventHandler for LightningNodeEventHandler {
                 // A "real" node should probably "lock" the UTXOs spent in funding transactions until
                 // the funding transaction either confirms, or this event is generated.
             }
+            Event::ProbeSuccessful { .. } => {}
+            Event::ProbeFailed { .. } => {}
+            Event::HTLCHandlingFailed { .. } => {}
         }
     }
 }

@@ -1,11 +1,13 @@
 use crate::chain::broadcaster::SenseiBroadcaster;
 use crate::chain::manager::SenseiChainManager;
 use crate::error::Error;
-use crate::node::{connect_peer_if_necessary, parse_peer_addr, parse_pubkey, PeerManager};
+use crate::node::PeerManager;
+use crate::p2p::peer_connector::PeerConnector;
+use crate::p2p::utils::{parse_peer_addr, parse_pubkey};
 use crate::services::node::OpenChannelRequest;
 use crate::{chain::database::WalletDatabase, events::SenseiEvent, node::ChannelManager};
 use bdk::{FeeRate, SignOptions};
-use lightning::chain::chaininterface::ConfirmationTarget;
+use lightning::chain::chaininterface::{ConfirmationTarget, FeeEstimator};
 use rand::{thread_rng, Rng};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -26,9 +28,11 @@ pub struct ChannelOpener {
     event_receiver: broadcast::Receiver<SenseiEvent>,
     broadcaster: Arc<SenseiBroadcaster>,
     peer_manager: Arc<PeerManager>,
+    peer_connector: Arc<PeerConnector>,
 }
 
 impl ChannelOpener {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         node_id: String,
         channel_manager: Arc<ChannelManager>,
@@ -37,6 +41,7 @@ impl ChannelOpener {
         event_receiver: broadcast::Receiver<SenseiEvent>,
         broadcaster: Arc<SenseiBroadcaster>,
         peer_manager: Arc<PeerManager>,
+        peer_connector: Arc<PeerConnector>,
     ) -> Self {
         Self {
             node_id,
@@ -46,6 +51,7 @@ impl ChannelOpener {
             event_receiver,
             broadcaster,
             peer_manager,
+            peer_connector,
         }
     }
 
@@ -217,7 +223,7 @@ impl ChannelOpener {
                 if let Ok(tcid) = result {
                     let _res = self
                         .channel_manager
-                        .force_close_channel(tcid, counterparty.as_ref().unwrap());
+                        .force_close_broadcasting_latest_txn(tcid, counterparty.as_ref().unwrap());
                 }
             }
             return Err(Error::Bdk(e));
@@ -277,18 +283,20 @@ impl ChannelOpener {
             let counterparty_addr = parse_peer_addr(counterparty_host_port)
                 .await
                 .expect("failed to parse host port for counterparty");
-            connect_peer_if_necessary(
-                counterparty_pubkey,
-                counterparty_addr,
-                self.peer_manager.clone(),
-            )
-            .await
-            .unwrap_or_else(|_| {
-                panic!(
-                    "failed to connect to peer {}@{}",
-                    counterparty_pubkey, counterparty_addr
+            self.peer_connector
+                .connect_peer_if_necessary(
+                    &self.node_id,
+                    counterparty_pubkey,
+                    counterparty_addr.clone(),
+                    self.peer_manager.clone(),
                 )
-            });
+                .await
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "failed to connect to peer {}@{:?}",
+                        counterparty_pubkey, counterparty_addr
+                    )
+                });
         }
 
         // TODO: want to be logging channels in db for matching forwarded payments

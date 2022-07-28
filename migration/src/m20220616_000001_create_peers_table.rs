@@ -20,6 +20,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Peer::UpdatedAt).big_integer().not_null())
                     .col(ColumnDef::new(Peer::NodeId).string().not_null())
                     .col(ColumnDef::new(Peer::Pubkey).string().not_null())
+                    .col(ColumnDef::new(Peer::Alias).string())
                     .col(ColumnDef::new(Peer::Label).string())
                     .col(ColumnDef::new(Peer::ZeroConf).boolean().not_null())
                     .to_owned(),
@@ -55,5 +56,6 @@ enum Peer {
     NodeId,
     Pubkey,
     Label,
+    Alias,
     ZeroConf,
 }

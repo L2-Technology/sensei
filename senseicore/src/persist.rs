@@ -1,15 +1,13 @@
 use std::{
-    collections::HashMap,
     fs::{self},
     io::Cursor,
-    net::SocketAddr,
     ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
+use super::database::SenseiDatabase;
 use crate::{disk::FilesystemLogger, node::NetworkGraph};
-use bitcoin::secp256k1::PublicKey;
 use bitcoin::{
     blockdata::constants::genesis_block, hashes::hex::FromHex, BlockHash, Network, Txid,
 };
@@ -20,16 +18,9 @@ use lightning::{
         keysinterface::{KeysInterface, Sign},
     },
     routing::scoring::{ProbabilisticScorer, ProbabilisticScoringParameters},
-    util::{
-        persist::KVStorePersister,
-        ser::{Readable, Writeable},
-    },
+    util::{persist::KVStorePersister, ser::Writeable},
 };
 use lightning_persister::FilesystemPersister;
-
-use crate::node;
-
-use super::database::SenseiDatabase;
 
 pub trait KVStoreReader {
     fn read(&self, key: &str) -> std::io::Result<Option<Vec<u8>>>;
@@ -194,7 +185,11 @@ impl SenseiPersister {
             let mut cursor = Cursor::new(contents);
             if let Ok(scorer) = ProbabilisticScorer::read(
                 &mut cursor,
-                (params, Arc::clone(&network_graph), self.logger.clone()),
+                (
+                    params.clone(),
+                    Arc::clone(&network_graph),
+                    self.logger.clone(),
+                ),
             ) {
                 return scorer;
             }
@@ -209,50 +204,8 @@ impl SenseiPersister {
         self.store.persist("scorer", scorer)
     }
 
-    fn get_raw_channel_peer_data(&self) -> String {
-        if let Ok(Some(contents)) = self.store.read("channel_peer_data") {
-            if let Ok(channel_peer_data) = String::read(&mut Cursor::new(contents)) {
-                return channel_peer_data;
-            }
-        }
-
-        String::new()
-    }
-
-    pub fn batch_persist_channel_peers(&self, peer_infos: &[&str]) -> std::io::Result<()> {
-        let mut peer_data = self.get_raw_channel_peer_data();
-        for peer_info in peer_infos {
-            peer_data.push_str(peer_info);
-            peer_data.push('\n');
-        }
-        self.store.persist("channel_peer_data", &peer_data)
-    }
-
-    pub fn persist_channel_peer(&self, peer_info: &str) -> std::io::Result<()> {
-        let mut peer_data = self.get_raw_channel_peer_data();
-        peer_data.push_str(peer_info);
-        peer_data.push('\n');
-        self.store.persist("channel_peer_data", &peer_data)
-    }
-
-    pub async fn read_channel_peer_data(
-        &self,
-    ) -> Result<HashMap<PublicKey, SocketAddr>, std::io::Error> {
-        let mut peer_data = HashMap::new();
-        let raw_peer_data = self.get_raw_channel_peer_data();
-        for line in raw_peer_data.lines() {
-            match node::parse_peer_info(line.to_string()).await {
-                Ok((pubkey, socket_addr)) => {
-                    peer_data.insert(pubkey, socket_addr);
-                }
-                Err(_e) => {
-                    // ignore these errors for now
-                    // might need a way to lock reads while writing to this key
-                    // or use separate table for peers
-                }
-            }
-        }
-        Ok(peer_data)
+    pub fn persist_graph(&self, graph: &NetworkGraph) -> std::io::Result<()> {
+        self.store.persist("graph", graph)
     }
 
     /// Read `ChannelMonitor`s from disk.

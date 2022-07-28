@@ -13,6 +13,11 @@ service Admin {
     rpc ListTokens (ListTokensRequest) returns (ListTokensResponse);
     rpc CreateToken (CreateTokenRequest) returns (Token);
     rpc DeleteToken (DeleteTokenRequest) returns (DeleteTokenResponse);
+    rpc ConnectGossipPeer (ConnectGossipPeerRequest) returns (ConnectGossipPeerResponse);
+    rpc FindRoute (FindRouteRequest) returns (FindRouteResponse);
+    rpc NodeInfo (NodeInfoRequest) returns (NodeInfoResponse);
+    rpc PathSuccessful (PathSuccessfulRequest) returns (PathSuccessfulResponse);
+    rpc PathFailed (PathFailedRequest) returns (PathFailedResponse);
 }
 
 service Node {
@@ -183,6 +188,39 @@ message AdminStopNodeRequest {
     string pubkey = 1;
 }
 message AdminStopNodeResponse {}
+
+message ConnectGossipPeerRequest {
+    string node_connection_string = 1;
+}
+message ConnectGossipPeerResponse {}
+
+message FindRouteRequest {
+    string payer_public_key_hex = 1;
+    string route_params_hex = 2;
+    string payment_hash_hex = 3;
+    repeated string first_hops = 4;
+}
+message FindRouteResponse {
+    string route = 1;
+}
+
+message NodeInfoRequest {
+    string node_id_hex = 1;
+}
+message NodeInfoResponse {
+    optional string node_info = 1;
+}
+
+message PathSuccessfulRequest {
+    repeated string path = 1;
+}
+message PathSuccessfulResponse {}
+
+message PathFailedRequest {
+    repeated string path = 1;
+    uint64 short_channel_id = 2;
+}
+message PathFailedResponse {}
 
 message GetUnusedAddressRequest {}
 message GetUnusedAddressResponse {

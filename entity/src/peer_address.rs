@@ -3,12 +3,33 @@ use serde::{Deserialize, Serialize};
 
 use crate::seconds_since_epoch;
 
+#[derive(Debug, Clone, PartialEq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
+#[sea_orm(rs_type = "i16", db_type = "SmallInteger")]
+pub enum PeerAddressSource {
+    #[sea_orm(num_value = 0)]
+    NodeAnnouncement,
+    #[sea_orm(num_value = 1)]
+    OutboundConnect,
+    #[sea_orm(num_value = 2)]
+    ManualEntry,
+}
+
+impl From<PeerAddressSource> for i16 {
+    fn from(source: PeerAddressSource) -> i16 {
+        match source {
+            PeerAddressSource::NodeAnnouncement => 0,
+            PeerAddressSource::OutboundConnect => 1,
+            PeerAddressSource::ManualEntry => 2,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Default, Debug, DeriveEntity)]
 pub struct Entity;
 
 impl EntityName for Entity {
     fn table_name(&self) -> &str {
-        "peer"
+        "peer_address"
     }
 }
 
@@ -17,11 +38,11 @@ pub struct Model {
     pub id: String,
     pub created_at: i64,
     pub updated_at: i64,
+    pub last_connected_at: i64,
     pub node_id: String,
     pub pubkey: String,
-    pub zero_conf: bool,
-    pub label: Option<String>,
-    pub alias: Option<String>,
+    pub address: Vec<u8>,
+    pub source: i16,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveColumn)]
@@ -31,9 +52,9 @@ pub enum Column {
     UpdatedAt,
     NodeId,
     Pubkey,
-    Label,
-    Alias,
-    ZeroConf,
+    LastConnectedAt,
+    Address,
+    Source,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
@@ -58,11 +79,11 @@ impl ColumnTrait for Column {
             Self::Id => ColumnType::String(None).def().unique(),
             Self::CreatedAt => ColumnType::BigInteger.def(),
             Self::UpdatedAt => ColumnType::BigInteger.def(),
+            Self::LastConnectedAt => ColumnType::BigInteger.def(),
             Self::NodeId => ColumnType::String(None).def(),
             Self::Pubkey => ColumnType::String(None).def(),
-            Self::Label => ColumnType::String(None).def(),
-            Self::Alias => ColumnType::String(None).def(),
-            Self::ZeroConf => ColumnType::Boolean.def(),
+            Self::Address => ColumnType::Binary.def(),
+            Self::Source => ColumnType::SmallInteger.def(),
         }
     }
 }
