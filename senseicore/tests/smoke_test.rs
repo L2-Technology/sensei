@@ -11,6 +11,7 @@ mod test {
     use senseicore::services::node::{Channel, OpenChannelRequest};
     use senseicore::services::{PaginationRequest, PaymentsFilter};
     use serial_test::serial;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::{str::FromStr, sync::Arc, time::Duration};
     use tokio::runtime::{Builder, Handle};
     use tokio::sync::broadcast;
@@ -588,6 +589,8 @@ mod test {
             .unwrap(),
         );
 
+        let stop_signal = Arc::new(AtomicBool::new(false));
+
         AdminService::new(
             &sensei_dir,
             config.clone(),
@@ -595,6 +598,7 @@ mod test {
             chain_manager,
             event_sender,
             tokio::runtime::Handle::current(),
+            stop_signal,
         )
         .await
     }
@@ -624,6 +628,7 @@ mod test {
                 let admin_service =
                     setup_sensei(&sensei_dir, &bitcoind, persistence_runtime_handle).await;
                 let output = test(bitcoind, admin_service.clone()).await;
+                admin_service.stop_signal.store(true, Ordering::Relaxed);
                 admin_service.stop().await.unwrap();
                 output
             })

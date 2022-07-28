@@ -25,9 +25,10 @@ use lightning::{
 use lightning_invoice::utils::DefaultRouter;
 use rand::RngCore;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc, Mutex},
     time::SystemTime,
 };
+use tokio::task::JoinHandle;
 
 use crate::{
     config::SenseiConfig,
@@ -47,7 +48,6 @@ use self::{
     utils::parse_peer_info,
 };
 
-#[derive(Clone)]
 pub struct SenseiP2P {
     pub config: Arc<SenseiConfig>,
     pub persister: Arc<SenseiPersister>,
@@ -59,6 +59,8 @@ pub struct SenseiP2P {
     pub peer_connector: Arc<PeerConnector>,
     pub node_announcer: Arc<NodeAnnouncer>,
     pub runtime_handle: tokio::runtime::Handle,
+    pub stop_signal: Arc<AtomicBool>,
+    pub join_handles: Arc<Mutex<Vec<JoinHandle<()>>>>,
 }
 
 impl SenseiP2P {
@@ -67,6 +69,7 @@ impl SenseiP2P {
         database: Arc<SenseiDatabase>,
         logger: Arc<FilesystemLogger>,
         runtime_handle: tokio::runtime::Handle,
+        stop_signal: Arc<AtomicBool>,
     ) -> Self {
         let p2p_node_id = "SENSEI".to_string();
 
@@ -175,8 +178,10 @@ impl SenseiP2P {
             scorer.clone(),
             network_graph.clone(),
             persister.clone(),
+            stop_signal.clone(),
         );
-        tokio::spawn(async move { p2p_background_processor.process().await });
+
+        let bg_join_handle = tokio::spawn(async move { p2p_background_processor.process().await });
 
         let peer_connector_run = peer_connector.clone();
         tokio::spawn(async move { peer_connector_run.run().await });
@@ -195,6 +200,8 @@ impl SenseiP2P {
             peer_connector,
             node_announcer,
             runtime_handle,
+            stop_signal,
+            join_handles: Arc::new(Mutex::new(vec![bg_join_handle])),
         }
     }
 
@@ -213,6 +220,17 @@ impl SenseiP2P {
                     DefaultRouter::new(self.network_graph.clone(), self.logger.clone(), randomness);
                 AnyRouter::Local(local_router)
             }
+        }
+    }
+
+    pub async fn stop(&self) {
+        let mut join_handles = {
+            let mut p2p_join_handles = self.join_handles.lock().unwrap();
+            p2p_join_handles.drain(..).collect::<Vec<JoinHandle<()>>>()
+        };
+
+        for join_handle in join_handles.iter_mut() {
+            let _res = join_handle.await;
         }
     }
 }

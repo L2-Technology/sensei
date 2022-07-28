@@ -34,7 +34,7 @@ use macaroon::Macaroon;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Cursor;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
@@ -225,6 +225,7 @@ pub struct AdminService {
     pub available_ports: Arc<Mutex<VecDeque<u16>>>,
     pub p2p: Arc<SenseiP2P>,
     pub logger: Arc<FilesystemLogger>,
+    pub stop_signal: Arc<AtomicBool>,
 }
 
 impl AdminService {
@@ -235,6 +236,7 @@ impl AdminService {
         chain_manager: Arc<SenseiChainManager>,
         event_sender: broadcast::Sender<SenseiEvent>,
         runtime_handle: tokio::runtime::Handle,
+        stop_signal: Arc<AtomicBool>,
     ) -> Self {
         let mut used_ports = HashSet::new();
         let mut available_ports = VecDeque::new();
@@ -262,6 +264,7 @@ impl AdminService {
                 database.clone(),
                 logger.clone(),
                 runtime_handle.clone(),
+                stop_signal.clone(),
             )
             .await,
         );
@@ -276,6 +279,7 @@ impl AdminService {
             available_ports: Arc::new(Mutex::new(available_ports)),
             logger,
             p2p,
+            stop_signal,
         }
     }
 }
@@ -963,6 +967,7 @@ impl AdminService {
     }
 
     pub async fn stop(&self) -> Result<(), crate::error::Error> {
+        println!("sensei is preparing to shut down...");
         let pubkeys = {
             let node_directory = self.node_directory.lock().await;
             node_directory.keys().cloned().collect::<Vec<String>>()
@@ -973,7 +978,8 @@ impl AdminService {
         }
 
         self.chain_manager.stop().await;
-
+        self.p2p.stop().await;
+        println!("all set, goodbye!");
         Ok(())
     }
 }
