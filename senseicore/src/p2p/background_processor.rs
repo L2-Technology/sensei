@@ -1,4 +1,5 @@
 use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,6 +19,7 @@ pub struct BackgroundProcessor {
     scorer: Arc<Mutex<AnyScorer>>,
     network_graph: Arc<NetworkGraph>,
     persister: Arc<SenseiPersister>,
+    stop_signal: Arc<AtomicBool>,
 }
 
 impl BackgroundProcessor {
@@ -26,12 +28,14 @@ impl BackgroundProcessor {
         scorer: Arc<Mutex<AnyScorer>>,
         network_graph: Arc<NetworkGraph>,
         persister: Arc<SenseiPersister>,
+        stop_signal: Arc<AtomicBool>,
     ) -> Self {
         Self {
             peer_manager,
             scorer,
             network_graph,
             persister,
+            stop_signal,
         }
     }
 
@@ -82,6 +86,23 @@ impl BackgroundProcessor {
                 }
                 last_scorer_persist_call = Instant::now();
             }
+
+            if self.stop_signal.load(Ordering::Acquire) {
+                break;
+            }
+        }
+
+        let scorer = self.scorer.lock().unwrap();
+        if let AnyScorer::Local(scorer) = scorer.deref() {
+            if self.persister.persist_scorer(scorer).is_err() {
+                // Persistence errors here are non-fatal as channels will be re-scored as payments
+                // fail, but they may indicate a disk error which could be fatal elsewhere.
+                eprintln!("Warning: Failed to persist scorer, check your disk and permissions");
+            }
+        }
+
+        if let Err(_e) = self.persister.persist_graph(&self.network_graph) {
+            eprintln!("Warning: Failed to persist graph, check your disk and permissions");
         }
     }
 }

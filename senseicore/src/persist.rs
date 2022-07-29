@@ -165,7 +165,7 @@ impl SenseiPersister {
     }
 
     pub fn read_network_graph(&self) -> NetworkGraph {
-        if let Ok(Some(contents)) = self.store.read("network_graph") {
+        if let Ok(Some(contents)) = self.store.read("graph") {
             let mut cursor = Cursor::new(contents);
             if let Ok(graph) = NetworkGraph::read(&mut cursor, self.logger.clone()) {
                 return graph;
