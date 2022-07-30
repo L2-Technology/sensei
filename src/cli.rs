@@ -349,6 +349,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         counterparty_pubkey: pubkey.to_string(),
                         amount_sats: amt_satoshis,
                         public,
+                        scid_alias: None,
                         push_amount_msats: None,
                         custom_id: None,
                         counterparty_host_port: Some(host_and_port.to_string()),

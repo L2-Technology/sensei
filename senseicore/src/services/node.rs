@@ -123,6 +123,7 @@ pub struct OpenChannelRequest {
     pub counterparty_pubkey: String,
     pub amount_sats: u64,
     pub public: bool,
+    pub scid_alias: Option<bool>,
     pub custom_id: Option<u64>,
     pub push_amount_msats: Option<u64>,
     pub counterparty_host_port: Option<String>,
@@ -162,6 +163,7 @@ impl From<&OpenChannelRequest> for UserConfig {
             },
             channel_handshake_config: ChannelHandshakeConfig {
                 announced_channel: request.public,
+                negotiate_scid_privacy: request.scid_alias.unwrap_or(false),
                 ..Default::default()
             },
             ..Default::default()
