@@ -250,6 +250,7 @@ message OpenChannelRequest {
     optional uint32 cltv_expiry_delta = 9;
     optional uint64 max_dust_htlc_exposure_msat = 10;
     optional uint64 force_close_avoidance_max_fee_satoshis = 11;
+    optional bool scid_alias = 12;
 }
 
 message OpenChannelResult {
