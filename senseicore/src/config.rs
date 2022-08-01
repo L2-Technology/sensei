@@ -31,6 +31,7 @@ pub struct SenseiConfig {
     pub remote_p2p_host: Option<String>,
     pub remote_p2p_token: Option<String>,
     pub gossip_peers: String,
+    pub instance_name: String,
 }
 
 impl Default for SenseiConfig {
@@ -53,6 +54,7 @@ impl Default for SenseiConfig {
             remote_p2p_host: None,
             remote_p2p_token: None,
             gossip_peers: String::from(""),
+            instance_name: String::from("sensei"),
         }
     }
 }
