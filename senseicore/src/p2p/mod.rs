@@ -71,7 +71,7 @@ impl SenseiP2P {
         runtime_handle: tokio::runtime::Handle,
         stop_signal: Arc<AtomicBool>,
     ) -> Self {
-        let p2p_node_id = "SENSEI".to_string();
+        let p2p_node_id = config.instance_name.clone();
 
         let persistence_store =
             AnyKVStore::Database(DatabaseStore::new(database.clone(), p2p_node_id.clone()));
