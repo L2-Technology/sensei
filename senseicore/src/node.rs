@@ -603,7 +603,7 @@ impl LightningNode {
 
         let bdk_wallet = Arc::new(Mutex::new(bdk_wallet));
 
-        let logger = Arc::new(FilesystemLogger::new(data_dir.clone()));
+        let logger = Arc::new(FilesystemLogger::new(data_dir.clone(), config.network));
 
         let broadcaster = Arc::new(SenseiBroadcaster::new(
             id.clone(),

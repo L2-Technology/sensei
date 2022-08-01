@@ -255,7 +255,10 @@ impl AdminService {
             }
         }
 
-        let logger = Arc::new(FilesystemLogger::new(String::from(data_dir)));
+        let logger = Arc::new(FilesystemLogger::new(
+            String::from(data_dir),
+            config.network,
+        ));
         let database = Arc::new(database);
         let config = Arc::new(config);
         let p2p = Arc::new(
