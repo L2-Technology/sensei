@@ -96,6 +96,8 @@ struct SenseiArgs {
     remote_p2p_host: Option<String>,
     #[clap(long, env = "REMOTE_P2P_TOKEN")]
     remote_p2p_token: Option<String>,
+    #[clap(long, env = "INSTANCE_NAME")]
+    instance_name: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -169,6 +171,9 @@ fn main() {
     }
     if let Some(remote_p2p_token) = args.remote_p2p_token {
         config.remote_p2p_token = Some(remote_p2p_token);
+    }
+    if let Some(instance_name) = args.instance_name {
+        config.instance_name = instance_name;
     }
 
     if !config.database_url.starts_with("postgres:") && !config.database_url.starts_with("mysql:") {
