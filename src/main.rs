@@ -12,7 +12,7 @@ mod http;
 mod hybrid;
 
 use senseicore::{
-    chain::{bitcoind_client::BitcoindClient, manager::SenseiChainManager},
+    chain::{bitcoind_client::BitcoindClient, manager::SenseiChainManager, AnyBlockSource, AnyFeeEstimator, AnyBroadcaster},
     config::SenseiConfig,
     database::SenseiDatabase,
     events::SenseiEvent,
@@ -98,6 +98,10 @@ struct SenseiArgs {
     remote_p2p_token: Option<String>,
     #[clap(long, env = "INSTANCE_NAME")]
     instance_name: Option<String>,
+    #[clap(long, env = "REMOTE_CHAIN_HOST")]
+    remote_chain_host: Option<String>,
+    #[clap(long, env = "REMOTE_CHAIN_TOKEN")]
+    remote_chain_token: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -175,6 +179,12 @@ fn main() {
     if let Some(instance_name) = args.instance_name {
         config.instance_name = instance_name;
     }
+    if let Some(remote_chain_host) = args.remote_chain_host {
+        config.remote_chain_host = Some(remote_chain_host);
+    }
+    if let Some(remote_chain_token) = args.remote_chain_token {
+        config.remote_chain_token = Some(remote_chain_token);
+    }
 
     if !config.database_url.starts_with("postgres:") && !config.database_url.starts_with("mysql:") {
         let sqlite_path = format!("{}/{}/{}", sensei_dir, config.network, config.database_url);
@@ -217,24 +227,46 @@ fn main() {
 
         let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
 
-        let bitcoind_client = Arc::new(
-            BitcoindClient::new(
-                config.bitcoind_rpc_host.clone(),
-                config.bitcoind_rpc_port,
-                config.bitcoind_rpc_username.clone(),
-                config.bitcoind_rpc_password.clone(),
-                tokio::runtime::Handle::current(),
-            )
-            .await
-            .expect("invalid bitcoind rpc config"),
-        );
+        let (block_source, fee_estimator, broadcaster) = match (
+            config.remote_chain_host.as_ref(),
+            config.remote_chain_token.as_ref(),
+        ) {
+            (Some(host), Some(token)) => {
+                (
+                    AnyBlockSource::new_remote(config.network, host.clone(), token.clone()),
+                    AnyFeeEstimator::new_remote(host.clone(), token.clone(), tokio::runtime::Handle::current()),
+                    AnyBroadcaster::new_remote(host.clone(), token.clone(), tokio::runtime::Handle::current())
+                )
+            },
+            _ => {
+                let bitcoind_client = Arc::new(
+                    BitcoindClient::new(
+                        config.bitcoind_rpc_host.clone(),
+                        config.bitcoind_rpc_port,
+                        config.bitcoind_rpc_username.clone(),
+                        config.bitcoind_rpc_password.clone(),
+                        tokio::runtime::Handle::current(),
+                    )
+                    .await
+                    .expect("invalid bitcoind rpc config"),
+                );
+
+                (
+                    AnyBlockSource::Local(bitcoind_client.clone()),
+                    AnyFeeEstimator::Local(bitcoind_client.clone()),
+                    AnyBroadcaster::Local(bitcoind_client.clone())
+                )
+            },
+        };
+
+        
 
         let chain_manager = Arc::new(
             SenseiChainManager::new(
                 config.clone(),
-                bitcoind_client.clone(),
-                bitcoind_client.clone(),
-                bitcoind_client,
+                Arc::new(block_source),
+                Arc::new(fee_estimator),
+                Arc::new(broadcaster),
             )
             .await
             .unwrap(),

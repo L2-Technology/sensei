@@ -15,7 +15,7 @@ name = "senseid"
 path = "src/main.rs"
 
 [dependencies]
-bitcoin = "0.28.1"
+bitcoin = { version = "0.28.1" }
 bitcoincore-rpc = "0.15"
 futures = "0.3"
 chrono = "0.4"
