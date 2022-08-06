@@ -27,7 +27,7 @@ use crate::sensei::{
 };
 
 pub mod sensei {
-    tonic::include_proto!("sensei");
+    include!("./grpc/sensei.rs");
 }
 
 #[tokio::main]

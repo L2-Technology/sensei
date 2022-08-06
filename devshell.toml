@@ -1,0 +1,4 @@
+[devshell]
+packages = [
+  "rustc", "cargo", "cargo-edit"
+]

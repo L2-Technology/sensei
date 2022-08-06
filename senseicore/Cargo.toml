@@ -43,5 +43,4 @@ entity = { path = "../entity" }
 migration = { path = "../migration" }
 
 [dev-dependencies]
-bitcoind = { version = "0.26", features = [ "22_0" ] }
 serial_test = "0.6.0"
