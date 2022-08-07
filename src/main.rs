@@ -12,11 +12,15 @@ mod http;
 mod hybrid;
 
 use senseicore::{
-    chain::{bitcoind_client::BitcoindClient, manager::SenseiChainManager, AnyBlockSource, AnyFeeEstimator, AnyBroadcaster},
+    chain::{
+        bitcoind_client::BitcoindClient, manager::SenseiChainManager, AnyBlockSource,
+        AnyBroadcaster, AnyFeeEstimator,
+    },
     config::SenseiConfig,
     database::SenseiDatabase,
-    events::SenseiEvent,
+    events::{AnyNotifier, EventService, SenseiEvent},
     services::admin::{AdminRequest, AdminResponse, AdminService},
+    version,
 };
 
 use entity::sea_orm::{self, ConnectOptions};
@@ -102,6 +106,12 @@ struct SenseiArgs {
     remote_chain_host: Option<String>,
     #[clap(long, env = "REMOTE_CHAIN_TOKEN")]
     remote_chain_token: Option<String>,
+    #[clap(long, env = "HTTP_NOTIFIER_URL")]
+    http_notifier_url: Option<String>,
+    #[clap(long, env = "HTTP_NOTIFIER_TOKEN")]
+    http_notifier_token: Option<String>,
+    #[clap(long, env = "REGION")]
+    region: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -185,6 +195,15 @@ fn main() {
     if let Some(remote_chain_token) = args.remote_chain_token {
         config.remote_chain_token = Some(remote_chain_token);
     }
+    if let Some(http_notifier_url) = args.http_notifier_url {
+        config.http_notifier_url = Some(http_notifier_url);
+    }
+    if let Some(http_notifier_token) = args.http_notifier_token {
+        config.http_notifier_token = Some(http_notifier_token);
+    }
+    if let Some(region) = args.region {
+        config.region = Some(region)
+    }
 
     if !config.database_url.starts_with("postgres:") && !config.database_url.starts_with("mysql:") {
         let sqlite_path = format!("{}/{}/{}", sensei_dir, config.network, config.database_url);
@@ -207,7 +226,7 @@ fn main() {
         .unwrap();
 
     sensei_runtime.block_on(async move {
-        let (event_sender, _event_receiver): (
+        let (event_sender, event_receiver): (
             broadcast::Sender<SenseiEvent>,
             broadcast::Receiver<SenseiEvent>,
         ) = broadcast::channel(1024);
@@ -227,17 +246,33 @@ fn main() {
 
         let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
 
+        let notifier = match (
+            config.http_notifier_url.as_ref(),
+            config.http_notifier_token.as_ref(),
+        ) {
+            (Some(url), Some(token)) => AnyNotifier::new_http(url.clone(), token.clone()),
+            _ => AnyNotifier::new_log(),
+        };
+
+        EventService::listen(tokio::runtime::Handle::current(), notifier, event_receiver);
+
         let (block_source, fee_estimator, broadcaster) = match (
             config.remote_chain_host.as_ref(),
             config.remote_chain_token.as_ref(),
         ) {
-            (Some(host), Some(token)) => {
-                (
-                    AnyBlockSource::new_remote(config.network, host.clone(), token.clone()),
-                    AnyFeeEstimator::new_remote(host.clone(), token.clone(), tokio::runtime::Handle::current()),
-                    AnyBroadcaster::new_remote(host.clone(), token.clone(), tokio::runtime::Handle::current())
-                )
-            },
+            (Some(host), Some(token)) => (
+                AnyBlockSource::new_remote(config.network, host.clone(), token.clone()),
+                AnyFeeEstimator::new_remote(
+                    host.clone(),
+                    token.clone(),
+                    tokio::runtime::Handle::current(),
+                ),
+                AnyBroadcaster::new_remote(
+                    host.clone(),
+                    token.clone(),
+                    tokio::runtime::Handle::current(),
+                ),
+            ),
             _ => {
                 let bitcoind_client = Arc::new(
                     BitcoindClient::new(
@@ -254,12 +289,10 @@ fn main() {
                 (
                     AnyBlockSource::Local(bitcoind_client.clone()),
                     AnyFeeEstimator::Local(bitcoind_client.clone()),
-                    AnyBroadcaster::Local(bitcoind_client.clone())
+                    AnyBroadcaster::Local(bitcoind_client),
                 )
-            },
+            }
         };
-
-        
 
         let chain_manager = Arc::new(
             SenseiChainManager::new(
@@ -279,7 +312,7 @@ fn main() {
                 config.clone(),
                 database,
                 chain_manager,
-                event_sender,
+                event_sender.clone(),
                 tokio::runtime::Handle::current(),
                 admin_service_stop_signal,
             )
@@ -346,8 +379,16 @@ fn main() {
         println!(
             "manage your sensei node at http://{}:{}/admin/nodes",
             config.api_host.clone(),
-            port
+            port.clone()
         );
+
+        let _res = event_sender.send(SenseiEvent::InstanceStarted {
+            api_host: config.api_host.clone(),
+            api_port: config.api_port,
+            network: config.network.to_string(),
+            version: version::get_version(),
+            region: config.region,
+        });
 
         let mut interval = tokio::time::interval(Duration::from_millis(250));
         loop {
