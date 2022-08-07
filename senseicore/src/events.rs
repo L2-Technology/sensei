@@ -8,6 +8,7 @@ use tokio::{sync::broadcast, task::JoinHandle};
 #[serde(tag = "name", content = "payload")]
 pub enum SenseiEvent {
     InstanceStarted {
+        instance_name: String,
         api_host: String,
         api_port: u16,
         network: String,
@@ -15,6 +16,7 @@ pub enum SenseiEvent {
         region: Option<String>,
     },
     InstanceStopped {
+        instance_name: String,
         api_host: String,
     },
     TransactionBroadcast {
