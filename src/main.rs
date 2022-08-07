@@ -383,6 +383,7 @@ fn main() {
         );
 
         let _res = event_sender.send(SenseiEvent::InstanceStarted {
+            instance_name: config.instance_name.clone(),
             api_host: config.api_host.clone(),
             api_port: config.api_port,
             network: config.network.to_string(),
@@ -398,6 +399,11 @@ fn main() {
                 break;
             }
         }
+
+        let _res = event_sender.send(SenseiEvent::InstanceStopped {
+            instance_name: config.instance_name.clone(),
+            api_host: config.api_host.clone(),
+        });
     });
 }
 
