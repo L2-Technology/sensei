@@ -963,6 +963,18 @@ impl AdminService {
                 for handle in node_handle.handles {
                     handle.abort();
                 }
+
+                match self.database.get_node_by_pubkey(&pubkey).await? {
+                    Some(node) => {
+                        let mut node: node::ActiveModel = node.into();
+                        node.status = ActiveValue::Set(node::NodeStatus::Stopped.into());
+                        node.save(self.database.get_connection()).await?;
+                    }
+                    None => {
+                        // TODO: this shouldn't be possible.  surface this some other way?
+                        println!("couldn't find node pubkey in database while stopping");
+                    }
+                }
             }
         }
 

@@ -30,8 +30,13 @@ pub struct SenseiConfig {
     pub database_url: String,
     pub remote_p2p_host: Option<String>,
     pub remote_p2p_token: Option<String>,
+    pub remote_chain_host: Option<String>,
+    pub remote_chain_token: Option<String>,
     pub gossip_peers: String,
     pub instance_name: String,
+    pub http_notifier_url: Option<String>,
+    pub http_notifier_token: Option<String>,
+    pub region: Option<String>,
 }
 
 impl Default for SenseiConfig {
@@ -53,8 +58,13 @@ impl Default for SenseiConfig {
             database_url: String::from("sensei.db"),
             remote_p2p_host: None,
             remote_p2p_token: None,
+            remote_chain_host: None,
+            remote_chain_token: None,
             gossip_peers: String::from(""),
             instance_name: String::from("sensei"),
+            http_notifier_url: None,
+            http_notifier_token: None,
+            region: None,
         }
     }
 }
