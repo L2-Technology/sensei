@@ -242,7 +242,6 @@ fn main() {
             .expect("failed to run migrations");
 
         let database = SenseiDatabase::new(db_connection, persistence_runtime_handle);
-        database.mark_all_nodes_stopped().await.unwrap();
 
         let addr = SocketAddr::from(([0, 0, 0, 0], config.api_port));
 
