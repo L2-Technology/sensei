@@ -95,33 +95,20 @@ mod test {
         handle.as_ref().unwrap().node.clone()
     }
 
-    async fn create_root_node(
+    async fn create_admin_account(
         admin_service: &AdminService,
         username: &str,
         passphrase: &str,
-        start: bool,
-    ) -> Arc<LightningNode> {
+    ) -> String {
         match admin_service
             .call(AdminRequest::CreateAdmin {
                 username: String::from(username),
-                alias: String::from(username),
                 passphrase: String::from(passphrase),
-                start,
             })
             .await
             .unwrap()
         {
-            AdminResponse::CreateAdmin {
-                pubkey,
-                macaroon: _,
-                id: _,
-                token: _,
-                role: _,
-            } => {
-                let directory = admin_service.node_directory.lock().await;
-                let handle = directory.get(&pubkey).unwrap().as_ref().unwrap();
-                Some(handle.node.clone())
-            }
+            AdminResponse::CreateAdmin { token } => Some(token),
             _ => None,
         }
         .unwrap()
@@ -637,7 +624,8 @@ mod test {
     }
 
     async fn smoke_test(bitcoind: BitcoinD, admin_service: AdminService) {
-        let alice = create_root_node(&admin_service, "alice", "alice", true).await;
+        let admin_token = create_admin_account(&admin_service, "admin", "admin").await;
+        let alice = create_node(&admin_service, "alice", "alice", true).await;
         let bob = create_node(&admin_service, "bob", "bob", true).await;
         let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
         fund_node(&bitcoind, alice.clone()).await;
@@ -744,7 +732,8 @@ mod test {
     }
 
     async fn batch_open_channels_test(bitcoind: BitcoinD, admin_service: AdminService) {
-        let alice = create_root_node(&admin_service, "alice", "alice", true).await;
+        let admin_token = create_admin_account(&admin_service, "admin", "admin").await;
+        let alice = create_node(&admin_service, "alice", "alice", true).await;
         let bob = create_node(&admin_service, "bob", "bob", true).await;
         let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
         let doug = create_node(&admin_service, "doug", "doug", true).await;

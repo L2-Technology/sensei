@@ -11,7 +11,7 @@ const AddPeerPage = () => {
           </h3>
 
           <div className="mt-3 sm:mt-0 sm:ml-4">
-            <Link to="/admin/peers" className="btn-ghost">
+            <Link to="/peers" className="btn-ghost">
               Cancel
             </Link>
           </div>

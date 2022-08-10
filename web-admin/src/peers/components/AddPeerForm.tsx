@@ -35,7 +35,7 @@ const AddKnownPeerForm = () => {
             label,
             zeroConf === "true"
           );
-          navigate("/admin/peers");
+          navigate("/peers");
         } catch (e) {
           // TODO: handle error
         }

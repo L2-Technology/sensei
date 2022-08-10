@@ -65,15 +65,11 @@ pub struct NodeCreateResult {
 
 pub enum AdminRequest {
     GetStatus {
-        pubkey: String,
+        pubkey: Option<String>,
+        authenticated_admin: bool,
     },
     CreateAdmin {
         username: String,
-        alias: String,
-        passphrase: String,
-        start: bool,
-    },
-    StartAdmin {
         passphrase: String,
     },
     CreateNode {
@@ -146,24 +142,15 @@ pub enum AdminRequest {
 pub enum AdminResponse {
     GetStatus {
         version: String,
+        setup: bool,
+        authenticated_node: bool,
+        authenticated_admin: bool,
         alias: Option<String>,
-        created: bool,
-        running: bool,
-        authenticated: bool,
         pubkey: Option<String>,
         username: Option<String>,
         role: Option<i16>,
     },
     CreateAdmin {
-        pubkey: String,
-        macaroon: String,
-        id: String,
-        role: i16,
-        token: String,
-    },
-    StartAdmin {
-        pubkey: String,
-        macaroon: String,
         token: String,
     },
     CreateNode {
@@ -319,22 +306,25 @@ impl From<migration::DbErr> for Error {
 impl AdminService {
     pub async fn call(&self, request: AdminRequest) -> Result<AdminResponse, Error> {
         match request {
-            AdminRequest::GetStatus { pubkey } => {
-                let root_node = self.database.get_root_node().await?;
-                match root_node {
-                    Some(_root_node) => {
+            AdminRequest::GetStatus {
+                pubkey,
+                authenticated_admin,
+            } => {
+                let setup = self.database.get_root_access_token().await?.is_some();
+                match pubkey {
+                    Some(pubkey) => {
                         let pubkey_node = self.database.get_node_by_pubkey(&pubkey).await?;
                         match pubkey_node {
                             Some(pubkey_node) => {
                                 let directory = self.node_directory.lock().await;
-                                let node_running = directory.contains_key(&pubkey);
+                                let _node_running = directory.contains_key(&pubkey);
 
                                 Ok(AdminResponse::GetStatus {
                                     version: version::get_version(),
                                     alias: Some(pubkey_node.alias),
-                                    created: true,
-                                    running: node_running,
-                                    authenticated: true,
+                                    setup,
+                                    authenticated_admin,
+                                    authenticated_node: true,
                                     pubkey: Some(pubkey_node.pubkey),
                                     username: Some(pubkey_node.username),
                                     role: Some(pubkey_node.role),
@@ -343,9 +333,9 @@ impl AdminService {
                             None => Ok(AdminResponse::GetStatus {
                                 version: version::get_version(),
                                 alias: None,
-                                created: true,
-                                running: false,
-                                authenticated: false,
+                                setup,
+                                authenticated_admin,
+                                authenticated_node: false,
                                 pubkey: None,
                                 username: None,
                                 role: None,
@@ -355,10 +345,10 @@ impl AdminService {
                     None => Ok(AdminResponse::GetStatus {
                         version: version::get_version(),
                         alias: None,
+                        setup,
+                        authenticated_admin,
+                        authenticated_node: false,
                         pubkey: None,
-                        created: false,
-                        running: false,
-                        authenticated: false,
                         username: None,
                         role: None,
                     }),
@@ -366,54 +356,18 @@ impl AdminService {
             }
             AdminRequest::CreateAdmin {
                 username,
-                alias,
                 passphrase,
-                start,
             } => {
-                let (node, macaroon) = self
-                    .create_node(username, alias, passphrase.clone(), node::NodeRole::Root)
-                    .await?;
-
                 let root_token = self.database.create_root_access_token().await.unwrap();
-
-                let macaroon = macaroon.serialize(macaroon::Format::V2)?;
-
-                if start {
-                    self.start_node(node.clone(), passphrase).await?;
-                }
+                let _user = self
+                    .database
+                    .create_user(username, passphrase)
+                    .await
+                    .unwrap();
 
                 Ok(AdminResponse::CreateAdmin {
-                    pubkey: node.pubkey,
-                    macaroon: hex_utils::hex_str(macaroon.as_slice()),
-                    id: node.id,
-                    role: node.role,
                     token: root_token.token,
                 })
-            }
-            AdminRequest::StartAdmin { passphrase } => {
-                let root_node = self.database.get_root_node().await?;
-                let access_token = self.database.get_root_access_token().await?;
-
-                match root_node {
-                    Some(node) => {
-                        let macaroon = LightningNode::get_macaroon_for_node(
-                            &node.id,
-                            &passphrase,
-                            self.database.clone(),
-                        )
-                        .await?;
-                        self.start_node(node.clone(), passphrase).await?;
-                        let macaroon = macaroon.serialize(macaroon::Format::V2)?;
-                        Ok(AdminResponse::StartAdmin {
-                            pubkey: node.pubkey,
-                            macaroon: hex_utils::hex_str(macaroon.as_slice()),
-                            token: access_token.expect("no token in db").token,
-                        })
-                    }
-                    None => Err(Error::Generic(String::from(
-                        "root node not found, you need to init your sensei instance",
-                    ))),
-                }
             }
             AdminRequest::StartNode { pubkey, passphrase } => {
                 let node = self.database.get_node_by_pubkey(&pubkey).await?;
@@ -776,7 +730,6 @@ impl AdminService {
         let listen_addr = self.config.api_host.clone();
 
         let listen_port: i32 = match role {
-            node::NodeRole::Root => self.config.root_node_port.into(),
             node::NodeRole::Default => {
                 let mut available_ports = self.available_ports.lock().await;
                 available_ports.pop_front().unwrap().into()

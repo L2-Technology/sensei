@@ -1,24 +1,41 @@
 import React from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
+import { AlertMsg } from "src/components/ErrorAlert";
+import Spinner from "src/components/Spinner";
 import { useAuth } from "../../contexts/auth";
 import logo from "../../images/Icon-Lightning@2x.png";
-import Spinner from "src/components/Spinner";
 
-const UsernamePassphraseStep = () => {
+const AdminLoginPage = () => {
   let [submitting, setSubmitting] = React.useState<boolean>(false);
+  let [submitError, setSubmitError] = React.useState<string>(null!);
   let navigate = useNavigate();
+  let location = useLocation();
   let auth = useAuth();
+
+  let from = location.state?.from?.pathname || "/admin/nodes";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitting(true);
+    setSubmitError(null);
 
     let formData = new FormData(event.currentTarget);
     let username = formData.get("username") as string;
     let passphrase = formData.get("passphrase") as string;
-    await auth.init(username, passphrase);
-    setSubmitting(false);
-    await navigate("/admin/nodes");
+
+    try {
+      await auth.loginAdmin(username, passphrase);
+      // Send them back to the page they tried to visit when they were
+      // redirected to the login page. Use { replace: true } so we don't create
+      // another entry in the history stack for the login page.  This means that
+      // when they get to the protected page and click the back button, they
+      // won't end up back on the login page, which is also really nice for the
+      // user experience.
+      navigate(from, { replace: true });
+    } catch (e) {
+      setSubmitError("invalid passphrase");
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -29,15 +46,24 @@ const UsernamePassphraseStep = () => {
             <img src={logo} alt="sensei logo" className="h-20 mx-auto" />
 
             <h2 className="mt-6 mb-6 text-center text-2xl font-bold text-gray-100">
-              Setup Admin Account
+              Login to the admin
             </h2>
           </div>
+
+          {submitError && (
+            <AlertMsg type="error" className="-mt-2 mb-2">
+              {submitError}
+            </AlertMsg>
+          )}
+
           <form onSubmit={handleSubmit} action="#" method="POST">
             <fieldset disabled={submitting} className="space-y-6">
               <div>
                 <label
                   htmlFor="username"
-                  className="block text-sm font-medium text-light-plum"
+                  className={`block text-sm font-medium ${
+                    submitError ? "text-red-400" : "text-light-plum"
+                  }`}
                 >
                   Username
                 </label>
@@ -47,16 +73,17 @@ const UsernamePassphraseStep = () => {
                     id="username"
                     name="username"
                     type="text"
-                    placeholder="admin"
                     required
-                    className="input"
+                    className={`${submitError ? "!border-red-400" : ""} input`}
                   />
                 </div>
               </div>
               <div>
                 <label
                   htmlFor="passphrase"
-                  className="block text-sm font-medium text-light-plum"
+                  className={`block text-sm font-medium ${
+                    submitError ? "text-red-400" : "text-light-plum"
+                  }`}
                 >
                   Passphrase
                 </label>
@@ -66,17 +93,17 @@ const UsernamePassphraseStep = () => {
                     name="passphrase"
                     type="password"
                     required
-                    className="input"
+                    className={`${submitError ? "!border-red-400" : ""} input`}
                   />
                 </div>
               </div>
+
               <div>
                 <button
                   type="submit"
-                  disabled={submitting}
                   className="btn-orange w-full justify-center"
                 >
-                  {submitting ? <Spinner /> : "Setup"}
+                  {submitting ? <Spinner /> : "Login"}
                 </button>
               </div>
             </fieldset>
@@ -87,4 +114,4 @@ const UsernamePassphraseStep = () => {
   );
 };
 
-export default UsernamePassphraseStep;
+export default AdminLoginPage;

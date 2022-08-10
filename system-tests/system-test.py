@@ -88,7 +88,7 @@ class Bitcoind(jsonrpc_requests.Server):
 def grpc_admin_client(url, metadata):
     channel = grpc.insecure_channel(url)
     stub = AdminStub(channel)
-    stub.GetStatus(GetStatusRequest(), metadata=metadata, timeout=1)
+    # stub.GetStatus(GetStatusRequest(), metadata=metadata, timeout=1)
     return stub
 
 
@@ -143,22 +143,21 @@ def run():
     balance = btc.getbalance()
     assert balance > 0
 
-    alice = fund_root_node(btc, metadata)
-    meta_a = metadata
-    bob, meta_b, id_b = fund_node(btc, metadata, senseid, 1)
+    alice, meta_a, id_a = fund_node(btc, metadata, senseid, 1)
+    bob, meta_b, id_b = fund_node(btc, metadata, senseid, 2)
 
     print('Create channel alice -> bob')
-    oc_res = alice.OpenChannels(OpenChannelsRequest(requests=[OpenChannelRequest(counterparty_pubkey=f"{id_b}", counterparty_host_port=f"127.0.0.1:10000", amount_sats=CHANNEL_VALUE_SAT, public=True)]),
+    oc_res = alice.OpenChannels(OpenChannelsRequest(requests=[OpenChannelRequest(counterparty_pubkey=f"{id_b}", counterparty_host_port=f"127.0.0.1:10001", amount_sats=CHANNEL_VALUE_SAT, public=True)]),
                       metadata=meta_a)
 
     print(oc_res)
     wait_until('channel at bob', lambda: bob.ListChannels(ListChannelsRequest(), metadata=meta_b).channels[0])
     assert not bob.ListChannels(ListChannelsRequest(), metadata=meta_b).channels[0].is_usable
 
-    charlie, meta_c, id_c = fund_node(btc, metadata, senseid, 2)
+    charlie, meta_c, id_c = fund_node(btc, metadata, senseid, 3)
 
     print('Create channel bob -> charlie')
-    bob.OpenChannels(OpenChannelsRequest(requests=[OpenChannelRequest(counterparty_pubkey=f"{id_c}", counterparty_host_port=f"127.0.0.1:10001", amount_sats=CHANNEL_VALUE_SAT, public=True)]),
+    bob.OpenChannels(OpenChannelsRequest(requests=[OpenChannelRequest(counterparty_pubkey=f"{id_c}", counterparty_host_port=f"127.0.0.1:10002", amount_sats=CHANNEL_VALUE_SAT, public=True)]),
                     metadata=meta_b)
     wait_until('channel at charlie', lambda: charlie.ListChannels(ListChannelsRequest(), metadata=meta_c).channels[0])
     assert not charlie.ListChannels(ListChannelsRequest(), metadata=meta_c).channels[0].is_usable
@@ -308,13 +307,13 @@ def start_senseid():
     p = Popen(cmd, stdout=stdout_log, stderr=subprocess.STDOUT)
     processes.append(p)
     time.sleep(2)
-    requests.get('http://localhost:3301/v1/status')
+    requests.get('http://localhost:3301/api/v1/status')
 
     print("Init sensei")
-    res = requests.post('http://localhost:3301/v1/init',
-                        json={"alias": "Satoshi", "passphrase": "test", "username": "admin", "start": True})
+    res = requests.post('http://localhost:3301/api/v1/init',
+                        json={ "passphrase": "test", "username": "admin"})
     json = res.json()
-    metadata = (('macaroon', json['macaroon']), ('token', json['token']))
+    metadata = (('macaroon', 'invalid'), ('token', json['token']))
     senseid = grpc_admin_client(f'localhost:3301', metadata)
     return senseid, metadata
 

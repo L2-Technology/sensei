@@ -11,6 +11,7 @@ mod m20220428_000003_create_transactions_table;
 mod m20220428_000004_create_keychains_table;
 mod m20220616_000001_create_peers_table;
 mod m20220701_000001_create_peer_addresses_table;
+mod m20220808_000001_create_users_table;
 
 pub struct Migrator;
 
@@ -30,6 +31,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20220428_000004_create_keychains_table::Migration),
             Box::new(m20220616_000001_create_peers_table::Migration),
             Box::new(m20220701_000001_create_peer_addresses_table::Migration),
+            Box::new(m20220808_000001_create_users_table::Migration),
         ]
     }
 }

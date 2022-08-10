@@ -23,7 +23,7 @@ use crate::sensei::{
     CreateNodeRequest, GetUnusedAddressRequest, InfoRequest, KeysendRequest, ListChannelsRequest,
     ListNodesRequest, ListPaymentsRequest, ListPeersRequest, ListUnspentRequest,
     NetworkGraphInfoRequest, OpenChannelRequest, OpenChannelsRequest, PayInvoiceRequest,
-    SignMessageRequest, StartAdminRequest, StartNodeRequest,
+    SignMessageRequest, StartNodeRequest,
 };
 
 pub mod sensei {
@@ -202,7 +202,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut admin_client = AdminClient::new(channel);
 
         let username = command_args.value_of("username").unwrap();
-        let alias = command_args.value_of("alias").unwrap();
 
         let mut passphrase = String::new();
         print!("set a passphrase: ");
@@ -210,9 +209,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let request = tonic::Request::new(CreateAdminRequest {
             username: username.to_string(),
-            alias: alias.to_string(),
             passphrase,
-            start: false,
         });
         let response = admin_client.create_admin(request).await?;
         println!("{:?}", response.into_inner());
@@ -251,15 +248,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
         match command {
-            "start" => {
-                let mut passphrase = String::new();
-                println!("enter your passphrase: ");
-                io::stdin().read_line(&mut passphrase)?;
-
-                let request = tonic::Request::new(StartAdminRequest { passphrase });
-                let response = admin_client.start_admin(request).await?;
-                println!("{:?}", response.into_inner());
-            }
             "listnodes" => {
                 let request = tonic::Request::new(ListNodesRequest { pagination: None });
                 let response = admin_client.list_nodes(request).await?;

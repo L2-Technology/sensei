@@ -24,6 +24,8 @@ use entity::sea_orm;
 use entity::sea_orm::ActiveValue;
 use entity::sea_orm::QueryOrder;
 use entity::seconds_since_epoch;
+use entity::user;
+use entity::user::Entity as User;
 use migration::Condition;
 use migration::Expr;
 use rand::thread_rng;
@@ -84,13 +86,6 @@ impl SenseiDatabase {
             .exec(&self.connection)
             .await
             .map(|_| ())?)
-    }
-
-    pub async fn get_root_node(&self) -> Result<Option<node::Model>, Error> {
-        Ok(Node::find()
-            .filter(node::Column::Role.eq(node::NodeRole::Root))
-            .one(&self.connection)
-            .await?)
     }
 
     pub async fn get_node_by_pubkey(&self, pubkey: &str) -> Result<Option<node::Model>, Error> {
@@ -157,6 +152,31 @@ impl SenseiDatabase {
                 total: total.try_into().unwrap(),
             },
         ))
+    }
+
+    pub async fn create_user(
+        &self,
+        username: String,
+        passphrase: String,
+    ) -> Result<user::Model, Error> {
+        let hashed_password = bcrypt::hash(passphrase, 10).unwrap();
+        let user = user::ActiveModel {
+            username: ActiveValue::Set(username),
+            hashed_password: ActiveValue::Set(hashed_password),
+            ..Default::default()
+        };
+        Ok(user.insert(&self.connection).await?)
+    }
+
+    pub async fn verify_user(&self, username: String, passphrase: String) -> Result<bool, Error> {
+        match User::find()
+            .filter(user::Column::Username.eq(username))
+            .one(&self.connection)
+            .await?
+        {
+            Some(user) => Ok(bcrypt::verify(passphrase, &user.hashed_password).unwrap()),
+            None => Ok(false),
+        }
     }
 
     pub async fn get_root_access_token(&self) -> Result<Option<access_token::Model>, Error> {

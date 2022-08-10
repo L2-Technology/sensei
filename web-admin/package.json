@@ -1,12 +1,12 @@
 {
   "name": "web-admin",
   "version": "0.2.0",
-  "homepage": "http://localhost:5401/admin",
+  "homepage": "http://localhost:5401/",
   "private": true,
   "dependencies": {
     "@headlessui/react": "^1.4.2",
     "@heroicons/react": "^1.0.5",
-    "@l2-technology/sensei-client": "0.1.22",
+    "@l2-technology/sensei-client": "0.1.23",
     "@tailwindcss/aspect-ratio": "^0.4.0",
     "@tailwindcss/forms": "^0.4.0",
     "@tailwindcss/typography": "^0.5.0",

@@ -47,55 +47,63 @@ impl NodeService {
         metadata: MetadataMap,
         request: NodeRequest,
     ) -> Result<NodeResponse, Status> {
-        let macaroon_hex_string = raw_macaroon_from_metadata(metadata)?;
+        match raw_macaroon_from_metadata(metadata)? {
+            None => Err(Status::unauthenticated("macaroon required")),
+            Some(macaroon_hex_string) => {
+                let (macaroon, session) =
+                    utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
+                        .map_err(|_e| Status::unauthenticated("invalid macaroon"))?;
+                let pubkey = session.pubkey.clone();
 
-        let (macaroon, session) = utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
-            .map_err(|_e| Status::unauthenticated("invalid macaroon"))?;
-        let pubkey = session.pubkey.clone();
+                let node_directory = self.admin_service.node_directory.lock().await;
 
-        let node_directory = self.admin_service.node_directory.lock().await;
-
-        match node_directory.get(&session.pubkey) {
-            Some(Some(handle)) => {
-                handle
-                    .node
-                    .verify_macaroon(macaroon, session)
-                    .await
-                    .map_err(|_e| Status::unauthenticated("invalid macaroon: failed to verify"))?;
-
-                match request {
-                    NodeRequest::StopNode {} => {
-                        drop(node_directory);
-                        let admin_request = AdminRequest::StopNode { pubkey };
-                        let _ = self
-                            .admin_service
-                            .call(admin_request)
+                match node_directory.get(&session.pubkey) {
+                    Some(Some(handle)) => {
+                        handle
+                            .node
+                            .verify_macaroon(macaroon, session)
                             .await
-                            .map_err(|_e| Status::unknown("failed to stop node"))?;
-                        Ok(NodeResponse::StopNode {})
+                            .map_err(|_e| {
+                                Status::unauthenticated("invalid macaroon: failed to verify")
+                            })?;
+
+                        match request {
+                            NodeRequest::StopNode {} => {
+                                drop(node_directory);
+                                let admin_request = AdminRequest::StopNode { pubkey };
+                                let _ = self
+                                    .admin_service
+                                    .call(admin_request)
+                                    .await
+                                    .map_err(|_e| Status::unknown("failed to stop node"))?;
+                                Ok(NodeResponse::StopNode {})
+                            }
+                            _ => handle
+                                .node
+                                .call(request)
+                                .await
+                                .map_err(|_e| Status::unknown("error")),
+                        }
                     }
-                    _ => handle
-                        .node
-                        .call(request)
-                        .await
-                        .map_err(|_e| Status::unknown("error")),
+                    Some(None) => Err(Status::not_found("node is in process of being started")),
+                    None => match request {
+                        NodeRequest::StartNode { passphrase } => {
+                            drop(node_directory);
+                            let admin_request = AdminRequest::StartNode {
+                                passphrase,
+                                pubkey: session.pubkey,
+                            };
+                            let _ = self.admin_service.call(admin_request).await.map_err(|_e| {
+                                Status::unauthenticated(
+                                    "failed to start node, likely invalid passphrase",
+                                )
+                            })?;
+                            Ok(NodeResponse::StartNode {})
+                        }
+                        _ => Err(Status::not_found("node with that pubkey not found")),
+                    },
                 }
             }
-            Some(None) => Err(Status::not_found("node is in process of being started")),
-            None => match request {
-                NodeRequest::StartNode { passphrase } => {
-                    drop(node_directory);
-                    let admin_request = AdminRequest::StartNode {
-                        passphrase,
-                        pubkey: session.pubkey,
-                    };
-                    let _ = self.admin_service.call(admin_request).await.map_err(|_e| {
-                        Status::unauthenticated("failed to start node, likely invalid passphrase")
-                    })?;
-                    Ok(NodeResponse::StartNode {})
-                }
-                _ => Err(Status::not_found("node with that pubkey not found")),
-            },
         }
     }
 }

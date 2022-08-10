@@ -11,7 +11,7 @@ const OpenChannelPage = () => {
           </h3>
 
           <div className="mt-3 sm:mt-0 sm:ml-4">
-            <Link to="/admin/channels" className="btn-ghost">
+            <Link to="/channels" className="btn-ghost">
               Cancel
             </Link>
           </div>

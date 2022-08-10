@@ -10,7 +10,7 @@ const PeersPage = () => {
             Peer Directory
           </h3>
           <div className="mt-3 sm:mt-0 sm:ml-4">
-            <Link to="/admin/peers/new" className="btn-orange">
+            <Link to="/peers/new" className="btn-orange">
               Add Peer
             </Link>
           </div>

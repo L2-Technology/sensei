@@ -43,7 +43,7 @@ const OpenChannelForm = () => {
           if(result.error) {
             showError(result.errorMessage)
           } else {
-            navigate("/admin/channels");
+            navigate("/channels");
           }
         } catch (e) {
           showError(e.message)

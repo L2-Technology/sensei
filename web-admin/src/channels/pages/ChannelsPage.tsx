@@ -10,7 +10,7 @@ const ChannelsPage = () => {
             Channels
           </h3>
           <div className="mt-3 sm:mt-0 sm:ml-4">
-            <Link to="/admin/channels/open" className="btn-orange">
+            <Link to="/channels/open" className="btn-orange">
               Open Channel
             </Link>
           </div>
