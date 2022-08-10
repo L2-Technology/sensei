@@ -14,6 +14,7 @@ pub mod peer;
 pub mod peer_address;
 pub mod script_pubkey;
 pub mod transaction;
+pub mod user;
 pub mod utxo;
 
 pub mod seaql_migrations;

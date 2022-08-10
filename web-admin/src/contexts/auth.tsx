@@ -1,11 +1,11 @@
 import React from "react";
 import sensei from "../utils/sensei";
 
-interface NodeStatus {
+interface SenseiStatus {
   version: string;
-  created: boolean;
-  running: boolean;
-  authenticated: boolean;
+  setup: boolean;
+  authenticatedAdmin: boolean;
+  authenticatedNode: boolean;
   username?: string;
   alias?: string;
   pubkey?: string;
@@ -13,16 +13,14 @@ interface NodeStatus {
 }
 
 interface AuthContextType {
-  status: NodeStatus;
-  create: (
+  status: SenseiStatus;
+  init: (
     username: string,
-    alias: string,
     passphrase: string,
-    start: boolean
   ) => Promise<void>;
-  login: (username: string, passphrase: string) => Promise<void>;
+  loginAdmin: (username: string, passphrase: string) => Promise<void>;
+  loginNode: (username: string, passphrase: string) => Promise<void>;
   logout: () => Promise<void>;
-  isAdmin: () => boolean;
 }
 
 let AuthContext = React.createContext<AuthContextType>(null!);
@@ -31,52 +29,52 @@ const AuthProvider = ({
   initialStatus,
   children,
 }: {
-  initialStatus: NodeStatus;
+  initialStatus: SenseiStatus;
   children: React.ReactNode;
 }) => {
-  let [status, setStatus] = React.useState<NodeStatus>(initialStatus);
+  let [status, setStatus] = React.useState<SenseiStatus>(initialStatus);
 
-  let isAdmin = () => {
-    return status.role === 0;
-  };
-
-  let create = async (
+  let init = async (
     username: string,
-    alias: string,
     passphrase: string,
-    start: boolean
   ) => {
     let response = await sensei.init({
       username,
-      alias,
       passphrase,
-      start,
     });
     setStatus((status) => {
       return {
         ...status,
-        created: true,
-        running: start,
-        authenticated: true,
-        alias,
+        setup: true,
+        authenticatedAdmin: true,
+        authenticatedNode: false,
         username,
-        pubkey: response.pubkey,
-        role: response.role,
       };
     });
   };
 
-  let login = async (username: string, passphrase: string) => {
-    let response = await sensei.login(username, passphrase);
+  let loginAdmin = async (username: string, passphrase: string) => {
+    let response = await sensei.loginAdmin(username, passphrase);
+    setStatus((status) => {
+      return {
+        ...status,
+        username,
+        authenticatedAdmin: true,
+        authenticatedNode: false
+      };
+    });
+  };
+
+  let loginNode = async (username: string, passphrase: string) => {
+    let response = await sensei.loginNode(username, passphrase);
     setStatus((status) => {
       return {
         ...status,
         username,
         alias: response.alias,
-        running: true,
-        authenticated: true,
-        pubkey: response.pubkey,
-        role: response.role,
+        authenticatedAdmin: false,
+        authenticatedNode: true,
+        pubkey: response.pubkey
       };
     });
   };
@@ -86,7 +84,7 @@ const AuthProvider = ({
     setStatus(null);
   };
 
-  let value = { status, create, login, logout, isAdmin };
+  let value = { status, init, loginAdmin, loginNode, logout };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -11,7 +11,7 @@ const LogoutPage = () => {
     const logout = async () => {
       await sensei.logout();
       queryClient.clear();
-      navigate("/admin/login", { replace: true });
+      navigate("/login", { replace: true });
     };
 
     logout();

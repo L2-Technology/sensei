@@ -1,19 +1,19 @@
 import { useAuth } from "../contexts/auth";
 import { useLocation, Navigate } from "react-router";
 
-const RequireAuth = ({ children }: { children: JSX.Element }) => {
+const RequireAdminAuth = ({ children }: { children: JSX.Element }) => {
   let auth = useAuth();
   let location = useLocation();
 
-  if (!auth.status.created) {
-    return <Navigate to="/admin/setup" state={{ from: location }} />;
+  if (!auth.status.setup) {
+    return <Navigate to="/setup" state={{ from: location }} />;
   }
 
-  if (!auth.status.running || !auth.status.authenticated) {
+  if (!auth.status.authenticatedAdmin) {
     return <Navigate to="/admin/login" state={{ from: location }} />;
   }
 
   return children;
 };
 
-export default RequireAuth;
+export default RequireAdminAuth;

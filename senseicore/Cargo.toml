@@ -32,6 +32,7 @@ bitcoincore-rpc = "0.15"
 bdk = "0.19"
 pin-project = "1.0"
 hyper = "0.14"
+bcrypt = "0.13.0"
 tindercrypt = { version = "0.3.2", default-features = false }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 macaroon = "0.2"

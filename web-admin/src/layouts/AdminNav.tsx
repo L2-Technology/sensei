@@ -54,23 +54,22 @@ interface SidebarProps {
 const adminNav = [
   { name: "Nodes", href: "/admin/nodes", icon: CollectionIcon },
   { name: "Access Tokens", href: "/admin/tokens", icon: KeyIcon },
-];
-
-const navigation = [
-  { name: "Chain", href: "/admin/chain", icon: LinkIcon },
-  { name: "Channels", href: "/admin/channels", icon: AdjustmentsIcon },
-  { name: "Send Money", href: "/admin/send-money", icon: ShoppingCartIcon },
-  { name: "Receive Money", href: "/admin/receive-money", icon: CashIcon },
-  { name: "Peer Directory", href: "/admin/peers", icon: UsersIcon },
   { name: "Logout", href: "/admin/logout", icon: LogoutIcon },
 ];
 
+const nodeNav = [
+  { name: "Chain", href: "/chain", icon: LinkIcon },
+  { name: "Channels", href: "/channels", icon: AdjustmentsIcon },
+  { name: "Send Money", href: "/send-money", icon: ShoppingCartIcon },
+  { name: "Receive Money", href: "/receive-money", icon: CashIcon },
+  { name: "Peer Directory", href: "/peers", icon: UsersIcon },
+  { name: "Logout", href: "/logout", icon: LogoutIcon },
+];
+
 export const AdminSidebar = ({ setSidebarOpen }: SidebarProps) => {
-  const { pathname } = useLocation();
   const auth = useAuth();
 
-  const inAdmin = adminNav.some((vendor) => vendor.href === pathname);
-  const [openMenu, setOpenMenu] = useState(inAdmin);
+  const navigation = auth.status.authenticatedAdmin ? adminNav : nodeNav;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-gray-senseihero">
@@ -80,65 +79,6 @@ export const AdminSidebar = ({ setSidebarOpen }: SidebarProps) => {
 
       <div className="flex flex-1 flex-col overflow-y-auto  pt-5 pb-4">
         <nav className="mt-2 flex flex-col flex-1 space-y-1 px-2">
-          {auth.isAdmin() && (
-            <div className="">
-              <button
-                onClick={() => setOpenMenu((e) => !e)}
-                className={`${
-                  inAdmin
-                    ? "text-orange hover:text-orange-hover"
-                    : "text-gray-300 hover:text-white"
-                }  group flex w-full  items-center rounded-xl px-3 py-2 text-sm font-medium  hover:bg-white hover:bg-opacity-5`}
-              >
-                <AdjustmentsIcon className="mr-3 h-6 w-6 flex-shrink-0" />
-                <span>Admin</span>
-                <span
-                  className={`${
-                    openMenu && "rotate-180"
-                  } ease ml-auto w-fit text-white transition duration-300`}
-                >
-                  <ChevronDownIcon className="h-5 w-5" />
-                </span>
-              </button>
-              <div
-                className={`${
-                  openMenu ? "h-auto" : "hidden h-0"
-                } mb-2 mt-1 space-y-1 overflow-hidden pl-4`}
-              >
-                {adminNav.map((item) => (
-                  <NavLink
-                    onClick={() => setSidebarOpen && setSidebarOpen(false)}
-                    key={item.name}
-                    to={item.href}
-                    className={({ isActive }) => {
-                      return `${
-                        isActive
-                          ? "bg-orange text-white hover:bg-orange-hover"
-                          : "text-gray-300 hover:bg-white hover:bg-opacity-5 hover:text-white"
-                      } group flex items-center rounded-xl px-3 py-2  text-sm font-medium`;
-                    }}
-                  >
-                    {({ isActive }) => {
-                      return (
-                        <>
-                          <item.icon
-                            className={`${
-                              isActive
-                                ? "text-white"
-                                : "text-gray-400 group-hover:text-gray-300"
-                            } mr-3 h-5 w-5 flex-shrink-0`}
-                            aria-hidden="true"
-                          />
-                          {item.name}
-                        </>
-                      );
-                    }}
-                  </NavLink>
-                ))}
-              </div>
-            </div>
-          )}
-
           {navigation.map((item) => (
             <NavLink
               onClick={() => setSidebarOpen && setSidebarOpen(false)}
@@ -255,8 +195,6 @@ export const UserDropdownMenu = () => {
   const auth = useAuth();
 
   const actionItems = [
-    { name: "Profile", href: "/admin/nodes", icon: UserIcon },
-    { name: "Settings", href: "/admin/nodes", icon: CogIcon },
     { name: "Logout", href: "/admin/logout", icon: LogoutIcon },
   ];
 

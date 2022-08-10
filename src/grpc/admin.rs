@@ -19,8 +19,7 @@ use super::{
         FindRouteRequest, FindRouteResponse, GetStatusRequest, GetStatusResponse, ListNode,
         ListNodesRequest, ListNodesResponse, ListTokensRequest, ListTokensResponse,
         NodeInfoRequest, NodeInfoResponse, PathFailedRequest, PathFailedResponse,
-        PathSuccessfulRequest, PathSuccessfulResponse, StartAdminRequest, StartAdminResponse,
-        Token,
+        PathSuccessfulRequest, PathSuccessfulResponse, Token,
     },
     utils::raw_macaroon_from_metadata,
 };
@@ -167,9 +166,7 @@ impl From<CreateAdminRequest> for AdminRequest {
     fn from(req: CreateAdminRequest) -> Self {
         AdminRequest::CreateAdmin {
             username: req.username,
-            alias: req.alias,
             passphrase: req.passphrase,
-            start: req.start,
         }
     }
 }
@@ -179,19 +176,7 @@ impl TryFrom<AdminResponse> for CreateAdminResponse {
 
     fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
         match res {
-            AdminResponse::CreateAdmin {
-                pubkey,
-                macaroon,
-                id,
-                role,
-                token,
-            } => Ok(Self {
-                pubkey,
-                macaroon,
-                id,
-                role: role as u32,
-                token,
-            }),
+            AdminResponse::CreateAdmin { token } => Ok(Self { token }),
             _ => Err("impossible".to_string()),
         }
     }
@@ -205,48 +190,21 @@ impl TryFrom<AdminResponse> for GetStatusResponse {
             AdminResponse::GetStatus {
                 version,
                 alias,
-                running,
-                created,
-                authenticated,
+                setup,
+                authenticated_node,
+                authenticated_admin,
                 pubkey,
                 username,
                 role,
             } => Ok(Self {
                 version,
                 alias,
-                running,
-                created,
-                authenticated,
+                setup,
+                authenticated_admin,
+                authenticated_node,
                 pubkey,
                 username,
                 role: role.map(|role| role as u32),
-            }),
-            _ => Err("impossible".to_string()),
-        }
-    }
-}
-
-impl From<StartAdminRequest> for AdminRequest {
-    fn from(req: StartAdminRequest) -> Self {
-        AdminRequest::StartAdmin {
-            passphrase: req.passphrase,
-        }
-    }
-}
-
-impl TryFrom<AdminResponse> for StartAdminResponse {
-    type Error = String;
-
-    fn try_from(res: AdminResponse) -> Result<Self, Self::Error> {
-        match res {
-            AdminResponse::StartAdmin {
-                pubkey,
-                macaroon,
-                token,
-            } => Ok(Self {
-                pubkey,
-                macaroon,
-                token,
             }),
             _ => Err("impossible".to_string()),
         }
@@ -472,7 +430,6 @@ impl AdminService {
         request: AdminRequest,
     ) -> Result<AdminResponse, Status> {
         let required_scope = get_scope_from_request(&request);
-
         let token = self.raw_token_from_metadata(metadata)?;
 
         if self.is_valid_token(token, required_scope).await {
@@ -505,12 +462,27 @@ impl Admin for AdminService {
         request: tonic::Request<GetStatusRequest>,
     ) -> Result<Response<GetStatusResponse>, Status> {
         let macaroon_hex_string = raw_macaroon_from_metadata(request.metadata().clone())?;
+        let token = super::utils::raw_token_from_metadata(request.metadata().clone())?;
 
-        let (_macaroon, session) = utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
-            .map_err(|_e| Status::unauthenticated("invalid macaroon"))?;
-        let pubkey = session.pubkey.clone();
+        let pubkey = match macaroon_hex_string {
+            None => None,
+            Some(macaroon_hex_string) => {
+                let (_macaroon, session) =
+                    utils::macaroon_with_session_from_hex_str(&macaroon_hex_string)
+                        .map_err(|_e| Status::unauthenticated("invalid macaroon"))?;
+                Some(session.pubkey)
+            }
+        };
 
-        let request = AdminRequest::GetStatus { pubkey };
+        let authenticated_admin = match token {
+            None => false,
+            Some(token) => self.is_valid_token(token, Some("*")).await,
+        };
+
+        let request = AdminRequest::GetStatus {
+            pubkey,
+            authenticated_admin,
+        };
         match self.admin_service.call(request).await {
             Ok(response) => {
                 let response: Result<GetStatusResponse, String> = response.try_into();
@@ -529,21 +501,6 @@ impl Admin for AdminService {
         match self.admin_service.call(request).await {
             Ok(response) => {
                 let response: Result<CreateAdminResponse, String> = response.try_into();
-                response
-                    .map(Response::new)
-                    .map_err(|_err| Status::unknown("err"))
-            }
-            Err(_err) => Err(Status::unknown("error")),
-        }
-    }
-    async fn start_admin(
-        &self,
-        request: tonic::Request<StartAdminRequest>,
-    ) -> Result<Response<StartAdminResponse>, Status> {
-        let request: AdminRequest = request.into_inner().into();
-        match self.admin_service.call(request).await {
-            Ok(response) => {
-                let response: Result<StartAdminResponse, String> = response.try_into();
                 response
                     .map(Response::new)
                     .map_err(|_err| Status::unknown("err"))

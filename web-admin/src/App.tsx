@@ -2,9 +2,11 @@ import React from "react";
 import "./App.css";
 import { AuthProvider } from "./contexts/auth";
 import AppLayout from "./layouts/AppLayout";
-import LoginPage from "./auth/pages/LoginPage";
+import AdminLoginPage from "./auth/pages/AdminLoginPage";
+import NodeLoginPage from "./auth/pages/NodeLoginPage";
 import SetupPage from "./auth/pages/SetupPage";
-import RequireAuth from "./components/RequireAuth";
+import RequireNodeAuth from "./components/RequireNodeAuth";
+import RequireAdminAuth from "./components/RequireAdminAuth";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useQuery } from "react-query";
 import getStatus from "./auth/queries/getStatus";
@@ -39,33 +41,45 @@ function App() {
   return (
     <AuthProvider initialStatus={data}>
       <Routes>
-        <Route path="/admin/login" element={<LoginPage />} />
+        <Route path="/login" element={<NodeLoginPage />} />
+        <Route path="/logout" element={<LogoutPage />}/>
+        <Route path="/setup" element={<SetupPage />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/admin/logout" element={<LogoutPage />} />
-        <Route path="/admin/setup" element={<SetupPage />} />
-
         <Route
           path="/admin"
           element={
-            <RequireAuth>
+            <RequireAdminAuth>
               <AppLayout />
-            </RequireAuth>
+            </RequireAdminAuth>
           }
         >
-          <Route path="/admin/chain" element={<ChainPage />} />
-          <Route path="/admin/fund" element={<FundPage />} />
-          <Route path="/admin/channels" element={<ChannelsPage />} />
-          <Route path="/admin/channels/open" element={<OpenChannelPage />} />
-          <Route path="/admin/payments" element={<PaymentsPage />} />
-          <Route path="/admin/receive-money" element={<ReceiveMoneyPage />} />
-          <Route path="/admin/send-money" element={<SendMoneyPage />} />
-          <Route path="/admin/peers" element={<PeersPage />} />
-          <Route path="/admin/peers/new" element={<AddPeerPage />} />
           <Route path="/admin/nodes" element={<NodesPage />} />
           <Route path="/admin/nodes/new" element={<NewNodePage />} />
           <Route path="/admin/tokens" element={<TokensPage />} />
           <Route path="/admin/tokens/new" element={<NewTokenPage />} />
-          <Route index element={<Navigate to="/admin/chain" replace />} />
+          <Route index element={<Navigate to="/admin/nodes" replace />} />
         </Route>
+        <Route
+          path="/"
+          element={
+            <RequireNodeAuth>
+              <AppLayout />
+            </RequireNodeAuth>
+          }
+          >
+            <Route path="/chain" element={<ChainPage />} />
+            <Route path="/fund" element={<FundPage />} />
+            <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/channels/open" element={<OpenChannelPage />} />
+            <Route path="/payments" element={<PaymentsPage />} />
+            <Route path="/receive-money" element={<ReceiveMoneyPage />} />
+            <Route path="/send-money" element={<SendMoneyPage />} />
+            <Route path="/peers" element={<PeersPage />} />
+            <Route path="/peers/new" element={<AddPeerPage />} />
+            <Route index element={<Navigate to="/chain" replace />} />
+        </Route>
+        
       </Routes>
       <Modal />
       <ErrorModal />

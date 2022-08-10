@@ -39,8 +39,7 @@ use axum::{
     extract::Extension,
     handler::Handler,
     http::StatusCode,
-    response::{Html, IntoResponse, Response},
-    routing::get,
+    response::{IntoResponse, Response},
     Router,
 };
 use clap::Parser;
@@ -318,12 +317,13 @@ fn main() {
             .await,
         );
 
-        let router = Router::new()
-            .route("/admin/*path", static_handler.into_service())
-            .fallback(get(not_found));
+        let api_router = Router::new();
+        let api_router = add_admin_routes(api_router);
+        let api_router = add_node_routes(api_router);
 
-        let router = add_admin_routes(router);
-        let router = add_node_routes(router);
+        let router = Router::new()
+            .nest("/api", api_router)
+            .fallback(static_handler.into_service());
 
         let router = match args.development_mode {
             Some(_development_mode) => router.layer(
@@ -406,24 +406,39 @@ fn main() {
     });
 }
 
-// We use a wildcard matcher ("/static/*file") to match against everything
-// within our defined assets directory. This is the directory on our Asset
-// struct below, where folder = "examples/public/".
 async fn static_handler(uri: Uri) -> impl IntoResponse {
     let mut path = uri.path().trim_start_matches('/').to_string();
+    let paths_to_passthrough = ["static/", "images/"];
+    let files_to_passthrough = [
+        "favicon.ico",
+        "favicon-16x16.png",
+        "favicon-32x32.png",
+        "logo192.png",
+        "logo512.png",
+        "manifest.json",
+    ];
+    let mut passthrough = false;
+
+    paths_to_passthrough.iter().for_each(|pp| {
+        if path.starts_with(pp) {
+            passthrough = true;
+        }
+    });
+
+    if files_to_passthrough.contains(&path.as_str()) {
+        passthrough = true;
+    }
 
     if path.starts_with("admin/static/") {
         path = path.replace("admin/static/", "static/");
-    } else {
+        passthrough = true;
+    }
+
+    if !passthrough {
         path = String::from("index.html");
     }
 
     StaticFile(path)
-}
-
-// Finally, we use a fallback route for anything that didn't match.
-async fn not_found() -> Html<&'static str> {
-    Html("<h1>404</h1><p>Not Found</p>")
 }
 
 #[derive(RustEmbed)]

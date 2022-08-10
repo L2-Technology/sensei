@@ -5,14 +5,14 @@ import Spinner from "src/components/Spinner";
 import { useAuth } from "../../contexts/auth";
 import logo from "../../images/Icon-Lightning@2x.png";
 
-const LoginPage = () => {
+const NodeLoginPage = () => {
   let [submitting, setSubmitting] = React.useState<boolean>(false);
   let [submitError, setSubmitError] = React.useState<string>(null!);
   let navigate = useNavigate();
   let location = useLocation();
   let auth = useAuth();
 
-  let from = location.state?.from?.pathname || "/admin/chain";
+  let from = location.state?.from?.pathname || "/chain";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,7 +24,7 @@ const LoginPage = () => {
     let passphrase = formData.get("passphrase") as string;
 
     try {
-      await auth.login(username, passphrase);
+      await auth.loginNode(username, passphrase);
       // Send them back to the page they tried to visit when they were
       // redirected to the login page. Use { replace: true } so we don't create
       // another entry in the history stack for the login page.  This means that
@@ -114,4 +114,4 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default NodeLoginPage;

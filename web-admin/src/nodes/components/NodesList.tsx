@@ -79,11 +79,6 @@ const ActionsColumn = ({ node, className }) => {
       onClick: node.status === 0 ? startNodeClicked : stopNodeClicked,
       className: node.status === 0 ? "text-green-400" : "text-yellow-400",
     },
-    {
-      label: "open channel",
-      icon: <PlusCircleIcon className="w-5" />,
-      path: `/admin/channels/open?connection=${node.pubkey}@${node.listenAddr}:${node.listenPort}`,
-    },
   ];
 
   return (

@@ -5,33 +5,15 @@ use crate::seconds_since_epoch;
 
 #[derive(Debug, Clone, PartialEq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
 #[sea_orm(rs_type = "i16", db_type = "SmallInteger")]
-pub enum NodeStatus {
-    #[sea_orm(num_value = 0)]
-    Stopped,
-    #[sea_orm(num_value = 1)]
-    Running,
-}
-
-impl From<NodeStatus> for i16 {
-    fn from(status: NodeStatus) -> i16 {
-        match status {
-            NodeStatus::Stopped => 0,
-            NodeStatus::Running => 1,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, EnumIter, DeriveActiveEnum, Serialize, Deserialize)]
-#[sea_orm(rs_type = "i16", db_type = "SmallInteger")]
-pub enum NodeRole {
+pub enum UserRole {
     #[sea_orm(num_value = 0)]
     Default,
 }
 
-impl From<NodeRole> for i16 {
-    fn from(role: NodeRole) -> i16 {
+impl From<UserRole> for i16 {
+    fn from(role: UserRole) -> i16 {
         match role {
-            NodeRole::Default => 0,
+            UserRole::Default => 0,
         }
     }
 }
@@ -41,7 +23,7 @@ pub struct Entity;
 
 impl EntityName for Entity {
     fn table_name(&self) -> &str {
-        "node"
+        "user"
     }
 }
 
@@ -50,29 +32,16 @@ pub struct Model {
     pub id: String,
     pub role: i16,
     pub username: String,
-    pub alias: String,
-    pub network: String,
-    pub listen_addr: String,
-    pub listen_port: i32,
-    pub pubkey: String,
+    pub hashed_password: String,
     pub created_at: i64,
     pub updated_at: i64,
-    pub status: i16,
 }
 
 impl Model {
-    pub fn get_role(&self) -> NodeRole {
+    pub fn get_role(&self) -> UserRole {
         match self.role {
-            0 => NodeRole::Default,
+            0 => UserRole::Default,
             _ => panic!("invalid role"),
-        }
-    }
-
-    pub fn get_status(&self) -> NodeStatus {
-        match self.status {
-            0 => NodeStatus::Stopped,
-            1 => NodeStatus::Running,
-            _ => panic!("invalid status"),
         }
     }
 }
@@ -82,14 +51,9 @@ pub enum Column {
     Id,
     Role,
     Username,
-    Alias,
-    Network,
-    ListenAddr,
-    ListenPort,
-    Pubkey,
+    HashedPassword,
     CreatedAt,
     UpdatedAt,
-    Status,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DerivePrimaryKey)]
@@ -114,14 +78,9 @@ impl ColumnTrait for Column {
             Self::Id => ColumnType::String(None).def().unique(),
             Self::Role => ColumnType::SmallInteger.def(),
             Self::Username => ColumnType::String(None).def().unique(),
-            Self::Alias => ColumnType::String(None).def(),
-            Self::Network => ColumnType::String(None).def(),
-            Self::ListenAddr => ColumnType::String(None).def(),
-            Self::ListenPort => ColumnType::Integer.def(),
-            Self::Pubkey => ColumnType::String(None).def().unique(),
+            Self::HashedPassword => ColumnType::String(None).def(),
             Self::CreatedAt => ColumnType::BigInteger.def(),
             Self::UpdatedAt => ColumnType::BigInteger.def(),
-            Self::Status => ColumnType::SmallInteger.def(),
         }
     }
 }
@@ -136,6 +95,7 @@ impl ActiveModelBehavior for ActiveModel {
     fn new() -> Self {
         Self {
             id: ActiveValue::Set(Uuid::new_v4().to_string()),
+            role: ActiveValue::Set(UserRole::Default.into()),
             ..<Self as ActiveModelTrait>::default()
         }
     }
