@@ -6,7 +6,7 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
 // You may not use this file except in accordance with one or both of these
 // licenses.
-
+#![allow(dead_code)]
 use std::{pin::Pin, task::Poll};
 
 use pin_project::pin_project;
