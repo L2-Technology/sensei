@@ -358,16 +358,22 @@ impl AdminService {
                 username,
                 passphrase,
             } => {
-                let root_token = self.database.create_root_access_token().await.unwrap();
-                let _user = self
-                    .database
-                    .create_user(username, passphrase)
-                    .await
-                    .unwrap();
+                let root_token = self.database.get_root_access_token().await.unwrap();
+                match root_token {
+                    Some(_) => Err(Error::Generic("Instance already initialized".to_string())),
+                    None => {
+                        let root_token = self.database.create_root_access_token().await.unwrap();
+                        let _user = self
+                            .database
+                            .create_user(username, passphrase)
+                            .await
+                            .unwrap();
 
-                Ok(AdminResponse::CreateAdmin {
-                    token: root_token.token,
-                })
+                        Ok(AdminResponse::CreateAdmin {
+                            token: root_token.token,
+                        })
+                    }
+                }
             }
             AdminRequest::StartNode { pubkey, passphrase } => {
                 let node = self.database.get_node_by_pubkey(&pubkey).await?;
