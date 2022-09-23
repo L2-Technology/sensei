@@ -49,7 +49,6 @@ senseicore = { path = "senseicore" }
 tonic-build = "0.6"
 
 [dev-dependencies]
-bitcoind = { version = "0.26", features = [ "22_0" ] }
 serial_test = "0.6.0"
 
 [[test]]

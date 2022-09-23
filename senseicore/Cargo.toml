@@ -45,5 +45,4 @@ base32 = "0.4.0"
 socks = "0.3.4"
 
 [dev-dependencies]
-bitcoind = { version = "0.26", features = [ "22_0" ] }
 serial_test = "0.6.0"
