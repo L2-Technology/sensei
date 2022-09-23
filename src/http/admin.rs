@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Extension, Query},
+    response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
@@ -22,7 +23,7 @@ use serde_json::{json, Value};
 
 use senseicore::{
     services::{
-        admin::{AdminRequest, AdminResponse, AdminService, NodeCreateInfo},
+        admin::{AdminRequest, AdminResponse, AdminService, Error, NodeCreateInfo},
         PaginationRequest,
     },
     utils,
@@ -777,12 +778,18 @@ pub async fn init_sensei(
     Extension(admin_service): Extension<Arc<AdminService>>,
     cookies: Cookies,
     Json(payload): Json<Value>,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> impl IntoResponse {
     let params: Result<CreateAdminParams, _> = serde_json::from_value(payload);
+
     let request = match params {
-        Ok(params) => Ok(params.into()),
-        Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
-    }?;
+        Ok(params) => params.into(),
+        Err(_) => {
+            return (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({"error": "invalid params"})),
+            )
+        }
+    };
 
     match admin_service.call(request).await {
         Ok(response) => match response {
@@ -792,11 +799,19 @@ pub async fn init_sensei(
                     .finish();
 
                 cookies.add(token_cookie);
-                Ok(Json(AdminResponse::CreateAdmin { token }))
+                (StatusCode::OK, Json(json!({ "token": token })))
             }
-            _ => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            _ => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({"error": "unexpected error"})),
+            ),
         },
-        Err(err) => Ok(Json(AdminResponse::Error(err))),
+        Err(err) => match err {
+            Error::Generic(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({ "error": msg })),
+            ),
+        },
     }
 }
 
