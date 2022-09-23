@@ -99,7 +99,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: cargo clippy -- -D warnings
+      - run: cargo clippy -- -D warnings -A clippy::derive_partial_eq_without_eq
 
   install-cross:
     runs-on: ubuntu-latest
