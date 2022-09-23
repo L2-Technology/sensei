@@ -109,6 +109,8 @@ struct SenseiArgs {
     http_notifier_token: Option<String>,
     #[clap(long, env = "REGION")]
     region: Option<String>,
+    #[clap(long, env = "POLL_FOR_CHAIN_UPDATES")]
+    poll_for_chain_updates: Option<bool>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -197,6 +199,9 @@ fn main() {
     }
     if let Some(region) = args.region {
         config.region = Some(region)
+    }
+    if let Some(poll_for_chain_updates) = args.poll_for_chain_updates {
+        config.poll_for_chain_updates = poll_for_chain_updates
     }
 
     if !config.database_url.starts_with("postgres:") && !config.database_url.starts_with("mysql:") {

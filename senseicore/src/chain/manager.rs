@@ -1,6 +1,6 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::Duration,
@@ -33,6 +33,7 @@ pub struct SenseiChainManager {
     pub broadcaster: Arc<dyn BroadcasterInterface + Send + Sync>,
     poller_paused: Arc<AtomicBool>,
     poller_running: Arc<AtomicBool>,
+    chain_update_available: Arc<AtomicUsize>,
     poller_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -48,8 +49,11 @@ impl SenseiChainManager {
         let listener_poller = listener.clone();
         let poller_paused = Arc::new(AtomicBool::new(false));
         let poller_running = Arc::new(AtomicBool::new(true));
+        let chain_update_available = Arc::new(AtomicUsize::new(0));
+        let chain_update_available_poller = chain_update_available.clone();
         let poller_paused_poller = poller_paused.clone();
         let poller_running_poller = poller_running.clone();
+
         let poller_handle = tokio::spawn(async move {
             let mut cache = UnboundedCache::new();
             let chain_tip = init::validate_best_block_header(block_source_poller.clone())
@@ -59,8 +63,13 @@ impl SenseiChainManager {
             let mut spv_client =
                 SpvClient::new(chain_tip, chain_poller, &mut cache, listener_poller);
             while poller_running_poller.load(Ordering::Relaxed) {
-                if !poller_paused_poller.load(Ordering::Relaxed) {
+                let updates_available = chain_update_available_poller.load(Ordering::Relaxed) > 0;
+                let paused = poller_paused_poller.load(Ordering::Relaxed);
+                if (config.poll_for_chain_updates || updates_available) && !paused {
                     let _tip = spv_client.poll_best_tip().await.unwrap();
+                    if updates_available {
+                        chain_update_available_poller.fetch_sub(1, Ordering::Relaxed);
+                    }
                 }
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
@@ -71,11 +80,16 @@ impl SenseiChainManager {
             listener,
             poller_paused,
             poller_running,
+            chain_update_available,
             block_source,
             fee_estimator: Arc::new(SenseiFeeEstimator { fee_estimator }),
             broadcaster,
             poller_handle: Mutex::new(Some(poller_handle)),
         })
+    }
+
+    pub fn chain_updated(&self) {
+        self.chain_update_available.fetch_add(1, Ordering::Relaxed);
     }
 
     pub async fn stop(&self) {
