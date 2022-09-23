@@ -135,6 +135,7 @@ pub enum AdminRequest {
         msg_hex: String,
     },
     GetNetworkGraph {},
+    ChainUpdated {},
 }
 
 #[derive(Serialize, Debug)]
@@ -196,6 +197,7 @@ pub enum AdminResponse {
         nodes: Vec<String>,
         channels: Vec<String>,
     },
+    ChainUpdated {},
     Error(Error),
 }
 
@@ -602,6 +604,10 @@ impl AdminService {
                 let msg = lightning::ln::msgs::ChannelUpdate::read(&mut msg_readable).unwrap();
                 let _res = self.p2p.p2p_gossip.handle_channel_update(&msg);
                 Ok(AdminResponse::GossipChannelUpdate {})
+            }
+            AdminRequest::ChainUpdated {} => {
+                self.chain_manager.chain_updated();
+                Ok(AdminResponse::ChainUpdated {})
             }
             AdminRequest::GetNetworkGraph {} => {
                 let graph = self.p2p.network_graph.read_only();

@@ -36,6 +36,7 @@ pub struct SenseiConfig {
     pub http_notifier_url: Option<String>,
     pub http_notifier_token: Option<String>,
     pub region: Option<String>,
+    pub poll_for_chain_updates: bool,
 }
 
 impl Default for SenseiConfig {
@@ -63,6 +64,7 @@ impl Default for SenseiConfig {
             http_notifier_url: None,
             http_notifier_token: None,
             region: None,
+            poll_for_chain_updates: true,
         }
     }
 }

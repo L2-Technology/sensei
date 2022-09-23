@@ -345,6 +345,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/login", post(login_admin))
         .route("/v1/logout", post(logout))
         .route("/v1/peers/connect", post(connect_gossip_peer))
+        .route("/v1/chain/updated", post(chain_updated))
         .route("/v1/ldk/network/route", post(find_route))
         .route("/v1/ldk/network/path/successful", post(path_successful))
         .route("/v1/ldk/network/path/failed", post(path_failed))
@@ -397,6 +398,23 @@ pub async fn connect_gossip_peer(
 
     if authenticated {
         match admin_service.call(request).await {
+            Ok(response) => Ok(Json(response)),
+            Err(_err) => Err(StatusCode::UNAUTHORIZED),
+        }
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+pub async fn chain_updated(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    cookies: Cookies,
+    AuthHeader { macaroon: _, token }: AuthHeader,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    let authenticated = authenticate_request(&admin_service, "chain", &cookies, token).await?;
+
+    if authenticated {
+        match admin_service.call(AdminRequest::ChainUpdated {}).await {
             Ok(response) => Ok(Json(response)),
             Err(_err) => Err(StatusCode::UNAUTHORIZED),
         }
