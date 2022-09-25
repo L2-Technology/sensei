@@ -209,6 +209,7 @@ pub enum NodeRequest {
     GetInvoice {
         amt_msat: u64,
         description: String,
+        expiry: Option<u32>,
     },
     LabelPayment {
         label: String,

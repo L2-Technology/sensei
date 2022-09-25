@@ -324,6 +324,7 @@ message KeysendResponse {}
 message CreateInvoiceRequest {
     uint64 amt_msat = 1;
     string description = 2;
+    optional uint32 expiry = 3;
 }
 message CreateInvoiceResponse {
     string invoice = 1;

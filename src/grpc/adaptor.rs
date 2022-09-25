@@ -354,6 +354,7 @@ impl From<CreateInvoiceRequest> for NodeRequest {
         NodeRequest::GetInvoice {
             amt_msat: req.amt_msat,
             description: req.description,
+            expiry: req.expiry,
         }
     }
 }
