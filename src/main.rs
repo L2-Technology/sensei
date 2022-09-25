@@ -30,15 +30,12 @@ use sea_orm::Database;
 use crate::http::admin::add_routes as add_admin_routes;
 use crate::http::node::add_routes as add_node_routes;
 
-use ::http::{
-    header::{self, ACCEPT, AUTHORIZATION, CONTENT_TYPE, COOKIE},
-    Method, Uri,
-};
+use ::http::{header, Uri};
 use axum::{
     body::{boxed, Full},
     extract::Extension,
     handler::Handler,
-    http::StatusCode,
+    http::{HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Router,
 };
@@ -58,7 +55,7 @@ use tower_cookies::CookieManagerLayer;
 use std::fs;
 use std::sync::Arc;
 use tonic::transport::Server;
-use tower_http::cors::{CorsLayer, Origin};
+use tower_http::cors::CorsLayer;
 
 use tokio::runtime::Builder;
 use tokio::sync::broadcast;
@@ -81,8 +78,6 @@ struct SenseiArgs {
     bitcoind_rpc_username: Option<String>,
     #[clap(long, env = "BITCOIND_RPC_PASSWORD")]
     bitcoind_rpc_password: Option<String>,
-    #[clap(long, env = "DEVELOPMENT_MODE")]
-    development_mode: Option<bool>,
     #[clap(long, env = "PORT_RANGE_MIN")]
     port_range_min: Option<u16>,
     #[clap(long, env = "PORT_RANGE_MAX")]
@@ -111,6 +106,8 @@ struct SenseiArgs {
     region: Option<String>,
     #[clap(long, env = "POLL_FOR_CHAIN_UPDATES")]
     poll_for_chain_updates: Option<bool>,
+    #[clap(long, env = "ALLOW_ORIGINS")]
+    allow_origins: Option<Vec<String>>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -325,31 +322,22 @@ fn main() {
             .nest("/api", api_router)
             .fallback(static_handler.into_service());
 
-        let router = match args.development_mode {
-            Some(_development_mode) => router.layer(
-                CorsLayer::new()
-                    .allow_headers(vec![AUTHORIZATION, ACCEPT, COOKIE, CONTENT_TYPE])
-                    .allow_credentials(true)
-                    .allow_origin(Origin::list(vec![
-                        "http://localhost:3001".parse().unwrap(),
-                        "http://localhost:5401".parse().unwrap(),
-                    ]))
-                    .allow_methods(vec![
-                        Method::GET,
-                        Method::POST,
-                        Method::OPTIONS,
-                        Method::DELETE,
-                        Method::PUT,
-                        Method::PATCH,
-                    ]),
-            ),
-            None => router,
-        };
+        let cors_layer = CorsLayer::very_permissive().allow_credentials(true);
 
-        let port = match args.development_mode {
-            Some(_) => String::from("3001"),
-            None => format!("{}", config.api_port),
-        };
+        let mut allow_origins: Vec<String> = vec![];
+        if let Some(mut origins) = args.allow_origins {
+            allow_origins.append(&mut origins);
+        }
+        let cors_layer = cors_layer.allow_origin(
+            allow_origins
+                .into_iter()
+                .map(|o| o.parse().unwrap())
+                .collect::<Vec<HeaderValue>>(),
+        );
+
+        let router = router.layer(cors_layer);
+
+        let port = format!("{}", config.api_port);
 
         let http_service = router
             .layer(CookieManagerLayer::new())
