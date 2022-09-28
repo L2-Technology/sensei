@@ -45,7 +45,7 @@ MySQL Example: `--database-url=mysql://sensei:sensei@localhost:3306/sensei`
 
 In order to see your changes live you will need to:
 
-1. Run sensei in development mode: `cargo run --bin senseid -- --development-mode=true --network=regtest --bitcoind-rpc-host=localhost --bitcoind-rpc-port=18443 --bitcoind-rpc-username=admin1 --bitcoind-rpc-password=123`
+1. Allow requests from local web-admin: `cargo run --bin senseid -- --network=regtest --bitcoind-rpc-host=localhost --bitcoind-rpc-port=18443 --bitcoind-rpc-username=admin1 --bitcoind-rpc-password=123 --allow-origins=http://localhost:3001`
 2. Run the web-admin dev server: `cd sensei/web-admin && npm install && npm run start`
 3. Visit the admin using port 3001: `http://localhost:3001/admin/nodes`
 

@@ -35,7 +35,7 @@ hyper = "0.14"
 clap = { version = "3.0", features = [ "derive", "env" ] }
 headers = "0.3"
 macaroon = "0.2"
-tower-http = { version = "0.2.5", features = ["fs", "trace", "cors"] }
+tower-http = { version = "0.3.4", features = ["fs", "trace", "cors"] }
 tower-cookies = "0.4"
 dirs = "4.0"
 rust-embed="6.3.0"
