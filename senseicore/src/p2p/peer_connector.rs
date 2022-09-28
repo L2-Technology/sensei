@@ -31,7 +31,7 @@ pub enum PeerConnectorRequest {
 
 pub struct PeerConnector {
     pub database: Arc<SenseiDatabase>,
-    pub routing_peer_manager: Arc<RoutingPeerManager>,
+    pub routing_peer_manager: Option<Arc<RoutingPeerManager>>,
     pub requests: Arc<Mutex<VecDeque<PeerConnectorRequest>>>,
     pub node_info_lookup: Arc<NodeInfoLookup>,
     pub interval: Duration,
@@ -42,7 +42,7 @@ impl PeerConnector {
     pub fn new(
         database: Arc<SenseiDatabase>,
         node_info_lookup: Arc<NodeInfoLookup>,
-        routing_peer_manager: Arc<RoutingPeerManager>,
+        routing_peer_manager: Option<Arc<RoutingPeerManager>>,
     ) -> Self {
         Self {
             database,
@@ -86,45 +86,49 @@ impl PeerConnector {
         pubkey: PublicKey,
         peer_addr: NetAddress,
     ) -> Result<(), ()> {
-        let socket_addr = net_address_to_socket_addr(peer_addr.clone());
-        if socket_addr.is_none() {
-            return Err(());
-        }
-        let socket_addr = socket_addr.unwrap();
-
-        match lightning_net_tokio::connect_outbound(
-            Arc::clone(&self.routing_peer_manager),
-            pubkey,
-            socket_addr,
-        )
-        .await
-        {
-            Some(connection_closed_future) => {
-                let mut connection_closed_future = Box::pin(connection_closed_future);
-                loop {
-                    match futures::poll!(&mut connection_closed_future) {
-                        std::task::Poll::Ready(_) => {
-                            println!("ERROR: Peer disconnected before we finished the handshake");
-                            return Err(());
-                        }
-                        std::task::Poll::Pending => {}
-                    }
-                    // Avoid blocking the tokio context by sleeping a bit
-                    match self
-                        .routing_peer_manager
-                        .get_peer_node_ids()
-                        .iter()
-                        .find(|id| **id == pubkey)
-                    {
-                        Some(_) => break,
-                        None => tokio::time::sleep(Duration::from_millis(10)).await,
-                    }
-                }
-            }
-            None => {
+        if let Some(routing_peer_manager) = &self.routing_peer_manager {
+            let socket_addr = net_address_to_socket_addr(peer_addr.clone());
+            if socket_addr.is_none() {
                 return Err(());
             }
+            let socket_addr = socket_addr.unwrap();
+
+            match lightning_net_tokio::connect_outbound(
+                Arc::clone(routing_peer_manager),
+                pubkey,
+                socket_addr,
+            )
+            .await
+            {
+                Some(connection_closed_future) => {
+                    let mut connection_closed_future = Box::pin(connection_closed_future);
+                    loop {
+                        match futures::poll!(&mut connection_closed_future) {
+                            std::task::Poll::Ready(_) => {
+                                println!(
+                                    "ERROR: Peer disconnected before we finished the handshake"
+                                );
+                                return Err(());
+                            }
+                            std::task::Poll::Pending => {}
+                        }
+                        // Avoid blocking the tokio context by sleeping a bit
+                        match routing_peer_manager
+                            .get_peer_node_ids()
+                            .iter()
+                            .find(|id| **id == pubkey)
+                        {
+                            Some(_) => break,
+                            None => tokio::time::sleep(Duration::from_millis(10)).await,
+                        }
+                    }
+                }
+                None => {
+                    return Err(());
+                }
+            }
         }
+
         Ok(())
     }
 
@@ -223,18 +227,31 @@ impl PeerConnector {
     }
 
     pub fn router_needs_more_peers(&self) -> bool {
-        self.routing_peer_manager.get_peer_node_ids().len() < self.target_routing_peers.into()
+        match &self.routing_peer_manager {
+            Some(routing_peer_manager) => {
+                routing_peer_manager.get_peer_node_ids().len() < self.target_routing_peers.into()
+            }
+            None => false,
+        }
     }
 
     pub fn router_should_connect_to_peer(&self, pubkey: &PublicKey) -> bool {
-        let peers = self.routing_peer_manager.get_peer_node_ids();
-        peers.len() < self.target_routing_peers.into() && !peers.contains(pubkey)
+        match &self.routing_peer_manager {
+            Some(routing_peer_manager) => {
+                let peers = routing_peer_manager.get_peer_node_ids();
+                peers.len() < self.target_routing_peers.into() && !peers.contains(pubkey)
+            }
+            None => false,
+        }
     }
 
     pub fn router_connected_to_peer(&self, pubkey: PublicKey) -> bool {
-        self.routing_peer_manager
-            .get_peer_node_ids()
-            .contains(&pubkey)
+        match &self.routing_peer_manager {
+            Some(routing_peer_manager) => {
+                routing_peer_manager.get_peer_node_ids().contains(&pubkey)
+            }
+            None => false,
+        }
     }
 
     pub async fn connect_peer_if_necessary(
@@ -301,31 +318,33 @@ impl PeerConnector {
             }
 
             // if routing peers disconnected then try to add some more
-            let mut routing_peer_node_ids = self.routing_peer_manager.get_peer_node_ids();
-            if routing_peer_node_ids.len() < self.target_routing_peers.into() {
-                for (node_id, (peer_manager, _channel_manager)) in nodes.iter() {
-                    let peer_node_ids = peer_manager.get_peer_node_ids();
-                    for peer_node_id in peer_node_ids.into_iter() {
-                        if routing_peer_node_ids.len() < self.target_routing_peers.into()
-                            && !routing_peer_node_ids.contains(&peer_node_id)
-                        {
-                            if let Ok(peer_addresses) =
-                                self.get_addresses_for_pubkey(node_id, &peer_node_id).await
+            if let Some(routing_peer_manager) = &self.routing_peer_manager {
+                let mut routing_peer_node_ids = routing_peer_manager.get_peer_node_ids();
+                if routing_peer_node_ids.len() < self.target_routing_peers.into() {
+                    for (node_id, (peer_manager, _channel_manager)) in nodes.iter() {
+                        let peer_node_ids = peer_manager.get_peer_node_ids();
+                        for peer_node_id in peer_node_ids.into_iter() {
+                            if routing_peer_node_ids.len() < self.target_routing_peers.into()
+                                && !routing_peer_node_ids.contains(&peer_node_id)
                             {
-                                for peer_addr in peer_addresses {
-                                    if let Ok(()) =
-                                        self.connect_routing_peer(peer_node_id, peer_addr).await
-                                    {
-                                        routing_peer_node_ids.push(peer_node_id);
-                                        break;
+                                if let Ok(peer_addresses) =
+                                    self.get_addresses_for_pubkey(node_id, &peer_node_id).await
+                                {
+                                    for peer_addr in peer_addresses {
+                                        if let Ok(()) =
+                                            self.connect_routing_peer(peer_node_id, peer_addr).await
+                                        {
+                                            routing_peer_node_ids.push(peer_node_id);
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
 
-                    if routing_peer_node_ids.len() >= self.target_routing_peers.into() {
-                        break;
+                        if routing_peer_node_ids.len() >= self.target_routing_peers.into() {
+                            break;
+                        }
                     }
                 }
             }

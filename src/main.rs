@@ -108,6 +108,8 @@ struct SenseiArgs {
     poll_for_chain_updates: Option<bool>,
     #[clap(long, env = "ALLOW_ORIGINS")]
     allow_origins: Option<Vec<String>>,
+    #[clap(long, env = "RAPID_GOSSIP_SYNC_SERVER_HOST")]
+    rapid_gossip_sync_server_host: Option<String>,
 }
 
 pub type AdminRequestResponse = (AdminRequest, Sender<AdminResponse>);
@@ -199,6 +201,9 @@ fn main() {
     }
     if let Some(poll_for_chain_updates) = args.poll_for_chain_updates {
         config.poll_for_chain_updates = poll_for_chain_updates
+    }
+    if let Some(rapid_gossip_sync_server_host) = args.rapid_gossip_sync_server_host {
+        config.rapid_gossip_sync_server_host = Some(rapid_gossip_sync_server_host)
     }
 
     if !config.database_url.starts_with("postgres:") && !config.database_url.starts_with("mysql:") {

@@ -31,7 +31,7 @@ use std::{
 use tokio::task::JoinHandle;
 
 use crate::{
-    config::SenseiConfig,
+    config::{P2PConfig, SenseiConfig},
     database::SenseiDatabase,
     disk::FilesystemLogger,
     node::{NetworkGraph, NetworkGraphMessageHandler, RoutingPeerManager},
@@ -55,7 +55,7 @@ pub struct SenseiP2P {
     pub p2p_gossip: Arc<AnyP2PGossipHandler>,
     pub scorer: Arc<Mutex<AnyScorer>>,
     pub logger: Arc<FilesystemLogger>,
-    pub peer_manager: Arc<RoutingPeerManager>,
+    pub peer_manager: Option<Arc<RoutingPeerManager>>,
     pub peer_connector: Arc<PeerConnector>,
     pub node_announcer: Arc<NodeAnnouncer>,
     pub runtime_handle: tokio::runtime::Handle,
@@ -81,15 +81,13 @@ impl SenseiP2P {
             config.network,
             logger.clone(),
         ));
+
         let network_graph = Arc::new(persister.read_network_graph());
 
-        let scorer = match (
-            config.remote_p2p_host.as_ref(),
-            config.remote_p2p_token.as_ref(),
-        ) {
-            (Some(host), Some(token)) => Arc::new(Mutex::new(AnyScorer::new_remote(
-                host.clone(),
-                token.clone(),
+        let scorer = match config.get_p2p_config() {
+            P2PConfig::Remote(host, token) => Arc::new(Mutex::new(AnyScorer::new_remote(
+                host,
+                token,
                 runtime_handle.clone(),
             ))),
             _ => Arc::new(Mutex::new(AnyScorer::Local(
@@ -97,20 +95,29 @@ impl SenseiP2P {
             ))),
         };
 
-        let p2p_gossip = match (
-            config.remote_p2p_host.as_ref(),
-            config.remote_p2p_token.as_ref(),
-        ) {
-            (Some(host), Some(token)) => Arc::new(AnyP2PGossipHandler::new_remote(
-                host.clone(),
-                token.clone(),
+        let node_info_lookup = match config.get_p2p_config() {
+            P2PConfig::Remote(host, token) => Arc::new(NodeInfoLookup::new_remote(
+                host,
+                token,
                 runtime_handle.clone(),
             )),
-            _ => Arc::new(AnyP2PGossipHandler::Local(NetworkGraphMessageHandler::new(
-                Arc::clone(&network_graph),
-                None::<Arc<dyn chain::Access + Send + Sync>>,
-                logger.clone(),
-            ))),
+            _ => Arc::new(NodeInfoLookup::Local(network_graph.clone())),
+        };
+
+        let p2p_gossip = match config.get_p2p_config() {
+            P2PConfig::Remote(host, token) => Arc::new(AnyP2PGossipHandler::new_remote(
+                host,
+                token,
+                runtime_handle.clone(),
+            )),
+            P2PConfig::RapidGossipSync(_) => Arc::new(AnyP2PGossipHandler::None),
+            P2PConfig::Local => {
+                Arc::new(AnyP2PGossipHandler::Local(NetworkGraphMessageHandler::new(
+                    Arc::clone(&network_graph),
+                    None::<Arc<dyn chain::Access + Send + Sync>>,
+                    logger.clone(),
+                )))
+            }
         };
 
         let lightning_msg_handler = MessageHandler {
@@ -139,24 +146,15 @@ impl SenseiP2P {
         let mut ephemeral_bytes = [0; 32];
         rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
 
-        let peer_manager = Arc::new(RoutingPeerManager::new(
-            lightning_msg_handler,
-            keys_manager.get_node_secret(Recipient::Node).unwrap(),
-            &ephemeral_bytes,
-            logger.clone(),
-            Arc::new(IgnoringMessageHandler {}),
-        ));
-
-        let node_info_lookup = match (
-            config.remote_p2p_host.as_ref(),
-            config.remote_p2p_token.as_ref(),
-        ) {
-            (Some(host), Some(token)) => Arc::new(NodeInfoLookup::new_remote(
-                host.clone(),
-                token.clone(),
-                runtime_handle.clone(),
-            )),
-            _ => Arc::new(NodeInfoLookup::Local(network_graph.clone())),
+        let peer_manager = match config.get_p2p_config() {
+            P2PConfig::RapidGossipSync(_) => None,
+            _ => Some(Arc::new(RoutingPeerManager::new(
+                lightning_msg_handler,
+                keys_manager.get_node_secret(Recipient::Node).unwrap(),
+                &ephemeral_bytes,
+                logger.clone(),
+                Arc::new(IgnoringMessageHandler {}),
+            ))),
         };
 
         let peer_connector = Arc::new(PeerConnector::new(
@@ -179,6 +177,7 @@ impl SenseiP2P {
             network_graph.clone(),
             persister.clone(),
             stop_signal.clone(),
+            config.rapid_gossip_sync_server_host.clone(),
         );
 
         let bg_join_handle = tokio::spawn(async move { p2p_background_processor.process().await });

@@ -12,6 +12,7 @@ use super::router::RemoteSenseiInfo;
 pub enum AnyP2PGossipHandler {
     Remote(RemoteGossipMessageHandler),
     Local(NetworkGraphMessageHandler),
+    None,
 }
 
 impl AnyP2PGossipHandler {
@@ -29,6 +30,9 @@ impl MessageSendEventsProvider for AnyP2PGossipHandler {
             AnyP2PGossipHandler::Local(local_handler) => {
                 local_handler.get_and_clear_pending_msg_events()
             }
+            AnyP2PGossipHandler::None => {
+                vec![]
+            }
         }
     }
 }
@@ -41,6 +45,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
         match self {
             AnyP2PGossipHandler::Remote(handler) => handler.handle_node_announcement(msg),
             AnyP2PGossipHandler::Local(handler) => handler.handle_node_announcement(msg),
+            AnyP2PGossipHandler::None => {
+                panic!("handle_node_announcement called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -51,6 +58,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
         match self {
             AnyP2PGossipHandler::Remote(handler) => handler.handle_channel_announcement(msg),
             AnyP2PGossipHandler::Local(handler) => handler.handle_channel_announcement(msg),
+            AnyP2PGossipHandler::None => {
+                panic!("handle_channel_announcement called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -61,6 +71,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
         match self {
             AnyP2PGossipHandler::Remote(handler) => handler.handle_channel_update(msg),
             AnyP2PGossipHandler::Local(handler) => handler.handle_channel_update(msg),
+            AnyP2PGossipHandler::None => {
+                panic!("handle_channel_update called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -80,6 +93,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
             AnyP2PGossipHandler::Local(handler) => {
                 handler.get_next_channel_announcements(starting_point, batch_amount)
             }
+            AnyP2PGossipHandler::None => {
+                panic!("get_next_channel_announcements called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -95,6 +111,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
             AnyP2PGossipHandler::Local(handler) => {
                 handler.get_next_node_announcements(starting_point, batch_amount)
             }
+            AnyP2PGossipHandler::None => {
+                panic!("get_next_node_announcements called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -106,6 +125,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
         match self {
             AnyP2PGossipHandler::Remote(handler) => handler.peer_connected(their_node_id, init),
             AnyP2PGossipHandler::Local(handler) => handler.peer_connected(their_node_id, init),
+            AnyP2PGossipHandler::None => {
+                panic!("peer_connected called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -120,6 +142,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
             }
             AnyP2PGossipHandler::Local(handler) => {
                 handler.handle_reply_channel_range(their_node_id, msg)
+            }
+            AnyP2PGossipHandler::None => {
+                panic!("handle_reply_channel_range called without a P2P Gossip Handler")
             }
         }
     }
@@ -136,6 +161,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
             AnyP2PGossipHandler::Local(handler) => {
                 handler.handle_reply_short_channel_ids_end(their_node_id, msg)
             }
+            AnyP2PGossipHandler::None => {
+                panic!("handle_reply_short_channel_ids_end called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -151,6 +179,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
             AnyP2PGossipHandler::Local(handler) => {
                 handler.handle_query_channel_range(their_node_id, msg)
             }
+            AnyP2PGossipHandler::None => {
+                panic!("handle_query_channel_range called without a P2P Gossip Handler")
+            }
         }
     }
 
@@ -165,6 +196,9 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
             }
             AnyP2PGossipHandler::Local(handler) => {
                 handler.handle_query_short_channel_ids(their_node_id, msg)
+            }
+            AnyP2PGossipHandler::None => {
+                panic!("handle_query_short_channel_ids called without a P2P Gossip Handler")
             }
         }
     }
