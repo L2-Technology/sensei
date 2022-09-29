@@ -755,19 +755,22 @@ impl AdminService {
         let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
         fs::create_dir_all(node_directory)?;
 
-        // NODE SEED
-        let seed = LightningNode::generate_seed();
-        let encrypted_seed = LightningNode::encrypt_seed(&seed, passphrase.as_bytes())?;
+        // NODE ENTROPY
+        let entropy = LightningNode::generate_entropy();
+        let encrypted_entropy = LightningNode::encrypt_entropy(&entropy, passphrase.as_bytes())?;
 
-        let seed_active_model = self
+        let entropy_active_model = self
             .database
-            .get_seed_active_model(node_id.clone(), encrypted_seed);
+            .get_entropy_active_model(node_id.clone(), encrypted_entropy);
+
+        let seed = LightningNode::get_seed_from_entropy(self.config.network, &entropy);
 
         // NODE PUBKEY
         let node_pubkey = LightningNode::get_node_pubkey_from_seed(&seed);
 
         // NODE MACAROON
-        let (macaroon, macaroon_id) = LightningNode::generate_macaroon(&seed, node_pubkey.clone())?;
+        let (macaroon, macaroon_id) =
+            LightningNode::generate_macaroon(&entropy, node_pubkey.clone())?;
 
         let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.as_bytes())?;
 
@@ -810,7 +813,13 @@ impl AdminService {
             status: node::NodeStatus::Stopped.into(),
         };
 
-        Ok((node, macaroon, active_node, seed_active_model, db_macaroon))
+        Ok((
+            node,
+            macaroon,
+            active_node,
+            entropy_active_model,
+            db_macaroon,
+        ))
     }
 
     async fn create_node(

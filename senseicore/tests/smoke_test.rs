@@ -624,7 +624,7 @@ mod test {
     }
 
     async fn smoke_test(bitcoind: BitcoinD, admin_service: AdminService) {
-        let admin_token = create_admin_account(&admin_service, "admin", "admin").await;
+        let _admin_token = create_admin_account(&admin_service, "admin", "admin").await;
         let alice = create_node(&admin_service, "alice", "alice", true).await;
         let bob = create_node(&admin_service, "bob", "bob", true).await;
         let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
@@ -732,7 +732,7 @@ mod test {
     }
 
     async fn batch_open_channels_test(bitcoind: BitcoinD, admin_service: AdminService) {
-        let admin_token = create_admin_account(&admin_service, "admin", "admin").await;
+        let _admin_token = create_admin_account(&admin_service, "admin", "admin").await;
         let alice = create_node(&admin_service, "alice", "alice", true).await;
         let bob = create_node(&admin_service, "bob", "bob", true).await;
         let charlie = create_node(&admin_service, "charlie", "charlie", true).await;

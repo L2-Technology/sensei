@@ -34,7 +34,7 @@ use crate::{
     config::{P2PConfig, SenseiConfig},
     database::SenseiDatabase,
     disk::FilesystemLogger,
-    node::{NetworkGraph, NetworkGraphMessageHandler, RoutingPeerManager},
+    node::{LightningNode, NetworkGraph, NetworkGraphMessageHandler, RoutingPeerManager},
     persist::{AnyKVStore, DatabaseStore, SenseiPersister},
 };
 
@@ -125,17 +125,19 @@ impl SenseiP2P {
             route_handler: p2p_gossip.clone(),
         };
 
-        let mut seed: [u8; 32] = [0; 32];
-        rand::thread_rng().fill_bytes(&mut seed);
+        let mut entropy: [u8; 32] = [0; 32];
+        rand::thread_rng().fill_bytes(&mut entropy);
 
-        match database.get_seed_sync(p2p_node_id.clone()).unwrap() {
-            Some(seed_vec) => {
-                seed.copy_from_slice(seed_vec.as_slice());
+        match database.get_entropy_sync(p2p_node_id.clone()).unwrap() {
+            Some(entropy_vec) => {
+                entropy.copy_from_slice(entropy_vec.as_slice());
             }
             None => {
-                let _res = database.set_seed_sync(p2p_node_id, seed.to_vec());
+                let _res = database.set_entropy_sync(p2p_node_id, entropy.to_vec());
             }
         }
+
+        let seed = LightningNode::get_seed_from_entropy(config.network, &entropy);
 
         let cur = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
