@@ -1,5 +1,5 @@
-use crate::database::{LastSync, SenseiDatabase};
-use bdk::database::{BatchDatabase, BatchOperations, Database};
+use crate::database::SenseiDatabase;
+use bdk::database::{BatchDatabase, BatchOperations, Database, SyncTime};
 use bdk::wallet::time;
 use bdk::{BlockTime, KeychainKind, LocalUtxo, TransactionDetails};
 use bitcoin::consensus::encode::{deserialize, serialize};
@@ -69,6 +69,12 @@ impl Listen for WalletDatabase {
                 .unwrap();
         }
 
+        let timestamp = time::get_timestamp();
+
+        let _res = wallet_database.set_sync_time(SyncTime {
+            block_time: BlockTime { height, timestamp },
+        });
+
         tokio::task::block_in_place(move || {
             wallet_database.tokio_handle.block_on(async move {
                 wallet_database
@@ -77,7 +83,7 @@ impl Listen for WalletDatabase {
                         wallet_database.node_id.clone(),
                         header.block_hash(),
                         height,
-                        time::get_timestamp(),
+                        timestamp,
                     )
                     .await
                     .unwrap();
@@ -254,7 +260,6 @@ impl WalletDatabase {
                 confirmation_time: BlockTime::new(confirmation_height, confirmation_time),
                 fee: Some(inputs_sum.saturating_sub(outputs_sum)),
             };
-
             self.set_tx(&tx).unwrap();
         }
     }
@@ -1037,12 +1042,8 @@ impl Database for WalletDatabase {
 
     fn get_sync_time(&self) -> Result<Option<bdk::database::SyncTime>, bdk::Error> {
         let last_sync_key = format!("{}/chain/last_sync", self.node_id.clone());
-        self.get_value(&last_sync_key).map(|entry| {
-            entry.map(|entry| {
-                let last_sync: LastSync = serde_json::from_slice(&entry.v).unwrap();
-                last_sync.into()
-            })
-        })
+        self.get_value(&last_sync_key)
+            .map(|entry| entry.map(|entry| serde_json::from_slice(&entry.v).unwrap()))
     }
 
     fn increment_last_index(&mut self, keychain: bdk::KeychainKind) -> Result<u32, bdk::Error> {
@@ -1056,10 +1057,6 @@ impl Database for WalletDatabase {
                 Ok(0)
             }
         }
-    }
-
-    fn flush(&mut self) -> Result<(), bdk::Error> {
-        Ok(())
     }
 }
 

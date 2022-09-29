@@ -29,7 +29,7 @@ serde_json = { version = "1.0" }
 tokio = { version = "1", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
 log = "0.4.16"
 bitcoincore-rpc = "0.15"
-bdk = "0.19"
+bdk = "0.22"
 pin-project = "1.0"
 hyper = "0.14"
 bcrypt = "0.13.0"

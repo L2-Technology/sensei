@@ -1328,7 +1328,8 @@ impl LightningNode {
                 //       we never hear about transactions that enter the mempool
                 let onchain_balance_sats = {
                     let wallet = self.wallet.lock().unwrap();
-                    wallet.get_balance().map_err(Error::Bdk)?
+                    let balance = wallet.get_balance().map_err(Error::Bdk)?;
+                    balance.get_total()
                 };
 
                 let channels = self.channel_manager.list_channels();

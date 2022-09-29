@@ -57,7 +57,7 @@ mod test {
         let has_balance = move || {
             let wallet = closed_node.wallet.lock().unwrap();
             let balance = wallet.get_balance().unwrap();
-            balance == 100_000_000
+            balance.get_total() == 100_000_000
         };
 
         assert!(wait_until(has_balance, 15000, 250).await);
