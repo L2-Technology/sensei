@@ -362,9 +362,9 @@ dependencies = [
 
 [[package]]
 name = "bdk"
-version = "0.19.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec2c4c49915b82a2576bc7dee83d2f274387904b79305e6ae8b622daa0b282c1"
+checksum = "14836e8b1312be32e46f5da47e1189c2239fa75f9237a0a7c7aea9ee7071a2bc"
 dependencies = [
  "async-trait",
  "bdk-macros",
@@ -962,18 +962,20 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
 name = "electrum-client"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff0ecf5f0d1d0ca8ec87cefd7b3118be46cd47309a49c4172ce91adc98895413"
+checksum = "af53c415260dcb220fa02182669727c730535bfed4edbfde42e1291342af95cd"
 dependencies = [
  "bitcoin",
+ "byteorder",
+ "libc",
  "log",
  "rustls 0.20.6",
  "serde",
  "serde_json",
- "socks",
  "webpki 0.22.0",
  "webpki-roots 0.22.3",
+ "winapi",
 ]
 
 [[package]]
