@@ -51,7 +51,9 @@ use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
-use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager, Recipient};
+use lightning::chain::keysinterface::{
+    InMemorySigner, KeysInterface, KeysManager, PhantomKeysManager, Recipient,
+};
 use lightning::chain::Watch;
 use lightning::chain::{self, Filter};
 use lightning::ln::channelmanager::{self, ChannelDetails, ChannelManager as LdkChannelManager};
@@ -307,7 +309,7 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
 trait MustSized: Sized {}
 
 pub type SimpleArcChannelManager<M, T, F, L> =
-    LdkChannelManager<InMemorySigner, Arc<M>, Arc<T>, Arc<KeysManager>, Arc<F>, Arc<L>>;
+    LdkChannelManager<InMemorySigner, Arc<M>, Arc<T>, Arc<PhantomKeysManager>, Arc<F>, Arc<L>>;
 
 pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
     SD,
@@ -419,7 +421,7 @@ pub struct LightningNode {
     pub chain_manager: Arc<SenseiChainManager>,
     pub peer_manager: Arc<PeerManager>,
     pub p2p: Arc<SenseiP2P>,
-    pub keys_manager: Arc<KeysManager>,
+    pub keys_manager: Arc<PhantomKeysManager>,
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
     pub stop_listen: Arc<AtomicBool>,
@@ -448,6 +450,28 @@ impl LightningNode {
         let cryptor = RingCryptor::new();
         let mut entropy: [u8; 32] = [0; 32];
         match database.get_entropy(node_id.clone()).await? {
+            Some(encrypted_entropy) => {
+                let decrypted_entropy =
+                    cryptor.open(passphrase.as_bytes(), encrypted_entropy.as_slice())?;
+
+                if decrypted_entropy.len() != 32 {
+                    return Err(Error::InvalidEntropyLength);
+                }
+                entropy.copy_from_slice(decrypted_entropy.as_slice());
+                Ok(entropy)
+            }
+            None => Err(Error::EntropyNotFound),
+        }
+    }
+
+    async fn get_cross_node_entropy_for_node(
+        node_id: String,
+        passphrase: String,
+        database: Arc<SenseiDatabase>,
+    ) -> Result<[u8; 32], Error> {
+        let cryptor = RingCryptor::new();
+        let mut entropy: [u8; 32] = [0; 32];
+        match database.get_cross_node_entropy(node_id.clone()).await? {
             Some(encrypted_entropy) => {
                 let decrypted_entropy =
                     cryptor.open(passphrase.as_bytes(), encrypted_entropy.as_slice())?;
@@ -572,22 +596,18 @@ impl LightningNode {
     ) -> Result<(Self, Vec<JoinHandle<()>>, BackgroundProcessor), Error> {
         let network = config.network;
 
-        let seed =
+        let entropy =
             LightningNode::get_entropy_for_node(id.clone(), passphrase.clone(), database.clone())
                 .await?;
 
-        let xprivkey = ExtendedPrivKey::new_master(network, &seed).unwrap();
+        let cross_node_entropy = LightningNode::get_cross_node_entropy_for_node(
+            id.clone(),
+            passphrase.clone(),
+            database.clone(),
+        )
+        .await?;
 
-        let ldk_seed: [u8; 32] = xprivkey.private_key.secret_bytes();
-        let cur = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let keys_manager = Arc::new(KeysManager::new(
-            &ldk_seed,
-            cur.as_secs(),
-            cur.subsec_nanos(),
-        ));
-
+        let xprivkey = ExtendedPrivKey::new_master(network, &entropy).unwrap();
         let xkey = ExtendedKey::from(xprivkey);
         let native_segwit_base_path = "m/84";
         let account_number = 0;
@@ -614,6 +634,19 @@ impl LightningNode {
         let bdk_wallet = Arc::new(Mutex::new(bdk_wallet));
 
         let logger = Arc::new(FilesystemLogger::new(data_dir.clone(), config.network));
+
+        let seed = LightningNode::get_seed_from_entropy(network, &entropy);
+        let cross_node_seed = LightningNode::get_seed_from_entropy(network, &cross_node_entropy);
+
+        let cur = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
+        let keys_manager = Arc::new(PhantomKeysManager::new(
+            &seed,
+            cur.as_secs(),
+            cur.subsec_nanos(),
+            &cross_node_seed,
+        ));
 
         let broadcaster = Arc::new(SenseiBroadcaster::new(
             id.clone(),

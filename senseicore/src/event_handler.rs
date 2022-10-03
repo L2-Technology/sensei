@@ -21,8 +21,9 @@ use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use entity::sea_orm::ActiveValue;
 use lightning::chain::chaininterface::{BroadcasterInterface, FeeEstimator};
+use lightning::chain::keysinterface::PhantomKeysManager;
 use lightning::{
-    chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
+    chain::chaininterface::ConfirmationTarget,
     util::events::{Event, EventHandler, PaymentPurpose},
 };
 use rand::{thread_rng, Rng};
@@ -36,7 +37,7 @@ pub struct LightningNodeEventHandler {
     pub config: Arc<SenseiConfig>,
     pub wallet: Arc<Mutex<bdk::Wallet<WalletDatabase>>>,
     pub channel_manager: Arc<ChannelManager>,
-    pub keys_manager: Arc<KeysManager>,
+    pub keys_manager: Arc<PhantomKeysManager>,
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,

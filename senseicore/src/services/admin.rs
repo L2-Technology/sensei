@@ -699,20 +699,27 @@ impl AdminService {
 
         let mut nodes_with_macaroons = Vec::with_capacity(built_nodes.len());
         let mut db_nodes = Vec::with_capacity(built_nodes.len());
-        let mut db_seeds = Vec::with_capacity(built_nodes.len());
+        let mut db_entropys = Vec::with_capacity(built_nodes.len());
+        let mut db_cross_node_entropys = Vec::with_capacity(built_nodes.len());
         let mut db_macaroons = Vec::with_capacity(built_nodes.len());
 
-        for (node, macaroon, db_node, db_seed, db_macaroon) in built_nodes.drain(..) {
+        for (node, macaroon, db_node, db_entropy, db_cross_node_entropy, db_macaroon) in
+            built_nodes.drain(..)
+        {
             nodes_with_macaroons.push((node, macaroon));
             db_nodes.push(db_node);
-            db_seeds.push(db_seed);
+            db_entropys.push(db_entropy);
+            db_cross_node_entropys.push(db_cross_node_entropy);
             db_macaroons.push(db_macaroon);
         }
 
         entity::node::Entity::insert_many(db_nodes)
             .exec(self.database.get_connection())
             .await?;
-        entity::kv_store::Entity::insert_many(db_seeds)
+        entity::kv_store::Entity::insert_many(db_entropys)
+            .exec(self.database.get_connection())
+            .await?;
+        entity::kv_store::Entity::insert_many(db_cross_node_entropys)
             .exec(self.database.get_connection())
             .await?;
         entity::macaroon::Entity::insert_many(db_macaroons)
@@ -733,6 +740,7 @@ impl AdminService {
             entity::node::Model,
             Macaroon,
             entity::node::ActiveModel,
+            entity::kv_store::ActiveModel,
             entity::kv_store::ActiveModel,
             entity::macaroon::ActiveModel,
         ),
@@ -757,11 +765,19 @@ impl AdminService {
 
         // NODE ENTROPY
         let entropy = LightningNode::generate_entropy();
+        let cross_node_entropy = LightningNode::generate_entropy();
+
         let encrypted_entropy = LightningNode::encrypt_entropy(&entropy, passphrase.as_bytes())?;
+        let encrypted_cross_node_entropy =
+            LightningNode::encrypt_entropy(&cross_node_entropy, passphrase.as_bytes())?;
 
         let entropy_active_model = self
             .database
             .get_entropy_active_model(node_id.clone(), encrypted_entropy);
+
+        let cross_node_entropy_active_model = self
+            .database
+            .get_cross_node_entropy_active_model(node_id.clone(), encrypted_cross_node_entropy);
 
         let seed = LightningNode::get_seed_from_entropy(self.config.network, &entropy);
 
@@ -818,6 +834,7 @@ impl AdminService {
             macaroon,
             active_node,
             entropy_active_model,
+            cross_node_entropy_active_model,
             db_macaroon,
         ))
     }
@@ -829,10 +846,13 @@ impl AdminService {
         passphrase: String,
         role: node::NodeRole,
     ) -> Result<(node::Model, Macaroon), crate::error::Error> {
-        let (node, macaroon, db_node, db_seed, db_macaroon) =
+        let (node, macaroon, db_node, db_entropy, db_cross_node_entropy, db_macaroon) =
             self.build_node(username, alias, passphrase, role).await?;
 
-        db_seed.insert(self.database.get_connection()).await?;
+        db_entropy.insert(self.database.get_connection()).await?;
+        db_cross_node_entropy
+            .insert(self.database.get_connection())
+            .await?;
         db_macaroon.insert(self.database.get_connection()).await?;
         db_node.insert(self.database.get_connection()).await?;
 
