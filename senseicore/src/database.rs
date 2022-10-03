@@ -622,44 +622,58 @@ impl SenseiDatabase {
         })
     }
 
-    pub async fn get_seed(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
-        self.get_value(node_id, String::from("seed"))
+    pub async fn get_entropy(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
+        self.get_value(node_id, String::from("entropy"))
             .await
             .map(|model| model.map(|model| model.v))
     }
 
-    pub fn get_seed_sync(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
+    pub fn get_entropy_sync(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
         tokio::task::block_in_place(move || {
             self.runtime_handle
-                .block_on(async move { self.get_seed(node_id).await })
+                .block_on(async move { self.get_entropy(node_id).await })
         })
     }
 
-    pub async fn set_seed(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
-        self.set_value(node_id, String::from("seed"), seed).await
-    }
-
-    pub fn set_seed_sync(&self, node_id: String, seed: Vec<u8>) -> Result<kv_store::Model, Error> {
-        tokio::task::block_in_place(move || {
-            self.runtime_handle
-                .block_on(async move { self.set_seed(node_id, seed).await })
-        })
-    }
-
-    pub async fn create_seed(
+    pub async fn set_entropy(
         &self,
         node_id: String,
-        seed: Vec<u8>,
+        entropy: Vec<u8>,
     ) -> Result<kv_store::Model, Error> {
-        self.create_value(node_id, String::from("seed"), seed).await
+        self.set_value(node_id, String::from("entropy"), entropy)
+            .await
     }
 
-    pub fn get_seed_active_model(&self, node_id: String, seed: Vec<u8>) -> kv_store::ActiveModel {
+    pub fn set_entropy_sync(
+        &self,
+        node_id: String,
+        entropy: Vec<u8>,
+    ) -> Result<kv_store::Model, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.set_entropy(node_id, entropy).await })
+        })
+    }
+
+    pub async fn create_entropy(
+        &self,
+        node_id: String,
+        entropy: Vec<u8>,
+    ) -> Result<kv_store::Model, Error> {
+        self.create_value(node_id, String::from("entropy"), entropy)
+            .await
+    }
+
+    pub fn get_entropy_active_model(
+        &self,
+        node_id: String,
+        entropy: Vec<u8>,
+    ) -> kv_store::ActiveModel {
         let now = seconds_since_epoch();
         kv_store::ActiveModel {
             node_id: ActiveValue::Set(node_id),
-            k: ActiveValue::Set(String::from("seed")),
-            v: ActiveValue::Set(seed),
+            k: ActiveValue::Set(String::from("entropy")),
+            v: ActiveValue::Set(entropy),
             created_at: ActiveValue::Set(now),
             updated_at: ActiveValue::Set(now),
             ..Default::default()

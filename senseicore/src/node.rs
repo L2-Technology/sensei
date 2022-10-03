@@ -429,36 +429,36 @@ pub struct LightningNode {
 }
 
 impl LightningNode {
-    pub fn generate_seed() -> [u8; 32] {
-        let mut seed: [u8; 32] = [0; 32];
-        thread_rng().fill_bytes(&mut seed);
-        seed
+    pub fn generate_entropy() -> [u8; 32] {
+        let mut entropy: [u8; 32] = [0; 32];
+        thread_rng().fill_bytes(&mut entropy);
+        entropy
     }
 
-    pub fn encrypt_seed(seed: &[u8; 32], passphrase: &[u8]) -> Result<Vec<u8>, Error> {
+    pub fn encrypt_entropy(entropy: &[u8; 32], passphrase: &[u8]) -> Result<Vec<u8>, Error> {
         let cryptor = RingCryptor::new();
-        Ok(cryptor.seal_with_passphrase(passphrase, seed)?)
+        Ok(cryptor.seal_with_passphrase(passphrase, entropy)?)
     }
 
-    async fn get_seed_for_node(
+    async fn get_entropy_for_node(
         node_id: String,
         passphrase: String,
         database: Arc<SenseiDatabase>,
     ) -> Result<[u8; 32], Error> {
         let cryptor = RingCryptor::new();
-        let mut seed: [u8; 32] = [0; 32];
-        match database.get_seed(node_id.clone()).await? {
-            Some(encrypted_seed) => {
-                let decrypted_seed =
-                    cryptor.open(passphrase.as_bytes(), encrypted_seed.as_slice())?;
+        let mut entropy: [u8; 32] = [0; 32];
+        match database.get_entropy(node_id.clone()).await? {
+            Some(encrypted_entropy) => {
+                let decrypted_entropy =
+                    cryptor.open(passphrase.as_bytes(), encrypted_entropy.as_slice())?;
 
-                if decrypted_seed.len() != 32 {
-                    return Err(Error::InvalidSeedLength);
+                if decrypted_entropy.len() != 32 {
+                    return Err(Error::InvalidEntropyLength);
                 }
-                seed.copy_from_slice(decrypted_seed.as_slice());
-                Ok(seed)
+                entropy.copy_from_slice(decrypted_entropy.as_slice());
+                Ok(entropy)
             }
-            None => Err(Error::SeedNotFound),
+            None => Err(Error::EntropyNotFound),
         }
     }
 
@@ -543,6 +543,11 @@ impl LightningNode {
             .map_err(|_e| Error::InvalidMacaroon)
     }
 
+    pub fn get_seed_from_entropy(network: Network, entropy: &[u8; 32]) -> [u8; 32] {
+        let xprivkey = ExtendedPrivKey::new_master(network, entropy).unwrap();
+        xprivkey.private_key.secret_bytes()
+    }
+
     pub fn get_node_pubkey_from_seed(seed: &[u8; 32]) -> String {
         let secp_ctx = Secp256k1::new();
         let keys_manager = KeysManager::new(seed, 0, 0);
@@ -568,16 +573,21 @@ impl LightningNode {
         let network = config.network;
 
         let seed =
-            LightningNode::get_seed_for_node(id.clone(), passphrase.clone(), database.clone())
+            LightningNode::get_entropy_for_node(id.clone(), passphrase.clone(), database.clone())
                 .await?;
 
+        let xprivkey = ExtendedPrivKey::new_master(network, &seed).unwrap();
+
+        let ldk_seed: [u8; 32] = xprivkey.private_key.secret_bytes();
         let cur = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
+        let keys_manager = Arc::new(KeysManager::new(
+            &ldk_seed,
+            cur.as_secs(),
+            cur.subsec_nanos(),
+        ));
 
-        let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
-
-        let xprivkey = ExtendedPrivKey::new_master(network, &seed).unwrap();
         let xkey = ExtendedKey::from(xprivkey);
         let native_segwit_base_path = "m/84";
         let account_number = 0;

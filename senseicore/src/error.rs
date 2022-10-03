@@ -28,8 +28,9 @@ pub enum Error {
     LdkInvoiceSign(lightning_invoice::SignOrCreationError),
     LdkInvoiceParse(lightning_invoice::ParseOrSemanticError),
     InvalidSeedLength,
-    FailedToWriteSeed,
-    SeedNotFound,
+    InvalidEntropyLength,
+    FailedToWriteEntropy,
+    EntropyNotFound,
     MacaroonNotFound,
     Unauthenticated,
     InvalidMacaroon,
@@ -57,9 +58,9 @@ impl Display for Error {
             Error::LdkInvoiceSign(e) => e.to_string(),
             Error::LdkInvoiceParse(e) => e.to_string(),
             Error::InvalidSeedLength => String::from("invalid seed length"),
-            Error::SeedNotFound => String::from("seed not found for node"),
+            Error::EntropyNotFound => String::from("entropy not found for node"),
             Error::MacaroonNotFound => String::from("macaroon not found for node"),
-            Error::FailedToWriteSeed => String::from("failed to write seed"),
+            Error::FailedToWriteEntropy => String::from("failed to write entropy"),
             Error::Unauthenticated => String::from("unauthenticated"),
             Error::InvalidMacaroon => String::from("invalid macaroon"),
             Error::AdminNodeNotCreated => String::from("admin node not created"),
@@ -71,6 +72,7 @@ impl Display for Error {
             Error::ChannelOpenRejected(reason) => {
                 format!("Channel open rejected by peer: {:?}", reason)
             }
+            Error::InvalidEntropyLength => String::from("invalid entropy length"),
         };
         write!(f, "{}", str)
     }
