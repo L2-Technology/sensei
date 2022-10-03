@@ -114,6 +114,8 @@ message CreateNodeRequest {
     string alias = 2;
     string passphrase = 3;
     bool start = 4;
+    optional string entropy = 5;
+    optional string cross_node_entropy = 6;
 }
 message CreateNodeResponse {
     string pubkey = 1;

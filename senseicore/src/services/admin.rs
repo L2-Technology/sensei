@@ -52,6 +52,8 @@ pub struct NodeCreateInfo {
     pub alias: String,
     pub passphrase: String,
     pub start: bool,
+    pub entropy: Option<String>,
+    pub cross_node_entropy: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -79,6 +81,8 @@ pub enum AdminRequest {
         alias: String,
         passphrase: String,
         start: bool,
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
     },
     BatchCreateNode {
         nodes: Vec<NodeCreateInfo>,
@@ -423,9 +427,18 @@ impl AdminService {
                 alias,
                 passphrase,
                 start,
+                entropy,
+                cross_node_entropy,
             } => {
                 let (node, macaroon, entropy, cross_node_entropy) = self
-                    .create_node(username, alias, passphrase.clone(), node::NodeRole::Default)
+                    .create_node(
+                        username,
+                        alias,
+                        passphrase.clone(),
+                        node::NodeRole::Default,
+                        entropy,
+                        cross_node_entropy,
+                    )
                     .await?;
 
                 let macaroon = macaroon.serialize(macaroon::Format::V2)?;
@@ -695,6 +708,8 @@ impl AdminService {
                     info.alias,
                     info.passphrase,
                     NodeRole::Default,
+                    info.entropy,
+                    info.cross_node_entropy,
                 )
             })
             .collect::<Vec<_>>();
@@ -754,6 +769,8 @@ impl AdminService {
         alias: String,
         passphrase: String,
         role: node::NodeRole,
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
     ) -> Result<
         (
             entity::node::Model,
@@ -785,8 +802,25 @@ impl AdminService {
         fs::create_dir_all(node_directory)?;
 
         // NODE ENTROPY
-        let entropy = LightningNode::generate_entropy();
-        let cross_node_entropy = LightningNode::generate_entropy();
+        let entropy = match entropy {
+            Some(entropy_hex) => {
+                let mut entropy: [u8; 32] = [0; 32];
+                let entropy_vec = hex_utils::to_vec(&entropy_hex).unwrap();
+                entropy.copy_from_slice(entropy_vec.as_slice());
+                entropy
+            }
+            None => LightningNode::generate_entropy(),
+        };
+
+        let cross_node_entropy = match cross_node_entropy {
+            Some(cross_node_entropy_hex) => {
+                let mut cross_node_entropy: [u8; 32] = [0; 32];
+                let cross_node_entropy_vec = hex_utils::to_vec(&cross_node_entropy_hex).unwrap();
+                cross_node_entropy.copy_from_slice(cross_node_entropy_vec.as_slice());
+                cross_node_entropy
+            }
+            None => LightningNode::generate_entropy(),
+        };
 
         let encrypted_entropy = LightningNode::encrypt_entropy(&entropy, passphrase.as_bytes())?;
         let encrypted_cross_node_entropy =
@@ -868,6 +902,8 @@ impl AdminService {
         alias: String,
         passphrase: String,
         role: node::NodeRole,
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
     ) -> Result<(node::Model, Macaroon, [u8; 32], [u8; 32]), crate::error::Error> {
         let (
             node,
@@ -878,7 +914,16 @@ impl AdminService {
             db_macaroon,
             entropy,
             cross_node_entropy,
-        ) = self.build_node(username, alias, passphrase, role).await?;
+        ) = self
+            .build_node(
+                username,
+                alias,
+                passphrase,
+                role,
+                entropy,
+                cross_node_entropy,
+            )
+            .await?;
 
         db_entropy.insert(self.database.get_connection()).await?;
         db_cross_node_entropy

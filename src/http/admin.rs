@@ -94,6 +94,8 @@ impl From<BatchCreateNodeParams> for AdminRequest {
                     alias: node.alias,
                     passphrase: node.passphrase,
                     start: node.start,
+                    entropy: node.entropy,
+                    cross_node_entropy: node.cross_node_entropy,
                 })
                 .collect::<Vec<_>>(),
         }
@@ -106,6 +108,8 @@ pub struct CreateNodeParams {
     pub passphrase: String,
     pub alias: String,
     pub start: bool,
+    pub entropy: Option<String>,
+    pub cross_node_entropy: Option<String>,
 }
 
 impl From<CreateNodeParams> for AdminRequest {
@@ -115,6 +119,8 @@ impl From<CreateNodeParams> for AdminRequest {
             passphrase: params.passphrase,
             alias: params.alias,
             start: params.start,
+            entropy: params.entropy,
+            cross_node_entropy: params.cross_node_entropy,
         }
     }
 }

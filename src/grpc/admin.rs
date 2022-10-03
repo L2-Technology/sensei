@@ -113,6 +113,8 @@ impl From<CreateNodeRequest> for AdminRequest {
             alias: req.alias,
             passphrase: req.passphrase,
             start: req.start,
+            entropy: req.entropy,
+            cross_node_entropy: req.cross_node_entropy,
         }
     }
 }

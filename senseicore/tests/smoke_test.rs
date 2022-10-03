@@ -68,6 +68,8 @@ mod test {
         username: &str,
         passphrase: &str,
         start: bool,
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
     ) -> Arc<LightningNode> {
         let node_pubkey = match admin_service
             .call(AdminRequest::CreateNode {
@@ -75,6 +77,8 @@ mod test {
                 passphrase: String::from(passphrase),
                 alias: String::from(username),
                 start,
+                entropy,
+                cross_node_entropy,
             })
             .await
             .unwrap()
@@ -85,8 +89,8 @@ mod test {
                 listen_port: _,
                 pubkey,
                 macaroon: _,
-                entropy,
-                cross_node_entropy,
+                entropy: _,
+                cross_node_entropy: _,
             } => Some(pubkey),
             _ => None,
         }
@@ -627,9 +631,9 @@ mod test {
 
     async fn smoke_test(bitcoind: BitcoinD, admin_service: AdminService) {
         let _admin_token = create_admin_account(&admin_service, "admin", "admin").await;
-        let alice = create_node(&admin_service, "alice", "alice", true).await;
-        let bob = create_node(&admin_service, "bob", "bob", true).await;
-        let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
+        let alice = create_node(&admin_service, "alice", "alice", true, None, None).await;
+        let bob = create_node(&admin_service, "bob", "bob", true, None, None).await;
+        let charlie = create_node(&admin_service, "charlie", "charlie", true, None, None).await;
         fund_node(&bitcoind, alice.clone()).await;
         fund_node(&bitcoind, bob.clone()).await;
         let alice_bob_channel =
@@ -735,10 +739,10 @@ mod test {
 
     async fn batch_open_channels_test(bitcoind: BitcoinD, admin_service: AdminService) {
         let _admin_token = create_admin_account(&admin_service, "admin", "admin").await;
-        let alice = create_node(&admin_service, "alice", "alice", true).await;
-        let bob = create_node(&admin_service, "bob", "bob", true).await;
-        let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
-        let doug = create_node(&admin_service, "doug", "doug", true).await;
+        let alice = create_node(&admin_service, "alice", "alice", true, None, None).await;
+        let bob = create_node(&admin_service, "bob", "bob", true, None, None).await;
+        let charlie = create_node(&admin_service, "charlie", "charlie", true, None, None).await;
+        let doug = create_node(&admin_service, "doug", "doug", true, None, None).await;
         fund_node(&bitcoind, alice.clone()).await;
 
         let alice_channels_with_counterparties = open_channels(
