@@ -121,6 +121,8 @@ message CreateNodeResponse {
     string listen_addr = 3;
     int32 listen_port = 4;
     string id = 5;
+    string entropy = 6;
+    string cross_node_entropy = 7;
 }
 
 message DeleteNodeRequest {

@@ -61,6 +61,8 @@ pub struct NodeCreateResult {
     listen_addr: String,
     listen_port: i32,
     id: String,
+    entropy: String,
+    cross_node_entropy: String,
 }
 
 pub enum AdminRequest {
@@ -160,6 +162,8 @@ pub enum AdminResponse {
         listen_addr: String,
         listen_port: i32,
         id: String,
+        entropy: String,
+        cross_node_entropy: String,
     },
     BatchCreateNode {
         nodes: Vec<NodeCreateResult>,
@@ -420,7 +424,7 @@ impl AdminService {
                 passphrase,
                 start,
             } => {
-                let (node, macaroon) = self
+                let (node, macaroon, entropy, cross_node_entropy) = self
                     .create_node(username, alias, passphrase.clone(), node::NodeRole::Default)
                     .await?;
 
@@ -435,13 +439,16 @@ impl AdminService {
                     listen_addr: node.listen_addr,
                     listen_port: node.listen_port,
                     id: node.id,
+                    entropy: hex_utils::hex_str(&entropy),
+                    cross_node_entropy: hex_utils::hex_str(&cross_node_entropy),
                 })
             }
             AdminRequest::BatchCreateNode { nodes } => {
-                let nodes_and_macaroons = self.batch_create_nodes(nodes.clone()).await?;
+                let nodes_and_macaroons_and_entropy =
+                    self.batch_create_nodes(nodes.clone()).await?;
 
-                for ((node, _macaroon), node_create_info) in
-                    nodes_and_macaroons.iter().zip(nodes.iter())
+                for ((node, _macaroon, _entropy, _cross_node_entropy), node_create_info) in
+                    nodes_and_macaroons_and_entropy.iter().zip(nodes.iter())
                 {
                     if node_create_info.start {
                         self.start_node(node.clone(), node_create_info.passphrase.clone())
@@ -450,9 +457,9 @@ impl AdminService {
                 }
 
                 Ok(AdminResponse::BatchCreateNode {
-                    nodes: nodes_and_macaroons
+                    nodes: nodes_and_macaroons_and_entropy
                         .into_iter()
-                        .map(|(node, macaroon)| {
+                        .map(|(node, macaroon, entropy, cross_node_entropy)| {
                             let macaroon = macaroon.serialize(macaroon::Format::V2).unwrap();
                             NodeCreateResult {
                                 pubkey: node.pubkey,
@@ -460,6 +467,10 @@ impl AdminService {
                                 listen_addr: node.listen_addr,
                                 listen_port: node.listen_port,
                                 id: node.id,
+                                entropy: hex_utils::hex_str(entropy.as_slice()),
+                                cross_node_entropy: hex_utils::hex_str(
+                                    cross_node_entropy.as_slice(),
+                                ),
                             }
                         })
                         .collect::<Vec<_>>(),
@@ -675,7 +686,7 @@ impl AdminService {
     async fn batch_create_nodes(
         &self,
         nodes: Vec<NodeCreateInfo>,
-    ) -> Result<Vec<(node::Model, Macaroon)>, crate::error::Error> {
+    ) -> Result<Vec<(node::Model, Macaroon, [u8; 32], [u8; 32])>, crate::error::Error> {
         let built_node_futures = nodes
             .into_iter()
             .map(|info| {
@@ -697,16 +708,24 @@ impl AdminService {
             .map(|built_result| built_result.unwrap())
             .collect::<Vec<_>>();
 
-        let mut nodes_with_macaroons = Vec::with_capacity(built_nodes.len());
+        let mut nodes_with_macaroons_and_entropys = Vec::with_capacity(built_nodes.len());
         let mut db_nodes = Vec::with_capacity(built_nodes.len());
         let mut db_entropys = Vec::with_capacity(built_nodes.len());
         let mut db_cross_node_entropys = Vec::with_capacity(built_nodes.len());
         let mut db_macaroons = Vec::with_capacity(built_nodes.len());
 
-        for (node, macaroon, db_node, db_entropy, db_cross_node_entropy, db_macaroon) in
-            built_nodes.drain(..)
+        for (
+            node,
+            macaroon,
+            db_node,
+            db_entropy,
+            db_cross_node_entropy,
+            db_macaroon,
+            entropy,
+            cross_node_entropy,
+        ) in built_nodes.drain(..)
         {
-            nodes_with_macaroons.push((node, macaroon));
+            nodes_with_macaroons_and_entropys.push((node, macaroon, entropy, cross_node_entropy));
             db_nodes.push(db_node);
             db_entropys.push(db_entropy);
             db_cross_node_entropys.push(db_cross_node_entropy);
@@ -726,7 +745,7 @@ impl AdminService {
             .exec(self.database.get_connection())
             .await?;
 
-        Ok(nodes_with_macaroons)
+        Ok(nodes_with_macaroons_and_entropys)
     }
 
     async fn build_node(
@@ -743,6 +762,8 @@ impl AdminService {
             entity::kv_store::ActiveModel,
             entity::kv_store::ActiveModel,
             entity::macaroon::ActiveModel,
+            [u8; 32],
+            [u8; 32],
         ),
         crate::error::Error,
     > {
@@ -836,6 +857,8 @@ impl AdminService {
             entropy_active_model,
             cross_node_entropy_active_model,
             db_macaroon,
+            entropy,
+            cross_node_entropy,
         ))
     }
 
@@ -845,9 +868,17 @@ impl AdminService {
         alias: String,
         passphrase: String,
         role: node::NodeRole,
-    ) -> Result<(node::Model, Macaroon), crate::error::Error> {
-        let (node, macaroon, db_node, db_entropy, db_cross_node_entropy, db_macaroon) =
-            self.build_node(username, alias, passphrase, role).await?;
+    ) -> Result<(node::Model, Macaroon, [u8; 32], [u8; 32]), crate::error::Error> {
+        let (
+            node,
+            macaroon,
+            db_node,
+            db_entropy,
+            db_cross_node_entropy,
+            db_macaroon,
+            entropy,
+            cross_node_entropy,
+        ) = self.build_node(username, alias, passphrase, role).await?;
 
         db_entropy.insert(self.database.get_connection()).await?;
         db_cross_node_entropy
@@ -856,7 +887,7 @@ impl AdminService {
         db_macaroon.insert(self.database.get_connection()).await?;
         db_node.insert(self.database.get_connection()).await?;
 
-        Ok((node, macaroon))
+        Ok((node, macaroon, entropy, cross_node_entropy))
     }
 
     // note: please be sure to stop the node first? maybe?

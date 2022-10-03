@@ -85,6 +85,8 @@ mod test {
                 listen_port: _,
                 pubkey,
                 macaroon: _,
+                entropy,
+                cross_node_entropy,
             } => Some(pubkey),
             _ => None,
         }

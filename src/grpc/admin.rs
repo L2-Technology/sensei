@@ -128,12 +128,16 @@ impl TryFrom<AdminResponse> for CreateNodeResponse {
                 listen_addr,
                 listen_port,
                 id,
+                entropy,
+                cross_node_entropy,
             } => Ok(Self {
                 pubkey,
                 macaroon,
                 listen_addr,
                 listen_port,
                 id,
+                entropy,
+                cross_node_entropy,
             }),
             _ => Err("impossible".to_string()),
         }
