@@ -36,6 +36,7 @@ service Node {
     rpc ConnectPeer (ConnectPeerRequest) returns (ConnectPeerResponse);
     rpc ListChannels (ListChannelsRequest) returns (ListChannelsResponse);
     rpc ListPayments (ListPaymentsRequest) returns (ListPaymentsResponse);
+    rpc ListPhantomPayments (ListPhantomPaymentsRequest) returns (ListPhantomPaymentsResponse);
     rpc CloseChannel (CloseChannelRequest) returns (CloseChannelResponse);
     rpc Info (InfoRequest) returns (InfoResponse);
     rpc ListPeers (ListPeersRequest) returns (ListPeersResponse);
@@ -408,6 +409,15 @@ message ListPaymentsRequest {
     optional PaymentsFilter filter = 2;
 }
 message ListPaymentsResponse {
+    repeated Payment payments = 1;
+    PaginationResponse pagination = 2;
+}
+
+message ListPhantomPaymentsRequest {
+    optional PaginationRequest pagination = 1;
+    optional PaymentsFilter filter = 2;
+}
+message ListPhantomPaymentsResponse {
     repeated Payment payments = 1;
     PaginationResponse pagination = 2;
 }

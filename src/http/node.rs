@@ -244,6 +244,10 @@ impl From<RemoveKnownPeerParams> for NodeRequest {
 pub fn add_routes(router: Router) -> Router {
     router
         .route("/v1/node/payments", get(handle_get_payments))
+        .route(
+            "/v1/node/phantom-payments",
+            get(handle_get_phantom_payments),
+        )
         .route("/v1/node/wallet/address", get(get_unused_address))
         .route("/v1/node/wallet/balance", get(get_wallet_balance))
         .route("/v1/node/wallet/utxos", get(list_unspent))
@@ -277,7 +281,6 @@ pub async fn phantom_route_hints(
     AuthHeader { macaroon, token: _ }: AuthHeader,
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, Response> {
-    println!("received request for phantom route hints");
     handle_authenticated_request(
         admin_service,
         NodeRequest::GetPhantomRouteHints {},
@@ -316,6 +319,20 @@ pub async fn handle_get_payments(
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, Response> {
     let request = NodeRequest::ListPayments {
+        pagination: params.clone().into(),
+        filter: params.into(),
+    };
+
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn handle_get_phantom_payments(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Query(params): Query<ListPaymentsParams>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    let request = NodeRequest::ListPhantomPayments {
         pagination: params.clone().into(),
         filter: params.into(),
     };

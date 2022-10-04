@@ -233,6 +233,10 @@ pub enum NodeRequest {
         pagination: PaginationRequest,
         filter: PaymentsFilter,
     },
+    ListPhantomPayments {
+        pagination: PaginationRequest,
+        filter: PaymentsFilter,
+    },
     ListTransactions {
         pagination: PaginationRequest,
     },
@@ -306,6 +310,10 @@ pub enum NodeResponse {
         pagination: PaginationResponse,
     },
     ListPayments {
+        payments: Vec<entity::payment::Model>,
+        pagination: PaginationResponse,
+    },
+    ListPhantomPayments {
         payments: Vec<entity::payment::Model>,
         pagination: PaginationResponse,
     },

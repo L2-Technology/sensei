@@ -565,7 +565,6 @@ impl LightningNode {
         let existing_macaroon = self.database.find_macaroon_by_id(session.id).await?;
 
         if existing_macaroon.is_none() {
-            println!("macaroon not found by id");
             return Err(Error::InvalidMacaroon);
         }
 
@@ -1324,6 +1323,16 @@ impl LightningNode {
             .await
     }
 
+    pub async fn list_phantom_payments(
+        &self,
+        pagination: PaginationRequest,
+        filter: PaymentsFilter,
+    ) -> Result<(Vec<entity::payment::Model>, PaginationResponse), Error> {
+        self.database
+            .list_payments(self.get_phantom_node_pubkey(), pagination, filter)
+            .await
+    }
+
     pub fn close_channel(&self, channel_id: [u8; 32], force: bool) -> Result<(), Error> {
         let cp_id = self.get_channel_counterparty(&channel_id);
         if force {
@@ -1435,7 +1444,6 @@ impl LightningNode {
                 })
             }
             NodeRequest::GetPhantomRouteHints {} => {
-                println!("getting phantom route hints");
                 let hints = self.channel_manager.get_phantom_route_hints();
                 Ok(NodeResponse::GetPhantomRouteHints {
                     phantom_route_hints_hex: hex_utils::hex_str(&hints.encode()),
@@ -1595,6 +1603,13 @@ impl LightningNode {
             NodeRequest::ListPayments { pagination, filter } => {
                 let (payments, pagination) = self.list_payments(pagination, filter).await?;
                 Ok(NodeResponse::ListPayments {
+                    payments,
+                    pagination,
+                })
+            }
+            NodeRequest::ListPhantomPayments { pagination, filter } => {
+                let (payments, pagination) = self.list_phantom_payments(pagination, filter).await?;
+                Ok(NodeResponse::ListPhantomPayments {
                     payments,
                     pagination,
                 })
