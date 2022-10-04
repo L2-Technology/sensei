@@ -44,6 +44,9 @@ service Node {
     rpc ListKnownPeers (ListKnownPeersRequest) returns (ListKnownPeersResponse);
     rpc AddKnownPeer (AddKnownPeerRequest) returns (AddKnownPeerResponse);
     rpc RemoveKnownPeer (RemoveKnownPeerRequest) returns (RemoveKnownPeerResponse);
+    rpc ListClusterNodes (ListClusterNodesRequest) returns (ListClusterNodesResponse);
+    rpc AddClusterNode (AddClusterNodeRequest) returns (AddClusterNodeResponse);
+    rpc RemoveClusterNode (RemoveClusterNodeRequest) returns (RemoveClusterNodeResponse);
 }
 
 message ListNode {
@@ -479,5 +482,34 @@ message ListKnownPeersRequest {
 }
 message ListKnownPeersResponse {
     repeated KnownPeer peers = 1;
+    PaginationResponse pagination = 2;
+}
+
+message AddClusterNodeRequest {
+    string pubkey = 1;
+    string label = 2;
+    string host = 3;
+    uint32 port = 4;
+    string macaroon_hex = 5;
+}
+message AddClusterNodeResponse {}
+
+message RemoveClusterNodeRequest {
+    string pubkey = 1;
+}
+message RemoveClusterNodeResponse {}
+
+message ClusterNode {
+    string pubkey = 1;
+    optional string label = 2;
+    string host = 3;
+    uint32 port = 4;
+    string macaroon_hex = 5;
+}
+message ListClusterNodesRequest {
+    optional PaginationRequest pagination = 1;
+}
+message ListClusterNodesResponse {
+    repeated ClusterNode cluster_nodes = 1;
     PaginationResponse pagination = 2;
 }

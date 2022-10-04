@@ -68,7 +68,7 @@ use lightning::routing::gossip::{
 use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
 use lightning::util::config::UserConfig;
-use lightning::util::ser::ReadableArgs;
+use lightning::util::ser::{ReadableArgs, Writeable};
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
@@ -397,6 +397,7 @@ fn get_wpkh_descriptors_for_extended_key(
 pub struct MacaroonSession {
     pub id: String,
     pub pubkey: String,
+    pub scope: String,
 }
 
 impl MacaroonSession {
@@ -486,11 +487,16 @@ impl LightningNode {
         }
     }
 
-    pub fn generate_macaroon(seed: &[u8], pubkey: String) -> Result<(Macaroon, String), Error> {
+    pub fn generate_macaroon(
+        seed: &[u8],
+        pubkey: String,
+        scope: String,
+    ) -> Result<(Macaroon, String), Error> {
         let id = uuid::Uuid::new_v4().to_string();
         let macaroon_data = MacaroonSession {
             id: id.clone(),
             pubkey,
+            scope,
         };
         let serialized_macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
         let macaroon_key = macaroon::MacaroonKey::from(seed);
@@ -1085,6 +1091,53 @@ impl LightningNode {
         Ok(())
     }
 
+    pub async fn get_phantom_invoice(
+        &self,
+        amt_msat: u64,
+        description: String,
+    ) -> Result<Invoice, Error> {
+        let currency = match self.config.network {
+            Network::Bitcoin => Currency::Bitcoin,
+            Network::Testnet => Currency::BitcoinTestnet,
+            Network::Regtest => Currency::Regtest,
+            Network::Signet => Currency::Signet,
+        };
+
+        let phantom_route_hints = vec![];
+
+        let invoice = utils::create_phantom_invoice::<InMemorySigner, Arc<PhantomKeysManager>>(
+            Some(amt_msat),
+            None,
+            description.clone(),
+            3600, // FIXME invoice_expiry_delta_secs
+            phantom_route_hints,
+            self.keys_manager.clone(),
+            currency,
+        )?;
+
+        let payment_hash = hex_utils::hex_str(&(*invoice.payment_hash()).into_inner());
+        let payment_secret = Some(hex_utils::hex_str(&(*invoice.payment_secret()).0));
+
+        let payment = entity::payment::ActiveModel {
+            node_id: ActiveValue::Set(self.id.clone()),
+            payment_hash: ActiveValue::Set(payment_hash),
+            secret: ActiveValue::Set(payment_secret),
+            status: ActiveValue::Set(HTLCStatus::Pending.to_string()),
+            amt_msat: ActiveValue::Set(Some(amt_msat.try_into().unwrap())),
+            origin: ActiveValue::Set(PaymentOrigin::InvoiceIncoming.to_string()),
+            invoice: ActiveValue::Set(Some(invoice.to_string())),
+            label: ActiveValue::Set(Some(description)),
+            ..Default::default()
+        };
+
+        payment
+            .insert(self.database.get_connection())
+            .await
+            .unwrap();
+
+        Ok(invoice)
+    }
+
     pub async fn get_invoice(&self, amt_msat: u64, description: String) -> Result<Invoice, Error> {
         let currency = match self.config.network {
             Network::Bitcoin => Currency::Bitcoin,
@@ -1365,6 +1418,12 @@ impl LightningNode {
                     address: address_info.address.to_string(),
                 })
             }
+            NodeRequest::GetPhantomRouteHints {} => {
+                let hints = self.channel_manager.get_phantom_route_hints();
+                Ok(NodeResponse::GetPhantomRouteHints {
+                    phantom_route_hints_hex: hex_utils::hex_str(&hints.encode()),
+                })
+            }
             NodeRequest::GetBalance {} => {
                 // TODO: split confirmed vs uncofirmed chain balance
                 //       we currently only have 'unconfirmed' utxos from transactions we broadcast
@@ -1603,6 +1662,55 @@ impl LightningNode {
             NodeRequest::RemoveKnownPeer { pubkey } => {
                 self.database.delete_peer(&self.id, &pubkey).await?;
                 Ok(NodeResponse::RemoveKnownPeer {})
+            }
+            NodeRequest::ListClusterNodes { pagination } => {
+                let (cluster_nodes, pagination) = self
+                    .database
+                    .list_cluster_nodes(&self.id, pagination)
+                    .await?;
+                Ok(NodeResponse::ListClusterNodes {
+                    cluster_nodes,
+                    pagination,
+                })
+            }
+            NodeRequest::AddClusterNode {
+                pubkey,
+                label,
+                host,
+                port,
+                macaroon_hex,
+            } => {
+                let cluster_node = match self.database.find_cluster_node(&self.id, &pubkey).await? {
+                    Some(cluster_node) => {
+                        let mut cluster_node: entity::cluster_node::ActiveModel =
+                            cluster_node.into();
+                        cluster_node.label = ActiveValue::Set(Some(label));
+                        cluster_node.host = ActiveValue::Set(host);
+                        cluster_node.port = ActiveValue::Set(port.into());
+                        cluster_node.macaroon_hex = ActiveValue::Set(macaroon_hex);
+                        cluster_node.update(self.database.get_connection())
+                    }
+                    None => {
+                        let cluster_node = entity::cluster_node::ActiveModel {
+                            node_id: ActiveValue::Set(self.id.clone()),
+                            pubkey: ActiveValue::Set(pubkey),
+                            label: ActiveValue::Set(Some(label)),
+                            host: ActiveValue::Set(host),
+                            port: ActiveValue::Set(port.into()),
+                            macaroon_hex: ActiveValue::Set(macaroon_hex),
+                            ..Default::default()
+                        };
+                        cluster_node.insert(self.database.get_connection())
+                    }
+                };
+
+                let _res = cluster_node.await.map_err(Error::Db)?;
+
+                Ok(NodeResponse::AddClusterNode {})
+            }
+            NodeRequest::RemoveClusterNode { pubkey } => {
+                self.database.delete_cluster_node(&self.id, &pubkey).await?;
+                Ok(NodeResponse::RemoveClusterNode {})
             }
         }
     }

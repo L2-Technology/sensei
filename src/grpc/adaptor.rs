@@ -8,14 +8,16 @@
 // licenses.
 
 use super::sensei::{
-    self, AddKnownPeerRequest, AddKnownPeerResponse, Channel as ChannelMessage,
-    DeletePaymentRequest, DeletePaymentResponse, Info as InfoMessage, KnownPeer,
-    LabelPaymentRequest, LabelPaymentResponse, ListKnownPeersRequest, ListKnownPeersResponse,
-    NetworkGraphInfoRequest, NetworkGraphInfoResponse,
+    self, AddClusterNodeRequest, AddClusterNodeResponse, AddKnownPeerRequest, AddKnownPeerResponse,
+    Channel as ChannelMessage, ClusterNode, DeletePaymentRequest, DeletePaymentResponse,
+    Info as InfoMessage, KnownPeer, LabelPaymentRequest, LabelPaymentResponse,
+    ListClusterNodesRequest, ListClusterNodesResponse, ListKnownPeersRequest,
+    ListKnownPeersResponse, NetworkGraphInfoRequest, NetworkGraphInfoResponse,
     OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest, OpenChannelsResponse,
     PaginationRequest, PaginationResponse, Payment as PaymentMessage, PaymentsFilter,
-    Peer as PeerMessage, RemoveKnownPeerRequest, RemoveKnownPeerResponse, StartNodeRequest,
-    StartNodeResponse, StopNodeRequest, StopNodeResponse, Utxo as UtxoMessage,
+    Peer as PeerMessage, RemoveClusterNodeRequest, RemoveClusterNodeResponse,
+    RemoveKnownPeerRequest, RemoveKnownPeerResponse, StartNodeRequest, StartNodeResponse,
+    StopNodeRequest, StopNodeResponse, Utxo as UtxoMessage,
 };
 
 use super::sensei::{
@@ -708,6 +710,89 @@ impl TryFrom<NodeResponse> for RemoveKnownPeerResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::RemoveKnownPeer {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<entity::cluster_node::Model> for ClusterNode {
+    fn from(cluster_node: entity::cluster_node::Model) -> Self {
+        Self {
+            pubkey: cluster_node.pubkey,
+            label: cluster_node.label,
+            host: cluster_node.host,
+            port: cluster_node.port as u32,
+            macaroon_hex: cluster_node.macaroon_hex,
+        }
+    }
+}
+
+impl From<ListClusterNodesRequest> for NodeRequest {
+    fn from(req: ListClusterNodesRequest) -> Self {
+        NodeRequest::ListClusterNodes {
+            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for ListClusterNodesResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::ListClusterNodes {
+                cluster_nodes,
+                pagination,
+            } => {
+                let pagination: PaginationResponse = pagination.into();
+                Ok(Self {
+                    cluster_nodes: cluster_nodes
+                        .into_iter()
+                        .map(|cluster_node| cluster_node.into())
+                        .collect::<Vec<_>>(),
+                    pagination: Some(pagination),
+                })
+            }
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<AddClusterNodeRequest> for NodeRequest {
+    fn from(req: AddClusterNodeRequest) -> Self {
+        NodeRequest::AddClusterNode {
+            pubkey: req.pubkey,
+            label: req.label,
+            host: req.host,
+            port: req.port as u16,
+            macaroon_hex: req.macaroon_hex,
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for AddClusterNodeResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::AddClusterNode {} => Ok(Self {}),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<RemoveClusterNodeRequest> for NodeRequest {
+    fn from(req: RemoveClusterNodeRequest) -> Self {
+        NodeRequest::RemoveClusterNode { pubkey: req.pubkey }
+    }
+}
+
+impl TryFrom<NodeResponse> for RemoveClusterNodeResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::RemoveClusterNode {} => Ok(Self {}),
             _ => Err("impossible".to_string()),
         }
     }

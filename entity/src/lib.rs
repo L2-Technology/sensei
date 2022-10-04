@@ -5,6 +5,7 @@ pub use sea_orm;
 pub mod prelude;
 
 pub mod access_token;
+pub mod cluster_node;
 pub mod keychain;
 pub mod kv_store;
 pub mod macaroon;

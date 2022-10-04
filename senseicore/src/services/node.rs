@@ -192,6 +192,7 @@ pub enum NodeRequest {
     },
     StopNode {},
     GetUnusedAddress {},
+    GetPhantomRouteHints {},
     GetBalance {},
     OpenChannels {
         requests: Vec<OpenChannelRequest>,
@@ -256,6 +257,19 @@ pub enum NodeRequest {
     RemoveKnownPeer {
         pubkey: String,
     },
+    ListClusterNodes {
+        pagination: PaginationRequest,
+    },
+    AddClusterNode {
+        pubkey: String,
+        label: String,
+        host: String,
+        port: u16,
+        macaroon_hex: String,
+    },
+    RemoveClusterNode {
+        pubkey: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -265,6 +279,9 @@ pub enum NodeResponse {
     StopNode {},
     GetUnusedAddress {
         address: String,
+    },
+    GetPhantomRouteHints {
+        phantom_route_hints_hex: String,
     },
     GetBalance {
         onchain_balance_sats: u64,
@@ -329,6 +346,12 @@ pub enum NodeResponse {
     },
     AddKnownPeer {},
     RemoveKnownPeer {},
+    ListClusterNodes {
+        cluster_nodes: Vec<entity::cluster_node::Model>,
+        pagination: PaginationResponse,
+    },
+    AddClusterNode {},
+    RemoveClusterNode {},
     Error(NodeRequestError),
 }
 

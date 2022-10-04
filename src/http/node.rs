@@ -19,7 +19,8 @@ use http::{HeaderValue, StatusCode};
 use senseicore::services::admin::AdminRequest;
 use senseicore::services::node::{NodeRequest, NodeRequestError, NodeResponse, OpenChannelRequest};
 use senseicore::services::{
-    ListChannelsParams, ListKnownPeersParams, ListPaymentsParams, ListTransactionsParams,
+    ListChannelsParams, ListClusterNodesParams, ListKnownPeersParams, ListPaymentsParams,
+    ListTransactionsParams,
 };
 use senseicore::utils;
 use serde::Deserialize;
@@ -224,6 +225,40 @@ impl From<RemoveKnownPeerParams> for NodeRequest {
     }
 }
 
+#[derive(Deserialize)]
+pub struct AddClusterNodeParams {
+    pub pubkey: String,
+    pub label: String,
+    pub host: String,
+    pub port: u16,
+    pub macaroon_hex: String,
+}
+
+impl From<AddClusterNodeParams> for NodeRequest {
+    fn from(params: AddClusterNodeParams) -> Self {
+        Self::AddClusterNode {
+            pubkey: params.pubkey,
+            label: params.label,
+            host: params.host,
+            port: params.port,
+            macaroon_hex: params.macaroon_hex,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RemoveClusterNodeParams {
+    pub pubkey: String,
+}
+
+impl From<RemoveClusterNodeParams> for NodeRequest {
+    fn from(params: RemoveClusterNodeParams) -> Self {
+        Self::RemoveClusterNode {
+            pubkey: params.pubkey,
+        }
+    }
+}
+
 pub fn add_routes(router: Router) -> Router {
     router
         .route("/v1/node/payments", get(handle_get_payments))
@@ -251,6 +286,24 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/known-peers", get(list_known_peers))
         .route("/v1/node/known-peers", post(add_known_peer))
         .route("/v1/node/known-peers", delete(remove_known_peer))
+        .route("/v1/node/cluster-nodes", get(list_cluster_nodes))
+        .route("/v1/node/cluster-nodes", post(add_cluster_node))
+        .route("/v1/node/cluster-nodes", delete(remove_cluster_node))
+        .route("/v1/node/ldk/phantom-route-hints", get(phantom_route_hints))
+}
+
+pub async fn phantom_route_hints(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    handle_authenticated_request(
+        admin_service,
+        NodeRequest::GetPhantomRouteHints {},
+        macaroon,
+        cookies,
+    )
+    .await
 }
 
 pub async fn get_unused_address(
@@ -673,6 +726,51 @@ pub async fn remove_known_peer(
 ) -> Result<Json<NodeResponse>, Response> {
     let request = {
         let params: Result<RemoveKnownPeerParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid params").into_response()),
+        }
+    }?;
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn list_cluster_nodes(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Query(params): Query<ListClusterNodesParams>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    let request = NodeRequest::ListClusterNodes {
+        pagination: params.clone().into(),
+    };
+
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn add_cluster_node(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    let request = {
+        let params: Result<AddClusterNodeParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid params").into_response()),
+        }
+    }?;
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn remove_cluster_node(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    let request = {
+        let params: Result<RemoveClusterNodeParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid params").into_response()),

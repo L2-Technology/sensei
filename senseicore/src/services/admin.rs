@@ -841,7 +841,7 @@ impl AdminService {
 
         // NODE MACAROON
         let (macaroon, macaroon_id) =
-            LightningNode::generate_macaroon(&entropy, node_pubkey.clone())?;
+            LightningNode::generate_macaroon(&entropy, node_pubkey.clone(), "*".to_string())?;
 
         let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.as_bytes())?;
 
