@@ -15,7 +15,8 @@ use super::{
     sensei::{
         AddClusterNodeRequest, AddClusterNodeResponse, AddKnownPeerRequest, AddKnownPeerResponse,
         CloseChannelRequest, CloseChannelResponse, ConnectPeerRequest, ConnectPeerResponse,
-        CreateInvoiceRequest, CreateInvoiceResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
+        CreateInvoiceRequest, CreateInvoiceResponse, CreatePhantomInvoiceRequest,
+        CreatePhantomInvoiceResponse, DecodeInvoiceRequest, DecodeInvoiceResponse,
         DeletePaymentRequest, DeletePaymentResponse, GetBalanceRequest, GetBalanceResponse,
         GetUnusedAddressRequest, GetUnusedAddressResponse, InfoRequest, InfoResponse,
         KeysendRequest, KeysendResponse, LabelPaymentRequest, LabelPaymentResponse,
@@ -200,6 +201,16 @@ impl Node for NodeService {
         &self,
         request: tonic::Request<CreateInvoiceRequest>,
     ) -> Result<Response<CreateInvoiceResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn create_phantom_invoice(
+        &self,
+        request: tonic::Request<CreatePhantomInvoiceRequest>,
+    ) -> Result<Response<CreatePhantomInvoiceResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

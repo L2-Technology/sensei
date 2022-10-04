@@ -29,6 +29,7 @@ service Node {
     rpc DecodeInvoice (DecodeInvoiceRequest) returns (DecodeInvoiceResponse);
     rpc Keysend (KeysendRequest) returns (KeysendResponse);
     rpc CreateInvoice (CreateInvoiceRequest) returns (CreateInvoiceResponse);
+    rpc CreatePhantomInvoice (CreatePhantomInvoiceRequest) returns (CreatePhantomInvoiceResponse);
     rpc LabelPayment (LabelPaymentRequest) returns (LabelPaymentResponse);
     rpc DeletePayment (DeletePaymentRequest) returns (DeletePaymentResponse);
     rpc ConnectPeer (ConnectPeerRequest) returns (ConnectPeerResponse);
@@ -333,6 +334,14 @@ message CreateInvoiceRequest {
     string description = 2;
 }
 message CreateInvoiceResponse {
+    string invoice = 1;
+}
+
+message CreatePhantomInvoiceRequest {
+    uint64 amt_msat = 1;
+    string description = 2;
+}
+message CreatePhantomInvoiceResponse {
     string invoice = 1;
 }
 

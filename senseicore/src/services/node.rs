@@ -211,6 +211,10 @@ pub enum NodeRequest {
         amt_msat: u64,
         description: String,
     },
+    GetPhantomInvoice {
+        amt_msat: u64,
+        description: String,
+    },
     LabelPayment {
         label: String,
         payment_hash: String,
@@ -301,6 +305,9 @@ pub enum NodeResponse {
     },
     Keysend {},
     GetInvoice {
+        invoice: String,
+    },
+    GetPhantomInvoice {
         invoice: String,
     },
     LabelPayment {},

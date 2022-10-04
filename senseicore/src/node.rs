@@ -56,7 +56,9 @@ use lightning::chain::keysinterface::{
 };
 use lightning::chain::Watch;
 use lightning::chain::{self, Filter};
-use lightning::ln::channelmanager::{self, ChannelDetails, ChannelManager as LdkChannelManager};
+use lightning::ln::channelmanager::{
+    self, ChannelDetails, ChannelManager as LdkChannelManager, PhantomRouteHints,
+};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
     ErroringMessageHandler, IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
@@ -68,7 +70,7 @@ use lightning::routing::gossip::{
 use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
 use lightning::util::config::UserConfig;
-use lightning::util::ser::{ReadableArgs, Writeable};
+use lightning::util::ser::{Readable, ReadableArgs, Writeable};
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
@@ -1103,7 +1105,57 @@ impl LightningNode {
             Network::Signet => Currency::Signet,
         };
 
-        let phantom_route_hints = vec![];
+        let nodes_pagination = PaginationRequest {
+            page: 0,
+            take: 5,
+            query: None,
+        };
+        let (nodes, _pagination_response) = self
+            .database
+            .list_cluster_nodes(&self.id, nodes_pagination)
+            .await?;
+
+        let mut phantom_route_hints = vec![];
+        phantom_route_hints.push(self.channel_manager.get_phantom_route_hints());
+
+        let client = reqwest::Client::new();
+        for node in nodes.iter() {
+            let url = format!(
+                "http://{}:{}/api/v1/node/phantom-route-hints",
+                node.host, node.port
+            );
+            let hints: Option<PhantomRouteHints> = match client
+                .get(&url)
+                .header("token", node.macaroon_hex.clone())
+                .send()
+                .await
+            {
+                Ok(response) => match response.bytes().await {
+                    Ok(bytes) => {
+                        let mut readable = Cursor::new(bytes.to_vec());
+                        Some(PhantomRouteHints::read(&mut readable).unwrap())
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "failed to convert phantom route hints response to bytes: {:?}",
+                            e
+                        );
+                        None
+                    }
+                },
+                Err(e) => {
+                    eprintln!(
+                        "failed to fetch phantom route hints at {} with error: {:?}",
+                        url, e
+                    );
+                    None
+                }
+            };
+
+            if let Some(hints) = hints {
+                phantom_route_hints.push(hints);
+            }
+        }
 
         let invoice = utils::create_phantom_invoice::<InMemorySigner, Arc<PhantomKeysManager>>(
             Some(amt_msat),
@@ -1513,6 +1565,16 @@ impl LightningNode {
                 let invoice = self.get_invoice(amt_msat, description).await?;
                 let invoice_str = format!("{}", invoice);
                 Ok(NodeResponse::GetInvoice {
+                    invoice: invoice_str,
+                })
+            }
+            NodeRequest::GetPhantomInvoice {
+                amt_msat,
+                description,
+            } => {
+                let invoice = self.get_phantom_invoice(amt_msat, description).await?;
+                let invoice_str = format!("{}", invoice);
+                Ok(NodeResponse::GetPhantomInvoice {
                     invoice: invoice_str,
                 })
             }

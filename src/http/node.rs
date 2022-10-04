@@ -45,6 +45,21 @@ impl From<GetInvoiceParams> for NodeRequest {
 }
 
 #[derive(Deserialize)]
+pub struct GetPhantomInvoiceParams {
+    pub amt_msat: u64,
+    pub description: String,
+}
+
+impl From<GetPhantomInvoiceParams> for NodeRequest {
+    fn from(params: GetPhantomInvoiceParams) -> Self {
+        Self::GetPhantomInvoice {
+            amt_msat: params.amt_msat,
+            description: params.description,
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct LabelPaymentParams {
     pub label: String,
     pub payment_hash: String,
@@ -272,6 +287,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/stop", get(stop_node))
         .route("/v1/node/start", post(start_node))
         .route("/v1/node/invoices", post(create_invoice))
+        .route("/v1/node/invoices/phantom", post(create_phantom_invoice))
         .route("/v1/node/invoices/pay", post(pay_invoice))
         .route("/v1/node/invoices/decode", post(decode_invoice))
         .route("/v1/node/payments/label", post(label_payment))
@@ -493,6 +509,22 @@ pub async fn create_invoice(
 ) -> Result<Json<NodeResponse>, Response> {
     let request = {
         let params: Result<GetInvoiceParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid params").into_response()),
+        }
+    }?;
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn create_phantom_invoice(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    let request = {
+        let params: Result<GetPhantomInvoiceParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid params").into_response()),

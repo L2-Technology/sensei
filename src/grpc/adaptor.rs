@@ -9,10 +9,11 @@
 
 use super::sensei::{
     self, AddClusterNodeRequest, AddClusterNodeResponse, AddKnownPeerRequest, AddKnownPeerResponse,
-    Channel as ChannelMessage, ClusterNode, DeletePaymentRequest, DeletePaymentResponse,
-    Info as InfoMessage, KnownPeer, LabelPaymentRequest, LabelPaymentResponse,
-    ListClusterNodesRequest, ListClusterNodesResponse, ListKnownPeersRequest,
-    ListKnownPeersResponse, NetworkGraphInfoRequest, NetworkGraphInfoResponse,
+    Channel as ChannelMessage, ClusterNode, CreatePhantomInvoiceRequest,
+    CreatePhantomInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse, Info as InfoMessage,
+    KnownPeer, LabelPaymentRequest, LabelPaymentResponse, ListClusterNodesRequest,
+    ListClusterNodesResponse, ListKnownPeersRequest, ListKnownPeersResponse,
+    NetworkGraphInfoRequest, NetworkGraphInfoResponse,
     OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest, OpenChannelsResponse,
     PaginationRequest, PaginationResponse, Payment as PaymentMessage, PaymentsFilter,
     Peer as PeerMessage, RemoveClusterNodeRequest, RemoveClusterNodeResponse,
@@ -366,6 +367,26 @@ impl TryFrom<NodeResponse> for CreateInvoiceResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::GetInvoice { invoice } => Ok(Self { invoice }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<CreatePhantomInvoiceRequest> for NodeRequest {
+    fn from(req: CreatePhantomInvoiceRequest) -> Self {
+        NodeRequest::GetPhantomInvoice {
+            amt_msat: req.amt_msat,
+            description: req.description,
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for CreatePhantomInvoiceResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::GetPhantomInvoice { invoice } => Ok(Self { invoice }),
             _ => Err("impossible".to_string()),
         }
     }
