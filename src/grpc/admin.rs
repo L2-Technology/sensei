@@ -61,7 +61,7 @@ impl TryFrom<AdminResponse> for ListNodesResponse {
                 nodes: nodes
                     .into_iter()
                     .map(|node| ListNode {
-                        id: node.id,
+                        id: node.id.clone(),
                         created_at: node.created_at,
                         updated_at: node.updated_at,
                         role: node.role as u32,
@@ -70,7 +70,7 @@ impl TryFrom<AdminResponse> for ListNodesResponse {
                         network: node.network,
                         listen_addr: node.listen_addr,
                         listen_port: node.listen_port as u32,
-                        pubkey: node.pubkey,
+                        pubkey: node.id,
                         status: node.status as u32,
                     })
                     .collect::<Vec<ListNode>>(),

@@ -565,6 +565,7 @@ impl LightningNode {
         let existing_macaroon = self.database.find_macaroon_by_id(session.id).await?;
 
         if existing_macaroon.is_none() {
+            println!("macaroon not found by id");
             return Err(Error::InvalidMacaroon);
         }
 
@@ -584,6 +585,16 @@ impl LightningNode {
         let secp_ctx = Secp256k1::new();
         let keys_manager = KeysManager::new(seed, 0, 0);
         let node_secret = keys_manager.get_node_secret(Recipient::Node).unwrap();
+        let node_pubkey = PublicKey::from_secret_key(&secp_ctx, &node_secret);
+        node_pubkey.to_string()
+    }
+
+    pub fn get_phantom_node_pubkey(&self) -> String {
+        let secp_ctx = Secp256k1::new();
+        let node_secret = self
+            .keys_manager
+            .get_node_secret(Recipient::PhantomNode)
+            .unwrap();
         let node_pubkey = PublicKey::from_secret_key(&secp_ctx, &node_secret);
         node_pubkey.to_string()
     }
@@ -834,6 +845,7 @@ impl LightningNode {
             chain_manager: chain_manager.clone(),
             event_sender: event_sender.clone(),
             broadcaster: broadcaster.clone(),
+            secp_ctx: Secp256k1::new(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -1079,6 +1091,7 @@ impl LightningNode {
 
         let payment = entity::payment::ActiveModel {
             node_id: ActiveValue::Set(self.id.clone()),
+            created_by_node_id: ActiveValue::Set(self.id.clone()),
             payment_hash: ActiveValue::Set(payment_hash),
             secret: ActiveValue::Set(payment_secret),
             status: ActiveValue::Set(status.to_string()),
@@ -1097,6 +1110,7 @@ impl LightningNode {
         &self,
         amt_msat: u64,
         description: String,
+        phantom_route_hints: Vec<PhantomRouteHints>,
     ) -> Result<Invoice, Error> {
         let currency = match self.config.network {
             Network::Bitcoin => Currency::Bitcoin,
@@ -1104,58 +1118,6 @@ impl LightningNode {
             Network::Regtest => Currency::Regtest,
             Network::Signet => Currency::Signet,
         };
-
-        let nodes_pagination = PaginationRequest {
-            page: 0,
-            take: 5,
-            query: None,
-        };
-        let (nodes, _pagination_response) = self
-            .database
-            .list_cluster_nodes(&self.id, nodes_pagination)
-            .await?;
-
-        let mut phantom_route_hints = vec![];
-        phantom_route_hints.push(self.channel_manager.get_phantom_route_hints());
-
-        let client = reqwest::Client::new();
-        for node in nodes.iter() {
-            let url = format!(
-                "http://{}:{}/api/v1/node/phantom-route-hints",
-                node.host, node.port
-            );
-            let hints: Option<PhantomRouteHints> = match client
-                .get(&url)
-                .header("token", node.macaroon_hex.clone())
-                .send()
-                .await
-            {
-                Ok(response) => match response.bytes().await {
-                    Ok(bytes) => {
-                        let mut readable = Cursor::new(bytes.to_vec());
-                        Some(PhantomRouteHints::read(&mut readable).unwrap())
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "failed to convert phantom route hints response to bytes: {:?}",
-                            e
-                        );
-                        None
-                    }
-                },
-                Err(e) => {
-                    eprintln!(
-                        "failed to fetch phantom route hints at {} with error: {:?}",
-                        url, e
-                    );
-                    None
-                }
-            };
-
-            if let Some(hints) = hints {
-                phantom_route_hints.push(hints);
-            }
-        }
 
         let invoice = utils::create_phantom_invoice::<InMemorySigner, Arc<PhantomKeysManager>>(
             Some(amt_msat),
@@ -1171,7 +1133,8 @@ impl LightningNode {
         let payment_secret = Some(hex_utils::hex_str(&(*invoice.payment_secret()).0));
 
         let payment = entity::payment::ActiveModel {
-            node_id: ActiveValue::Set(self.id.clone()),
+            node_id: ActiveValue::Set(self.get_phantom_node_pubkey()),
+            created_by_node_id: ActiveValue::Set(self.id.clone()),
             payment_hash: ActiveValue::Set(payment_hash),
             secret: ActiveValue::Set(payment_secret),
             status: ActiveValue::Set(HTLCStatus::Pending.to_string()),
@@ -1212,6 +1175,7 @@ impl LightningNode {
 
         let payment = entity::payment::ActiveModel {
             node_id: ActiveValue::Set(self.id.clone()),
+            created_by_node_id: ActiveValue::Set(self.id.clone()),
             payment_hash: ActiveValue::Set(payment_hash),
             secret: ActiveValue::Set(payment_secret),
             status: ActiveValue::Set(HTLCStatus::Pending.to_string()),
@@ -1471,6 +1435,7 @@ impl LightningNode {
                 })
             }
             NodeRequest::GetPhantomRouteHints {} => {
+                println!("getting phantom route hints");
                 let hints = self.channel_manager.get_phantom_route_hints();
                 Ok(NodeResponse::GetPhantomRouteHints {
                     phantom_route_hints_hex: hex_utils::hex_str(&hints.encode()),
@@ -1571,8 +1536,19 @@ impl LightningNode {
             NodeRequest::GetPhantomInvoice {
                 amt_msat,
                 description,
+                phantom_route_hints_hex,
             } => {
-                let invoice = self.get_phantom_invoice(amt_msat, description).await?;
+                let phantom_route_hints = phantom_route_hints_hex
+                    .into_iter()
+                    .map(|hints_hex| {
+                        let mut cursor = Cursor::new(hex_utils::to_vec(&hints_hex).unwrap());
+                        PhantomRouteHints::read(&mut cursor).unwrap()
+                    })
+                    .collect::<Vec<PhantomRouteHints>>();
+
+                let invoice = self
+                    .get_phantom_invoice(amt_msat, description, phantom_route_hints)
+                    .await?;
                 let invoice_str = format!("{}", invoice);
                 Ok(NodeResponse::GetPhantomInvoice {
                     invoice: invoice_str,
@@ -1724,55 +1700,6 @@ impl LightningNode {
             NodeRequest::RemoveKnownPeer { pubkey } => {
                 self.database.delete_peer(&self.id, &pubkey).await?;
                 Ok(NodeResponse::RemoveKnownPeer {})
-            }
-            NodeRequest::ListClusterNodes { pagination } => {
-                let (cluster_nodes, pagination) = self
-                    .database
-                    .list_cluster_nodes(&self.id, pagination)
-                    .await?;
-                Ok(NodeResponse::ListClusterNodes {
-                    cluster_nodes,
-                    pagination,
-                })
-            }
-            NodeRequest::AddClusterNode {
-                pubkey,
-                label,
-                host,
-                port,
-                macaroon_hex,
-            } => {
-                let cluster_node = match self.database.find_cluster_node(&self.id, &pubkey).await? {
-                    Some(cluster_node) => {
-                        let mut cluster_node: entity::cluster_node::ActiveModel =
-                            cluster_node.into();
-                        cluster_node.label = ActiveValue::Set(Some(label));
-                        cluster_node.host = ActiveValue::Set(host);
-                        cluster_node.port = ActiveValue::Set(port.into());
-                        cluster_node.macaroon_hex = ActiveValue::Set(macaroon_hex);
-                        cluster_node.update(self.database.get_connection())
-                    }
-                    None => {
-                        let cluster_node = entity::cluster_node::ActiveModel {
-                            node_id: ActiveValue::Set(self.id.clone()),
-                            pubkey: ActiveValue::Set(pubkey),
-                            label: ActiveValue::Set(Some(label)),
-                            host: ActiveValue::Set(host),
-                            port: ActiveValue::Set(port.into()),
-                            macaroon_hex: ActiveValue::Set(macaroon_hex),
-                            ..Default::default()
-                        };
-                        cluster_node.insert(self.database.get_connection())
-                    }
-                };
-
-                let _res = cluster_node.await.map_err(Error::Db)?;
-
-                Ok(NodeResponse::AddClusterNode {})
-            }
-            NodeRequest::RemoveClusterNode { pubkey } => {
-                self.database.delete_cluster_node(&self.id, &pubkey).await?;
-                Ok(NodeResponse::RemoveClusterNode {})
             }
         }
     }

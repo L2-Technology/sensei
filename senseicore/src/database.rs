@@ -8,8 +8,6 @@ use bdk::BlockTime;
 use bitcoin::BlockHash;
 use entity::access_token;
 use entity::access_token::Entity as AccessToken;
-use entity::cluster_node;
-use entity::cluster_node::Entity as ClusterNode;
 use entity::kv_store;
 use entity::kv_store::Entity as KVStore;
 use entity::macaroon;
@@ -92,7 +90,7 @@ impl SenseiDatabase {
 
     pub async fn get_node_by_pubkey(&self, pubkey: &str) -> Result<Option<node::Model>, Error> {
         Ok(Node::find()
-            .filter(node::Column::Pubkey.eq(pubkey))
+            .filter(node::Column::Id.eq(pubkey))
             .one(&self.connection)
             .await?)
     }
@@ -137,7 +135,7 @@ impl SenseiDatabase {
             .filter(
                 Condition::any()
                     .add(node::Column::Alias.contains(&query_string))
-                    .add(node::Column::Pubkey.contains(&query_string))
+                    .add(node::Column::Id.contains(&query_string))
                     .add(node::Column::Username.contains(&query_string)),
             )
             .order_by_desc(node::Column::UpdatedAt)
@@ -491,88 +489,6 @@ impl SenseiDatabase {
 
         Ok((
             peers,
-            PaginationResponse {
-                has_more,
-                total: total.try_into().unwrap(),
-            },
-        ))
-    }
-
-    pub async fn delete_cluster_node(&self, node_id: &str, pubkey: &str) -> Result<(), Error> {
-        match self.find_cluster_node(node_id, pubkey).await? {
-            Some(cluster_node) => {
-                let _deleted = cluster_node.delete(&self.connection).await?;
-                Ok(())
-            }
-            None => Ok(()),
-        }
-    }
-
-    pub async fn find_cluster_node(
-        &self,
-        node_id: &str,
-        pubkey: &str,
-    ) -> Result<Option<cluster_node::Model>, Error> {
-        Ok(ClusterNode::find()
-            .filter(entity::cluster_node::Column::NodeId.eq(node_id))
-            .filter(entity::cluster_node::Column::Pubkey.eq(pubkey))
-            .one(&self.connection)
-            .await?)
-    }
-
-    pub fn find_cluster_node_sync(
-        &self,
-        node_id: &str,
-        pubkey: &str,
-    ) -> Result<Option<cluster_node::Model>, Error> {
-        tokio::task::block_in_place(move || {
-            self.runtime_handle
-                .block_on(async move { self.find_cluster_node(node_id, pubkey).await })
-        })
-    }
-
-    pub async fn label_cluster_node(
-        &self,
-        node_id: &str,
-        pubkey: &str,
-        label: String,
-    ) -> Result<(), Error> {
-        match self.find_cluster_node(node_id, pubkey).await? {
-            Some(cluster_node) => {
-                let mut cluster_node: cluster_node::ActiveModel = cluster_node.into();
-                cluster_node.label = ActiveValue::Set(Some(label));
-                cluster_node.update(&self.connection).await?;
-                Ok(())
-            }
-            None => Ok(()),
-        }
-    }
-
-    pub async fn list_cluster_nodes(
-        &self,
-        node_id: &str,
-        pagination: PaginationRequest,
-    ) -> Result<(Vec<cluster_node::Model>, PaginationResponse), Error> {
-        let query_string = pagination.query.unwrap_or_else(|| String::from(""));
-        let page_size: usize = pagination.take.try_into().unwrap();
-        let page: usize = pagination.page.try_into().unwrap();
-
-        let cluster_node_pages = ClusterNode::find()
-            .filter(cluster_node::Column::NodeId.eq(node_id))
-            .filter(
-                Condition::any()
-                    .add(cluster_node::Column::Pubkey.contains(&query_string))
-                    .add(cluster_node::Column::Label.contains(&query_string)),
-            )
-            .order_by_desc(cluster_node::Column::CreatedAt)
-            .paginate(&self.connection, page_size);
-
-        let cluster_nodes = cluster_node_pages.fetch_page(page).await?;
-        let total = cluster_node_pages.num_items().await?;
-        let has_more = ((page + 1) * page_size) < total;
-
-        Ok((
-            cluster_nodes,
             PaginationResponse {
                 has_more,
                 total: total.try_into().unwrap(),

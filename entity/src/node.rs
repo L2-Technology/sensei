@@ -54,7 +54,6 @@ pub struct Model {
     pub network: String,
     pub listen_addr: String,
     pub listen_port: i32,
-    pub pubkey: String,
     pub created_at: i64,
     pub updated_at: i64,
     pub status: i16,
@@ -86,7 +85,6 @@ pub enum Column {
     Network,
     ListenAddr,
     ListenPort,
-    Pubkey,
     CreatedAt,
     UpdatedAt,
     Status,
@@ -118,7 +116,6 @@ impl ColumnTrait for Column {
             Self::Network => ColumnType::String(None).def(),
             Self::ListenAddr => ColumnType::String(None).def(),
             Self::ListenPort => ColumnType::Integer.def(),
-            Self::Pubkey => ColumnType::String(None).def().unique(),
             Self::CreatedAt => ColumnType::BigInteger.def(),
             Self::UpdatedAt => ColumnType::BigInteger.def(),
             Self::Status => ColumnType::SmallInteger.def(),
@@ -133,13 +130,6 @@ impl RelationTrait for Relation {
 }
 
 impl ActiveModelBehavior for ActiveModel {
-    fn new() -> Self {
-        Self {
-            id: ActiveValue::Set(Uuid::new_v4().to_string()),
-            ..<Self as ActiveModelTrait>::default()
-        }
-    }
-
     fn before_save(mut self, insert: bool) -> Result<Self, DbErr> {
         let now: i64 = seconds_since_epoch();
         self.updated_at = ActiveValue::Set(now);

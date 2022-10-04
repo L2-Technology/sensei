@@ -30,6 +30,7 @@ service Node {
     rpc Keysend (KeysendRequest) returns (KeysendResponse);
     rpc CreateInvoice (CreateInvoiceRequest) returns (CreateInvoiceResponse);
     rpc CreatePhantomInvoice (CreatePhantomInvoiceRequest) returns (CreatePhantomInvoiceResponse);
+    rpc GetPhantomRouteHints (GetPhantomRouteHintsRequest) returns (GetPhantomRouteHintsResponse);
     rpc LabelPayment (LabelPaymentRequest) returns (LabelPaymentResponse);
     rpc DeletePayment (DeletePaymentRequest) returns (DeletePaymentResponse);
     rpc ConnectPeer (ConnectPeerRequest) returns (ConnectPeerResponse);
@@ -45,9 +46,6 @@ service Node {
     rpc ListKnownPeers (ListKnownPeersRequest) returns (ListKnownPeersResponse);
     rpc AddKnownPeer (AddKnownPeerRequest) returns (AddKnownPeerResponse);
     rpc RemoveKnownPeer (RemoveKnownPeerRequest) returns (RemoveKnownPeerResponse);
-    rpc ListClusterNodes (ListClusterNodesRequest) returns (ListClusterNodesResponse);
-    rpc AddClusterNode (AddClusterNodeRequest) returns (AddClusterNodeResponse);
-    rpc RemoveClusterNode (RemoveClusterNodeRequest) returns (RemoveClusterNodeResponse);
 }
 
 message ListNode {
@@ -340,9 +338,15 @@ message CreateInvoiceResponse {
 message CreatePhantomInvoiceRequest {
     uint64 amt_msat = 1;
     string description = 2;
+    repeated string phantom_route_hints_hex = 3;
 }
 message CreatePhantomInvoiceResponse {
     string invoice = 1;
+}
+
+message GetPhantomRouteHintsRequest {}
+message GetPhantomRouteHintsResponse {
+    string phantom_route_hints_hex = 1;
 }
 
 message ConnectPeerRequest {
@@ -389,6 +393,9 @@ message Payment {
     string origin = 7;
     optional string label = 8;
     optional string invoice = 9;
+    string created_by_node_id = 10;
+    optional string received_by_node_id = 11;
+    string node_id = 12;
 }
 
 message PaymentsFilter {

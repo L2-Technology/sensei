@@ -8,17 +8,15 @@
 // licenses.
 
 use super::sensei::{
-    self, AddClusterNodeRequest, AddClusterNodeResponse, AddKnownPeerRequest, AddKnownPeerResponse,
-    Channel as ChannelMessage, ClusterNode, CreatePhantomInvoiceRequest,
-    CreatePhantomInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse, Info as InfoMessage,
-    KnownPeer, LabelPaymentRequest, LabelPaymentResponse, ListClusterNodesRequest,
-    ListClusterNodesResponse, ListKnownPeersRequest, ListKnownPeersResponse,
-    NetworkGraphInfoRequest, NetworkGraphInfoResponse,
-    OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest, OpenChannelsResponse,
-    PaginationRequest, PaginationResponse, Payment as PaymentMessage, PaymentsFilter,
-    Peer as PeerMessage, RemoveClusterNodeRequest, RemoveClusterNodeResponse,
-    RemoveKnownPeerRequest, RemoveKnownPeerResponse, StartNodeRequest, StartNodeResponse,
-    StopNodeRequest, StopNodeResponse, Utxo as UtxoMessage,
+    self, AddKnownPeerRequest, AddKnownPeerResponse, Channel as ChannelMessage,
+    CreatePhantomInvoiceRequest, CreatePhantomInvoiceResponse, DeletePaymentRequest,
+    DeletePaymentResponse, GetPhantomRouteHintsRequest, GetPhantomRouteHintsResponse,
+    Info as InfoMessage, KnownPeer, LabelPaymentRequest, LabelPaymentResponse,
+    ListKnownPeersRequest, ListKnownPeersResponse, NetworkGraphInfoRequest,
+    NetworkGraphInfoResponse, OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest,
+    OpenChannelsResponse, PaginationRequest, PaginationResponse, Payment as PaymentMessage,
+    PaymentsFilter, Peer as PeerMessage, RemoveKnownPeerRequest, RemoveKnownPeerResponse,
+    StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse, Utxo as UtxoMessage,
 };
 
 use super::sensei::{
@@ -94,6 +92,7 @@ impl From<Channel> for ChannelMessage {
 impl From<entity::payment::Model> for PaymentMessage {
     fn from(payment: entity::payment::Model) -> Self {
         Self {
+            node_id: payment.node_id,
             hash: payment.payment_hash,
             preimage: payment.preimage,
             secret: payment.secret,
@@ -103,6 +102,8 @@ impl From<entity::payment::Model> for PaymentMessage {
             origin: payment.origin,
             label: payment.label,
             invoice: payment.invoice,
+            created_by_node_id: payment.created_by_node_id,
+            received_by_node_id: payment.received_by_node_id,
         }
     }
 }
@@ -377,6 +378,7 @@ impl From<CreatePhantomInvoiceRequest> for NodeRequest {
         NodeRequest::GetPhantomInvoice {
             amt_msat: req.amt_msat,
             description: req.description,
+            phantom_route_hints_hex: req.phantom_route_hints_hex,
         }
     }
 }
@@ -387,6 +389,27 @@ impl TryFrom<NodeResponse> for CreatePhantomInvoiceResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::GetPhantomInvoice { invoice } => Ok(Self { invoice }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<GetPhantomRouteHintsRequest> for NodeRequest {
+    fn from(_req: GetPhantomRouteHintsRequest) -> Self {
+        NodeRequest::GetPhantomRouteHints {}
+    }
+}
+
+impl TryFrom<NodeResponse> for GetPhantomRouteHintsResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::GetPhantomRouteHints {
+                phantom_route_hints_hex,
+            } => Ok(Self {
+                phantom_route_hints_hex,
+            }),
             _ => Err("impossible".to_string()),
         }
     }
@@ -731,89 +754,6 @@ impl TryFrom<NodeResponse> for RemoveKnownPeerResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::RemoveKnownPeer {} => Ok(Self {}),
-            _ => Err("impossible".to_string()),
-        }
-    }
-}
-
-impl From<entity::cluster_node::Model> for ClusterNode {
-    fn from(cluster_node: entity::cluster_node::Model) -> Self {
-        Self {
-            pubkey: cluster_node.pubkey,
-            label: cluster_node.label,
-            host: cluster_node.host,
-            port: cluster_node.port as u32,
-            macaroon_hex: cluster_node.macaroon_hex,
-        }
-    }
-}
-
-impl From<ListClusterNodesRequest> for NodeRequest {
-    fn from(req: ListClusterNodesRequest) -> Self {
-        NodeRequest::ListClusterNodes {
-            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
-        }
-    }
-}
-
-impl TryFrom<NodeResponse> for ListClusterNodesResponse {
-    type Error = String;
-
-    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
-        match res {
-            NodeResponse::ListClusterNodes {
-                cluster_nodes,
-                pagination,
-            } => {
-                let pagination: PaginationResponse = pagination.into();
-                Ok(Self {
-                    cluster_nodes: cluster_nodes
-                        .into_iter()
-                        .map(|cluster_node| cluster_node.into())
-                        .collect::<Vec<_>>(),
-                    pagination: Some(pagination),
-                })
-            }
-            _ => Err("impossible".to_string()),
-        }
-    }
-}
-
-impl From<AddClusterNodeRequest> for NodeRequest {
-    fn from(req: AddClusterNodeRequest) -> Self {
-        NodeRequest::AddClusterNode {
-            pubkey: req.pubkey,
-            label: req.label,
-            host: req.host,
-            port: req.port as u16,
-            macaroon_hex: req.macaroon_hex,
-        }
-    }
-}
-
-impl TryFrom<NodeResponse> for AddClusterNodeResponse {
-    type Error = String;
-
-    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
-        match res {
-            NodeResponse::AddClusterNode {} => Ok(Self {}),
-            _ => Err("impossible".to_string()),
-        }
-    }
-}
-
-impl From<RemoveClusterNodeRequest> for NodeRequest {
-    fn from(req: RemoveClusterNodeRequest) -> Self {
-        NodeRequest::RemoveClusterNode { pubkey: req.pubkey }
-    }
-}
-
-impl TryFrom<NodeResponse> for RemoveClusterNodeResponse {
-    type Error = String;
-
-    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
-        match res {
-            NodeResponse::RemoveClusterNode {} => Ok(Self {}),
             _ => Err("impossible".to_string()),
         }
     }

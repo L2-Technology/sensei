@@ -747,7 +747,7 @@ pub async fn login_node(
     match node {
         Some(node) => {
             let request = AdminRequest::StartNode {
-                pubkey: node.pubkey.clone(),
+                pubkey: node.id.clone(),
                 passphrase: params.passphrase,
             };
             match admin_service.call(request).await {
@@ -759,7 +759,7 @@ pub async fn login_node(
                             .finish();
                         cookies.add(macaroon_cookie);
                         Ok(Json(json!({
-                            "pubkey": node.pubkey,
+                            "pubkey": node.id,
                             "alias": node.alias,
                             "macaroon": macaroon,
                             "role": node.role as u16

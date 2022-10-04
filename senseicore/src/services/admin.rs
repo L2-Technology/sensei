@@ -38,7 +38,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
-use uuid::Uuid;
 
 pub struct NodeHandle {
     pub node: Arc<LightningNode>,
@@ -335,7 +334,7 @@ impl AdminService {
                                     setup,
                                     authenticated_admin,
                                     authenticated_node: true,
-                                    pubkey: Some(pubkey_node.pubkey),
+                                    pubkey: Some(pubkey_node.id),
                                     username: Some(pubkey_node.username),
                                     role: Some(pubkey_node.role),
                                 })
@@ -447,7 +446,7 @@ impl AdminService {
                     self.start_node(node.clone(), passphrase).await?;
                 }
                 Ok(AdminResponse::CreateNode {
-                    pubkey: node.pubkey,
+                    pubkey: node.id.clone(),
                     macaroon: hex_utils::hex_str(macaroon.as_slice()),
                     listen_addr: node.listen_addr,
                     listen_port: node.listen_port,
@@ -475,7 +474,7 @@ impl AdminService {
                         .map(|(node, macaroon, entropy, cross_node_entropy)| {
                             let macaroon = macaroon.serialize(macaroon::Format::V2).unwrap();
                             NodeCreateResult {
-                                pubkey: node.pubkey,
+                                pubkey: node.id.clone(),
                                 macaroon: hex_utils::hex_str(macaroon.as_slice()),
                                 listen_addr: node.listen_addr,
                                 listen_port: node.listen_port,
@@ -794,13 +793,6 @@ impl AdminService {
             }
         };
 
-        // NODE ID
-        let node_id = Uuid::new_v4().to_string();
-
-        // NODE DIRECTORY
-        let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
-        fs::create_dir_all(node_directory)?;
-
         // NODE ENTROPY
         let entropy = match entropy {
             Some(entropy_hex) => {
@@ -826,6 +818,18 @@ impl AdminService {
         let encrypted_cross_node_entropy =
             LightningNode::encrypt_entropy(&cross_node_entropy, passphrase.as_bytes())?;
 
+        let seed = LightningNode::get_seed_from_entropy(self.config.network, &entropy);
+
+        // NODE PUBKEY
+        let node_pubkey = LightningNode::get_node_pubkey_from_seed(&seed);
+
+        // NODE ID
+        let node_id = node_pubkey.clone();
+
+        // NODE DIRECTORY
+        let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
+        fs::create_dir_all(node_directory)?;
+
         let entropy_active_model = self
             .database
             .get_entropy_active_model(node_id.clone(), encrypted_entropy);
@@ -834,14 +838,9 @@ impl AdminService {
             .database
             .get_cross_node_entropy_active_model(node_id.clone(), encrypted_cross_node_entropy);
 
-        let seed = LightningNode::get_seed_from_entropy(self.config.network, &entropy);
-
-        // NODE PUBKEY
-        let node_pubkey = LightningNode::get_node_pubkey_from_seed(&seed);
-
         // NODE MACAROON
         let (macaroon, macaroon_id) =
-            LightningNode::generate_macaroon(&entropy, node_pubkey.clone(), "*".to_string())?;
+            LightningNode::generate_macaroon(&seed, node_pubkey, "*".to_string())?;
 
         let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.as_bytes())?;
 
@@ -858,7 +857,6 @@ impl AdminService {
         // NODE
         let active_node = entity::node::ActiveModel {
             id: ActiveValue::Set(node_id.clone()),
-            pubkey: ActiveValue::Set(node_pubkey.clone()),
             username: ActiveValue::Set(username.clone()),
             alias: ActiveValue::Set(alias.clone()),
             network: ActiveValue::Set(self.config.network.to_string()),
@@ -878,7 +876,6 @@ impl AdminService {
             network: self.config.network.to_string(),
             listen_addr,
             listen_port,
-            pubkey: node_pubkey,
             created_at: now,
             updated_at: now,
             status: node::NodeStatus::Stopped.into(),
@@ -950,7 +947,7 @@ impl AdminService {
     ) -> Result<(), crate::error::Error> {
         let status = {
             let mut node_directory = self.node_directory.lock().await;
-            match node_directory.entry(node.pubkey.clone()) {
+            match node_directory.entry(node.id.clone()) {
                 Entry::Vacant(entry) => {
                     entry.insert(None);
                     None
@@ -988,14 +985,14 @@ impl AdminService {
 
                 println!(
                     "starting {}@{}:{}",
-                    node.pubkey.clone(),
+                    node.id.clone(),
                     self.config.api_host.clone(),
                     node.listen_port
                 );
 
                 {
                     let mut node_directory = self.node_directory.lock().await;
-                    if let Entry::Occupied(mut entry) = node_directory.entry(node.pubkey.clone()) {
+                    if let Entry::Occupied(mut entry) = node_directory.entry(node.id.clone()) {
                         entry.insert(Some(NodeHandle {
                             node: Arc::new(lightning_node.clone()),
                             background_processor,

@@ -214,6 +214,7 @@ pub enum NodeRequest {
     GetPhantomInvoice {
         amt_msat: u64,
         description: String,
+        phantom_route_hints_hex: Vec<String>,
     },
     LabelPayment {
         label: String,
@@ -259,19 +260,6 @@ pub enum NodeRequest {
         zero_conf: bool,
     },
     RemoveKnownPeer {
-        pubkey: String,
-    },
-    ListClusterNodes {
-        pagination: PaginationRequest,
-    },
-    AddClusterNode {
-        pubkey: String,
-        label: String,
-        host: String,
-        port: u16,
-        macaroon_hex: String,
-    },
-    RemoveClusterNode {
         pubkey: String,
     },
 }
@@ -353,12 +341,6 @@ pub enum NodeResponse {
     },
     AddKnownPeer {},
     RemoveKnownPeer {},
-    ListClusterNodes {
-        cluster_nodes: Vec<entity::cluster_node::Model>,
-        pagination: PaginationResponse,
-    },
-    AddClusterNode {},
-    RemoveClusterNode {},
     Error(NodeRequestError),
 }
 
