@@ -44,6 +44,23 @@ impl From<GetInvoiceParams> for NodeRequest {
 }
 
 #[derive(Deserialize)]
+pub struct GetPhantomInvoiceParams {
+    pub amt_msat: u64,
+    pub description: String,
+    pub phantom_route_hints_hex: Vec<String>,
+}
+
+impl From<GetPhantomInvoiceParams> for NodeRequest {
+    fn from(params: GetPhantomInvoiceParams) -> Self {
+        Self::GetPhantomInvoice {
+            amt_msat: params.amt_msat,
+            description: params.description,
+            phantom_route_hints_hex: params.phantom_route_hints_hex,
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct LabelPaymentParams {
     pub label: String,
     pub payment_hash: String,
@@ -227,6 +244,10 @@ impl From<RemoveKnownPeerParams> for NodeRequest {
 pub fn add_routes(router: Router) -> Router {
     router
         .route("/v1/node/payments", get(handle_get_payments))
+        .route(
+            "/v1/node/phantom-payments",
+            get(handle_get_phantom_payments),
+        )
         .route("/v1/node/wallet/address", get(get_unused_address))
         .route("/v1/node/wallet/balance", get(get_wallet_balance))
         .route("/v1/node/wallet/utxos", get(list_unspent))
@@ -237,6 +258,7 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/stop", get(stop_node))
         .route("/v1/node/start", post(start_node))
         .route("/v1/node/invoices", post(create_invoice))
+        .route("/v1/node/invoices/phantom", post(create_phantom_invoice))
         .route("/v1/node/invoices/pay", post(pay_invoice))
         .route("/v1/node/invoices/decode", post(decode_invoice))
         .route("/v1/node/payments/label", post(label_payment))
@@ -251,6 +273,21 @@ pub fn add_routes(router: Router) -> Router {
         .route("/v1/node/known-peers", get(list_known_peers))
         .route("/v1/node/known-peers", post(add_known_peer))
         .route("/v1/node/known-peers", delete(remove_known_peer))
+        .route("/v1/node/ldk/phantom-route-hints", get(phantom_route_hints))
+}
+
+pub async fn phantom_route_hints(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    handle_authenticated_request(
+        admin_service,
+        NodeRequest::GetPhantomRouteHints {},
+        macaroon,
+        cookies,
+    )
+    .await
 }
 
 pub async fn get_unused_address(
@@ -282,6 +319,20 @@ pub async fn handle_get_payments(
     cookies: Cookies,
 ) -> Result<Json<NodeResponse>, Response> {
     let request = NodeRequest::ListPayments {
+        pagination: params.clone().into(),
+        filter: params.into(),
+    };
+
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn handle_get_phantom_payments(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Query(params): Query<ListPaymentsParams>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    let request = NodeRequest::ListPhantomPayments {
         pagination: params.clone().into(),
         filter: params.into(),
     };
@@ -440,6 +491,22 @@ pub async fn create_invoice(
 ) -> Result<Json<NodeResponse>, Response> {
     let request = {
         let params: Result<GetInvoiceParams, _> = serde_json::from_value(payload);
+        match params {
+            Ok(params) => Ok(params.into()),
+            Err(_) => Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid params").into_response()),
+        }
+    }?;
+    handle_authenticated_request(admin_service, request, macaroon, cookies).await
+}
+
+pub async fn create_phantom_invoice(
+    Extension(admin_service): Extension<Arc<AdminService>>,
+    Json(payload): Json<Value>,
+    AuthHeader { macaroon, token: _ }: AuthHeader,
+    cookies: Cookies,
+) -> Result<Json<NodeResponse>, Response> {
+    let request = {
+        let params: Result<GetPhantomInvoiceParams, _> = serde_json::from_value(payload);
         match params {
             Ok(params) => Ok(params.into()),
             Err(_) => Err((StatusCode::UNPROCESSABLE_ENTITY, "invalid params").into_response()),

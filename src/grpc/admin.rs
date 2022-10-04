@@ -61,7 +61,7 @@ impl TryFrom<AdminResponse> for ListNodesResponse {
                 nodes: nodes
                     .into_iter()
                     .map(|node| ListNode {
-                        id: node.id,
+                        id: node.id.clone(),
                         created_at: node.created_at,
                         updated_at: node.updated_at,
                         role: node.role as u32,
@@ -70,7 +70,7 @@ impl TryFrom<AdminResponse> for ListNodesResponse {
                         network: node.network,
                         listen_addr: node.listen_addr,
                         listen_port: node.listen_port as u32,
-                        pubkey: node.pubkey,
+                        pubkey: node.id,
                         status: node.status as u32,
                     })
                     .collect::<Vec<ListNode>>(),
@@ -113,6 +113,8 @@ impl From<CreateNodeRequest> for AdminRequest {
             alias: req.alias,
             passphrase: req.passphrase,
             start: req.start,
+            entropy: req.entropy,
+            cross_node_entropy: req.cross_node_entropy,
         }
     }
 }
@@ -128,12 +130,16 @@ impl TryFrom<AdminResponse> for CreateNodeResponse {
                 listen_addr,
                 listen_port,
                 id,
+                entropy,
+                cross_node_entropy,
             } => Ok(Self {
                 pubkey,
                 macaroon,
                 listen_addr,
                 listen_port,
                 id,
+                entropy,
+                cross_node_entropy,
             }),
             _ => Err("impossible".to_string()),
         }

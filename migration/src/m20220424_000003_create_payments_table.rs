@@ -24,6 +24,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Payment::CreatedAt).big_integer().not_null())
                     .col(ColumnDef::new(Payment::UpdatedAt).big_integer().not_null())
                     .col(ColumnDef::new(Payment::NodeId).string().not_null())
+                    .col(ColumnDef::new(Payment::ReceivedByNodeId).string())
+                    .col(ColumnDef::new(Payment::CreatedByNodeId).string().not_null())
                     .col(ColumnDef::new(Payment::PaymentHash).string().not_null())
                     .col(ColumnDef::new(Payment::Preimage).string())
                     .col(ColumnDef::new(Payment::Secret).string())
@@ -44,7 +46,6 @@ impl MigrationTrait for Migration {
                     .name("idx-nodeid-paymenthash")
                     .col(Payment::NodeId)
                     .col(Payment::PaymentHash)
-                    .unique()
                     .to_owned(),
             )
             .await
@@ -62,6 +63,8 @@ enum Payment {
     Table,
     Id,
     NodeId,
+    ReceivedByNodeId,
+    CreatedByNodeId,
     PaymentHash,
     Preimage,
     Secret,

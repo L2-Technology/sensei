@@ -94,6 +94,8 @@ impl From<BatchCreateNodeParams> for AdminRequest {
                     alias: node.alias,
                     passphrase: node.passphrase,
                     start: node.start,
+                    entropy: node.entropy,
+                    cross_node_entropy: node.cross_node_entropy,
                 })
                 .collect::<Vec<_>>(),
         }
@@ -106,6 +108,8 @@ pub struct CreateNodeParams {
     pub passphrase: String,
     pub alias: String,
     pub start: bool,
+    pub entropy: Option<String>,
+    pub cross_node_entropy: Option<String>,
 }
 
 impl From<CreateNodeParams> for AdminRequest {
@@ -115,6 +119,8 @@ impl From<CreateNodeParams> for AdminRequest {
             passphrase: params.passphrase,
             alias: params.alias,
             start: params.start,
+            entropy: params.entropy,
+            cross_node_entropy: params.cross_node_entropy,
         }
     }
 }
@@ -741,7 +747,7 @@ pub async fn login_node(
     match node {
         Some(node) => {
             let request = AdminRequest::StartNode {
-                pubkey: node.pubkey.clone(),
+                pubkey: node.id.clone(),
                 passphrase: params.passphrase,
             };
             match admin_service.call(request).await {
@@ -753,7 +759,7 @@ pub async fn login_node(
                             .finish();
                         cookies.add(macaroon_cookie);
                         Ok(Json(json!({
-                            "pubkey": node.pubkey,
+                            "pubkey": node.id,
                             "alias": node.alias,
                             "macaroon": macaroon,
                             "role": node.role as u16

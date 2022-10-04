@@ -51,10 +51,14 @@ use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
 use lightning::chain::chainmonitor;
-use lightning::chain::keysinterface::{InMemorySigner, KeysInterface, KeysManager, Recipient};
+use lightning::chain::keysinterface::{
+    InMemorySigner, KeysInterface, KeysManager, PhantomKeysManager, Recipient,
+};
 use lightning::chain::Watch;
 use lightning::chain::{self, Filter};
-use lightning::ln::channelmanager::{self, ChannelDetails, ChannelManager as LdkChannelManager};
+use lightning::ln::channelmanager::{
+    self, ChannelDetails, ChannelManager as LdkChannelManager, PhantomRouteHints,
+};
 use lightning::ln::channelmanager::{ChainParameters, ChannelManagerReadArgs};
 use lightning::ln::peer_handler::{
     ErroringMessageHandler, IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
@@ -66,7 +70,7 @@ use lightning::routing::gossip::{
 use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
 use lightning::util::config::UserConfig;
-use lightning::util::ser::ReadableArgs;
+use lightning::util::ser::{Readable, ReadableArgs, Writeable};
 use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
@@ -307,7 +311,7 @@ pub type ChainMonitor = chainmonitor::ChainMonitor<
 trait MustSized: Sized {}
 
 pub type SimpleArcChannelManager<M, T, F, L> =
-    LdkChannelManager<InMemorySigner, Arc<M>, Arc<T>, Arc<KeysManager>, Arc<F>, Arc<L>>;
+    LdkChannelManager<InMemorySigner, Arc<M>, Arc<T>, Arc<PhantomKeysManager>, Arc<F>, Arc<L>>;
 
 pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
     SD,
@@ -395,6 +399,7 @@ fn get_wpkh_descriptors_for_extended_key(
 pub struct MacaroonSession {
     pub id: String,
     pub pubkey: String,
+    pub scope: String,
 }
 
 impl MacaroonSession {
@@ -419,7 +424,7 @@ pub struct LightningNode {
     pub chain_manager: Arc<SenseiChainManager>,
     pub peer_manager: Arc<PeerManager>,
     pub p2p: Arc<SenseiP2P>,
-    pub keys_manager: Arc<KeysManager>,
+    pub keys_manager: Arc<PhantomKeysManager>,
     pub logger: Arc<FilesystemLogger>,
     pub invoice_payer: Arc<InvoicePayer>,
     pub stop_listen: Arc<AtomicBool>,
@@ -462,11 +467,38 @@ impl LightningNode {
         }
     }
 
-    pub fn generate_macaroon(seed: &[u8], pubkey: String) -> Result<(Macaroon, String), Error> {
+    async fn get_cross_node_entropy_for_node(
+        node_id: String,
+        passphrase: String,
+        database: Arc<SenseiDatabase>,
+    ) -> Result<[u8; 32], Error> {
+        let cryptor = RingCryptor::new();
+        let mut entropy: [u8; 32] = [0; 32];
+        match database.get_cross_node_entropy(node_id.clone()).await? {
+            Some(encrypted_entropy) => {
+                let decrypted_entropy =
+                    cryptor.open(passphrase.as_bytes(), encrypted_entropy.as_slice())?;
+
+                if decrypted_entropy.len() != 32 {
+                    return Err(Error::InvalidEntropyLength);
+                }
+                entropy.copy_from_slice(decrypted_entropy.as_slice());
+                Ok(entropy)
+            }
+            None => Err(Error::EntropyNotFound),
+        }
+    }
+
+    pub fn generate_macaroon(
+        seed: &[u8],
+        pubkey: String,
+        scope: String,
+    ) -> Result<(Macaroon, String), Error> {
         let id = uuid::Uuid::new_v4().to_string();
         let macaroon_data = MacaroonSession {
             id: id.clone(),
             pubkey,
+            scope,
         };
         let serialized_macaroon_data = serde_json::to_string(&macaroon_data).unwrap();
         let macaroon_key = macaroon::MacaroonKey::from(seed);
@@ -556,6 +588,16 @@ impl LightningNode {
         node_pubkey.to_string()
     }
 
+    pub fn get_phantom_node_pubkey(&self) -> String {
+        let secp_ctx = Secp256k1::new();
+        let node_secret = self
+            .keys_manager
+            .get_node_secret(Recipient::PhantomNode)
+            .unwrap();
+        let node_pubkey = PublicKey::from_secret_key(&secp_ctx, &node_secret);
+        node_pubkey.to_string()
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: Arc<SenseiConfig>,
@@ -572,22 +614,18 @@ impl LightningNode {
     ) -> Result<(Self, Vec<JoinHandle<()>>, BackgroundProcessor), Error> {
         let network = config.network;
 
-        let seed =
+        let entropy =
             LightningNode::get_entropy_for_node(id.clone(), passphrase.clone(), database.clone())
                 .await?;
 
-        let xprivkey = ExtendedPrivKey::new_master(network, &seed).unwrap();
+        let cross_node_entropy = LightningNode::get_cross_node_entropy_for_node(
+            id.clone(),
+            passphrase.clone(),
+            database.clone(),
+        )
+        .await?;
 
-        let ldk_seed: [u8; 32] = xprivkey.private_key.secret_bytes();
-        let cur = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap();
-        let keys_manager = Arc::new(KeysManager::new(
-            &ldk_seed,
-            cur.as_secs(),
-            cur.subsec_nanos(),
-        ));
-
+        let xprivkey = ExtendedPrivKey::new_master(network, &entropy).unwrap();
         let xkey = ExtendedKey::from(xprivkey);
         let native_segwit_base_path = "m/84";
         let account_number = 0;
@@ -614,6 +652,19 @@ impl LightningNode {
         let bdk_wallet = Arc::new(Mutex::new(bdk_wallet));
 
         let logger = Arc::new(FilesystemLogger::new(data_dir.clone(), config.network));
+
+        let seed = LightningNode::get_seed_from_entropy(network, &entropy);
+        let cross_node_seed = LightningNode::get_seed_from_entropy(network, &cross_node_entropy);
+
+        let cur = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap();
+        let keys_manager = Arc::new(PhantomKeysManager::new(
+            &seed,
+            cur.as_secs(),
+            cur.subsec_nanos(),
+            &cross_node_seed,
+        ));
 
         let broadcaster = Arc::new(SenseiBroadcaster::new(
             id.clone(),
@@ -793,6 +844,7 @@ impl LightningNode {
             chain_manager: chain_manager.clone(),
             event_sender: event_sender.clone(),
             broadcaster: broadcaster.clone(),
+            secp_ctx: Secp256k1::new(),
         });
 
         let invoice_payer = Arc::new(InvoicePayer::new(
@@ -1038,6 +1090,7 @@ impl LightningNode {
 
         let payment = entity::payment::ActiveModel {
             node_id: ActiveValue::Set(self.id.clone()),
+            created_by_node_id: ActiveValue::Set(self.id.clone()),
             payment_hash: ActiveValue::Set(payment_hash),
             secret: ActiveValue::Set(payment_secret),
             status: ActiveValue::Set(status.to_string()),
@@ -1050,6 +1103,53 @@ impl LightningNode {
         payment.insert(self.database.get_connection()).await?;
 
         Ok(())
+    }
+
+    pub async fn get_phantom_invoice(
+        &self,
+        amt_msat: u64,
+        description: String,
+        phantom_route_hints: Vec<PhantomRouteHints>,
+    ) -> Result<Invoice, Error> {
+        let currency = match self.config.network {
+            Network::Bitcoin => Currency::Bitcoin,
+            Network::Testnet => Currency::BitcoinTestnet,
+            Network::Regtest => Currency::Regtest,
+            Network::Signet => Currency::Signet,
+        };
+
+        let invoice = utils::create_phantom_invoice::<InMemorySigner, Arc<PhantomKeysManager>>(
+            Some(amt_msat),
+            None,
+            description.clone(),
+            3600, // FIXME invoice_expiry_delta_secs
+            phantom_route_hints,
+            self.keys_manager.clone(),
+            currency,
+        )?;
+
+        let payment_hash = hex_utils::hex_str(&(*invoice.payment_hash()).into_inner());
+        let payment_secret = Some(hex_utils::hex_str(&(*invoice.payment_secret()).0));
+
+        let payment = entity::payment::ActiveModel {
+            node_id: ActiveValue::Set(self.get_phantom_node_pubkey()),
+            created_by_node_id: ActiveValue::Set(self.id.clone()),
+            payment_hash: ActiveValue::Set(payment_hash),
+            secret: ActiveValue::Set(payment_secret),
+            status: ActiveValue::Set(HTLCStatus::Pending.to_string()),
+            amt_msat: ActiveValue::Set(Some(amt_msat.try_into().unwrap())),
+            origin: ActiveValue::Set(PaymentOrigin::InvoiceIncoming.to_string()),
+            invoice: ActiveValue::Set(Some(invoice.to_string())),
+            label: ActiveValue::Set(Some(description)),
+            ..Default::default()
+        };
+
+        payment
+            .insert(self.database.get_connection())
+            .await
+            .unwrap();
+
+        Ok(invoice)
     }
 
     pub async fn get_invoice(&self, amt_msat: u64, description: String) -> Result<Invoice, Error> {
@@ -1074,6 +1174,7 @@ impl LightningNode {
 
         let payment = entity::payment::ActiveModel {
             node_id: ActiveValue::Set(self.id.clone()),
+            created_by_node_id: ActiveValue::Set(self.id.clone()),
             payment_hash: ActiveValue::Set(payment_hash),
             secret: ActiveValue::Set(payment_secret),
             status: ActiveValue::Set(HTLCStatus::Pending.to_string()),
@@ -1222,6 +1323,16 @@ impl LightningNode {
             .await
     }
 
+    pub async fn list_phantom_payments(
+        &self,
+        pagination: PaginationRequest,
+        filter: PaymentsFilter,
+    ) -> Result<(Vec<entity::payment::Model>, PaginationResponse), Error> {
+        self.database
+            .list_payments(self.get_phantom_node_pubkey(), pagination, filter)
+            .await
+    }
+
     pub fn close_channel(&self, channel_id: [u8; 32], force: bool) -> Result<(), Error> {
         let cp_id = self.get_channel_counterparty(&channel_id);
         if force {
@@ -1332,6 +1443,12 @@ impl LightningNode {
                     address: address_info.address.to_string(),
                 })
             }
+            NodeRequest::GetPhantomRouteHints {} => {
+                let hints = self.channel_manager.get_phantom_route_hints();
+                Ok(NodeResponse::GetPhantomRouteHints {
+                    phantom_route_hints_hex: hex_utils::hex_str(&hints.encode()),
+                })
+            }
             NodeRequest::GetBalance {} => {
                 // TODO: split confirmed vs uncofirmed chain balance
                 //       we currently only have 'unconfirmed' utxos from transactions we broadcast
@@ -1424,6 +1541,27 @@ impl LightningNode {
                     invoice: invoice_str,
                 })
             }
+            NodeRequest::GetPhantomInvoice {
+                amt_msat,
+                description,
+                phantom_route_hints_hex,
+            } => {
+                let phantom_route_hints = phantom_route_hints_hex
+                    .into_iter()
+                    .map(|hints_hex| {
+                        let mut cursor = Cursor::new(hex_utils::to_vec(&hints_hex).unwrap());
+                        PhantomRouteHints::read(&mut cursor).unwrap()
+                    })
+                    .collect::<Vec<PhantomRouteHints>>();
+
+                let invoice = self
+                    .get_phantom_invoice(amt_msat, description, phantom_route_hints)
+                    .await?;
+                let invoice_str = format!("{}", invoice);
+                Ok(NodeResponse::GetPhantomInvoice {
+                    invoice: invoice_str,
+                })
+            }
             NodeRequest::LabelPayment {
                 label,
                 payment_hash,
@@ -1465,6 +1603,13 @@ impl LightningNode {
             NodeRequest::ListPayments { pagination, filter } => {
                 let (payments, pagination) = self.list_payments(pagination, filter).await?;
                 Ok(NodeResponse::ListPayments {
+                    payments,
+                    pagination,
+                })
+            }
+            NodeRequest::ListPhantomPayments { pagination, filter } => {
+                let (payments, pagination) = self.list_phantom_payments(pagination, filter).await?;
+                Ok(NodeResponse::ListPhantomPayments {
                     payments,
                     pagination,
                 })

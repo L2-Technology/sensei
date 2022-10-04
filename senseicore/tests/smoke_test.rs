@@ -68,13 +68,17 @@ mod test {
         username: &str,
         passphrase: &str,
         start: bool,
-    ) -> Arc<LightningNode> {
-        let node_pubkey = match admin_service
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
+    ) -> (Arc<LightningNode>, String, String) {
+        let (node_pubkey, entropy, cross_node_entropy) = match admin_service
             .call(AdminRequest::CreateNode {
                 username: String::from(username),
                 passphrase: String::from(passphrase),
                 alias: String::from(username),
                 start,
+                entropy,
+                cross_node_entropy,
             })
             .await
             .unwrap()
@@ -85,14 +89,17 @@ mod test {
                 listen_port: _,
                 pubkey,
                 macaroon: _,
-            } => Some(pubkey),
+                entropy,
+                cross_node_entropy,
+            } => Some((pubkey, entropy, cross_node_entropy)),
             _ => None,
         }
         .unwrap();
 
         let directory = admin_service.node_directory.lock().await;
         let handle = directory.get(&node_pubkey).unwrap();
-        handle.as_ref().unwrap().node.clone()
+        let node = handle.as_ref().unwrap().node.clone();
+        (node, entropy, cross_node_entropy)
     }
 
     async fn create_admin_account(
@@ -253,6 +260,17 @@ mod test {
                 onchain_balance_sats,
                 ..
             } => Some(onchain_balance_sats),
+            _ => None,
+        }
+        .unwrap()
+    }
+
+    async fn get_channel_balance_sats(node: Arc<LightningNode>) -> u64 {
+        match node.call(NodeRequest::GetBalance {}).await.unwrap() {
+            NodeResponse::GetBalance {
+                channel_balance_msats,
+                ..
+            } => Some(channel_balance_msats / 1000),
             _ => None,
         }
         .unwrap()
@@ -459,6 +477,42 @@ mod test {
             .clone()
     }
 
+    async fn create_phantom_invoice(
+        node: Arc<LightningNode>,
+        cluster: Vec<Arc<LightningNode>>,
+        amt_sat: u64,
+    ) -> String {
+        let mut phantom_route_hints_hex = vec![];
+        for cluster_node in cluster.iter() {
+            let hint = match cluster_node
+                .call(NodeRequest::GetPhantomRouteHints {})
+                .await
+                .unwrap()
+            {
+                NodeResponse::GetPhantomRouteHints {
+                    phantom_route_hints_hex,
+                } => Some(phantom_route_hints_hex),
+                _ => None,
+            }
+            .unwrap();
+            phantom_route_hints_hex.push(hint);
+        }
+
+        match node
+            .call(NodeRequest::GetPhantomInvoice {
+                amt_msat: amt_sat * 1000,
+                description: String::from("test"),
+                phantom_route_hints_hex,
+            })
+            .await
+            .unwrap()
+        {
+            NodeResponse::GetPhantomInvoice { invoice } => Some(invoice),
+            _ => None,
+        }
+        .unwrap()
+    }
+
     async fn create_invoice(node: Arc<LightningNode>, amt_sat: u64) -> String {
         match node
             .call(NodeRequest::GetInvoice {
@@ -623,11 +677,67 @@ mod test {
             })
     }
 
+    async fn phantom_payment_test(bitcoind: BitcoinD, admin_service: AdminService) {
+        let _admin_token = create_admin_account(&admin_service, "admin", "admin").await;
+        let (alice, _alice_entropy, alice_cross_node_entropy) =
+            create_node(&admin_service, "alice", "alice", true, None, None).await;
+        let (bob, ..) = create_node(
+            &admin_service,
+            "bob",
+            "bob",
+            true,
+            None,
+            Some(alice_cross_node_entropy),
+        )
+        .await;
+
+        let cluster = vec![alice.clone(), bob.clone()];
+
+        let (charlie, ..) =
+            create_node(&admin_service, "charlie", "charlie", true, None, None).await;
+
+        fund_node(&bitcoind, charlie.clone()).await;
+
+        let _charlie_bob_channel =
+            open_channel(&bitcoind, charlie.clone(), bob.clone(), 1_000_000).await;
+
+        let phantom_invoice = create_phantom_invoice(alice, cluster, 5000).await;
+
+        let bob_start_balance = get_channel_balance_sats(bob.clone()).await;
+
+        // charlie only has a channel to bob but should be able to pay alice's invoice
+        pay_invoice(charlie.clone(), phantom_invoice).await;
+
+        let charlie_test = charlie.clone();
+        let has_payments = move || {
+            let pagination = PaginationRequest {
+                page: 0,
+                take: 1,
+                query: None,
+            };
+            let filter = PaymentsFilter {
+                status: Some(HTLCStatus::Succeeded.to_string()),
+                origin: None,
+            };
+            let (_payments, pagination) = charlie_test
+                .database
+                .list_payments_sync(charlie_test.id.clone(), pagination, filter)
+                .unwrap();
+            pagination.total == 1 as u64
+        };
+
+        assert!(wait_until(has_payments, 60000, 500).await);
+
+        let bob_balance = get_channel_balance_sats(bob.clone()).await;
+        assert!(bob_balance > bob_start_balance);
+    }
+
     async fn smoke_test(bitcoind: BitcoinD, admin_service: AdminService) {
         let _admin_token = create_admin_account(&admin_service, "admin", "admin").await;
-        let alice = create_node(&admin_service, "alice", "alice", true).await;
-        let bob = create_node(&admin_service, "bob", "bob", true).await;
-        let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
+        let (alice, ..) = create_node(&admin_service, "alice", "alice", true, None, None).await;
+        let (bob, ..) = create_node(&admin_service, "bob", "bob", true, None, None).await;
+        let (charlie, ..) =
+            create_node(&admin_service, "charlie", "charlie", true, None, None).await;
         fund_node(&bitcoind, alice.clone()).await;
         fund_node(&bitcoind, bob.clone()).await;
         let alice_bob_channel =
@@ -733,10 +843,11 @@ mod test {
 
     async fn batch_open_channels_test(bitcoind: BitcoinD, admin_service: AdminService) {
         let _admin_token = create_admin_account(&admin_service, "admin", "admin").await;
-        let alice = create_node(&admin_service, "alice", "alice", true).await;
-        let bob = create_node(&admin_service, "bob", "bob", true).await;
-        let charlie = create_node(&admin_service, "charlie", "charlie", true).await;
-        let doug = create_node(&admin_service, "doug", "doug", true).await;
+        let (alice, ..) = create_node(&admin_service, "alice", "alice", true, None, None).await;
+        let (bob, ..) = create_node(&admin_service, "bob", "bob", true, None, None).await;
+        let (charlie, ..) =
+            create_node(&admin_service, "charlie", "charlie", true, None, None).await;
+        let (doug, ..) = create_node(&admin_service, "doug", "doug", true, None, None).await;
         fund_node(&bitcoind, alice.clone()).await;
 
         let alice_channels_with_counterparties = open_channels(
@@ -802,5 +913,11 @@ mod test {
     #[serial]
     fn run_smoke_test() {
         run_test("smoke_test", smoke_test)
+    }
+
+    #[test]
+    #[serial]
+    fn run_phantom_payment_test() {
+        run_test("phantom_payment", phantom_payment_test)
     }
 }

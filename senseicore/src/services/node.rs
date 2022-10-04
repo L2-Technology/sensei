@@ -192,6 +192,7 @@ pub enum NodeRequest {
     },
     StopNode {},
     GetUnusedAddress {},
+    GetPhantomRouteHints {},
     GetBalance {},
     OpenChannels {
         requests: Vec<OpenChannelRequest>,
@@ -210,6 +211,11 @@ pub enum NodeRequest {
         amt_msat: u64,
         description: String,
     },
+    GetPhantomInvoice {
+        amt_msat: u64,
+        description: String,
+        phantom_route_hints_hex: Vec<String>,
+    },
     LabelPayment {
         label: String,
         payment_hash: String,
@@ -224,6 +230,10 @@ pub enum NodeRequest {
         pagination: PaginationRequest,
     },
     ListPayments {
+        pagination: PaginationRequest,
+        filter: PaymentsFilter,
+    },
+    ListPhantomPayments {
         pagination: PaginationRequest,
         filter: PaymentsFilter,
     },
@@ -266,6 +276,9 @@ pub enum NodeResponse {
     GetUnusedAddress {
         address: String,
     },
+    GetPhantomRouteHints {
+        phantom_route_hints_hex: String,
+    },
     GetBalance {
         onchain_balance_sats: u64,
         channel_balance_msats: u64,
@@ -286,6 +299,9 @@ pub enum NodeResponse {
     GetInvoice {
         invoice: String,
     },
+    GetPhantomInvoice {
+        invoice: String,
+    },
     LabelPayment {},
     DeletePayment {},
     ConnectPeer {},
@@ -294,6 +310,10 @@ pub enum NodeResponse {
         pagination: PaginationResponse,
     },
     ListPayments {
+        payments: Vec<entity::payment::Model>,
+        pagination: PaginationResponse,
+    },
+    ListPhantomPayments {
         payments: Vec<entity::payment::Model>,
         pagination: PaginationResponse,
     },

@@ -15,16 +15,19 @@ use super::{
     sensei::{
         AddKnownPeerRequest, AddKnownPeerResponse, CloseChannelRequest, CloseChannelResponse,
         ConnectPeerRequest, ConnectPeerResponse, CreateInvoiceRequest, CreateInvoiceResponse,
-        DecodeInvoiceRequest, DecodeInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse,
-        GetBalanceRequest, GetBalanceResponse, GetUnusedAddressRequest, GetUnusedAddressResponse,
-        InfoRequest, InfoResponse, KeysendRequest, KeysendResponse, LabelPaymentRequest,
-        LabelPaymentResponse, ListChannelsRequest, ListChannelsResponse, ListKnownPeersRequest,
-        ListKnownPeersResponse, ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest,
-        ListPeersResponse, ListUnspentRequest, ListUnspentResponse, NetworkGraphInfoRequest,
-        NetworkGraphInfoResponse, OpenChannelsRequest, OpenChannelsResponse, PayInvoiceRequest,
-        PayInvoiceResponse, RemoveKnownPeerRequest, RemoveKnownPeerResponse, SignMessageRequest,
-        SignMessageResponse, StartNodeRequest, StartNodeResponse, StopNodeRequest,
-        StopNodeResponse, VerifyMessageRequest, VerifyMessageResponse,
+        CreatePhantomInvoiceRequest, CreatePhantomInvoiceResponse, DecodeInvoiceRequest,
+        DecodeInvoiceResponse, DeletePaymentRequest, DeletePaymentResponse, GetBalanceRequest,
+        GetBalanceResponse, GetPhantomRouteHintsRequest, GetPhantomRouteHintsResponse,
+        GetUnusedAddressRequest, GetUnusedAddressResponse, InfoRequest, InfoResponse,
+        KeysendRequest, KeysendResponse, LabelPaymentRequest, LabelPaymentResponse,
+        ListChannelsRequest, ListChannelsResponse, ListKnownPeersRequest, ListKnownPeersResponse,
+        ListPaymentsRequest, ListPaymentsResponse, ListPeersRequest, ListPeersResponse,
+        ListPhantomPaymentsRequest, ListPhantomPaymentsResponse, ListUnspentRequest,
+        ListUnspentResponse, NetworkGraphInfoRequest, NetworkGraphInfoResponse,
+        OpenChannelsRequest, OpenChannelsResponse, PayInvoiceRequest, PayInvoiceResponse,
+        RemoveKnownPeerRequest, RemoveKnownPeerResponse, SignMessageRequest, SignMessageResponse,
+        StartNodeRequest, StartNodeResponse, StopNodeRequest, StopNodeResponse,
+        VerifyMessageRequest, VerifyMessageResponse,
     },
     utils::raw_macaroon_from_metadata,
 };
@@ -203,6 +206,26 @@ impl Node for NodeService {
             .map(Response::new)
             .map_err(|_e| Status::unknown("unknown error"))
     }
+    async fn create_phantom_invoice(
+        &self,
+        request: tonic::Request<CreatePhantomInvoiceRequest>,
+    ) -> Result<Response<CreatePhantomInvoiceResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn get_phantom_route_hints(
+        &self,
+        request: tonic::Request<GetPhantomRouteHintsRequest>,
+    ) -> Result<Response<GetPhantomRouteHintsResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
     async fn label_payment(
         &self,
         request: tonic::Request<LabelPaymentRequest>,
@@ -247,6 +270,16 @@ impl Node for NodeService {
         &self,
         request: tonic::Request<ListPaymentsRequest>,
     ) -> Result<Response<ListPaymentsResponse>, Status> {
+        self.authenticated_request(request.metadata().clone(), request.into_inner().into())
+            .await?
+            .try_into()
+            .map(Response::new)
+            .map_err(|_e| Status::unknown("unknown error"))
+    }
+    async fn list_phantom_payments(
+        &self,
+        request: tonic::Request<ListPhantomPaymentsRequest>,
+    ) -> Result<Response<ListPhantomPaymentsResponse>, Status> {
         self.authenticated_request(request.metadata().clone(), request.into_inner().into())
             .await?
             .try_into()

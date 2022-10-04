@@ -266,6 +266,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     alias: alias.to_string(),
                     passphrase,
                     start: false,
+                    entropy: None,
+                    cross_node_entropy: None,
                 });
                 let response = admin_client.create_node(request).await?;
                 println!("{:?}", response.into_inner());

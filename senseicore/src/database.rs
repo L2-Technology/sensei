@@ -90,7 +90,7 @@ impl SenseiDatabase {
 
     pub async fn get_node_by_pubkey(&self, pubkey: &str) -> Result<Option<node::Model>, Error> {
         Ok(Node::find()
-            .filter(node::Column::Pubkey.eq(pubkey))
+            .filter(node::Column::Id.eq(pubkey))
             .one(&self.connection)
             .await?)
     }
@@ -135,7 +135,7 @@ impl SenseiDatabase {
             .filter(
                 Condition::any()
                     .add(node::Column::Alias.contains(&query_string))
-                    .add(node::Column::Pubkey.contains(&query_string))
+                    .add(node::Column::Id.contains(&query_string))
                     .add(node::Column::Username.contains(&query_string)),
             )
             .order_by_desc(node::Column::UpdatedAt)
@@ -674,6 +674,74 @@ impl SenseiDatabase {
             node_id: ActiveValue::Set(node_id),
             k: ActiveValue::Set(String::from("entropy")),
             v: ActiveValue::Set(entropy),
+            created_at: ActiveValue::Set(now),
+            updated_at: ActiveValue::Set(now),
+            ..Default::default()
+        }
+    }
+
+    pub async fn get_cross_node_entropy(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
+        self.get_value(node_id, String::from("cross_node_entropy"))
+            .await
+            .map(|model| model.map(|model| model.v))
+    }
+
+    pub fn get_cross_node_entropy_sync(&self, node_id: String) -> Result<Option<Vec<u8>>, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle
+                .block_on(async move { self.get_cross_node_entropy(node_id).await })
+        })
+    }
+
+    pub async fn set_cross_node_entropy(
+        &self,
+        node_id: String,
+        cross_node_entropy: Vec<u8>,
+    ) -> Result<kv_store::Model, Error> {
+        self.set_value(
+            node_id,
+            String::from("cross_node_entropy"),
+            cross_node_entropy,
+        )
+        .await
+    }
+
+    pub fn set_cross_node_entropy_sync(
+        &self,
+        node_id: String,
+        cross_node_entropy: Vec<u8>,
+    ) -> Result<kv_store::Model, Error> {
+        tokio::task::block_in_place(move || {
+            self.runtime_handle.block_on(async move {
+                self.set_cross_node_entropy(node_id, cross_node_entropy)
+                    .await
+            })
+        })
+    }
+
+    pub async fn create_cross_node_entropy(
+        &self,
+        node_id: String,
+        cross_node_entropy: Vec<u8>,
+    ) -> Result<kv_store::Model, Error> {
+        self.create_value(
+            node_id,
+            String::from("cross_node_entropy"),
+            cross_node_entropy,
+        )
+        .await
+    }
+
+    pub fn get_cross_node_entropy_active_model(
+        &self,
+        node_id: String,
+        cross_node_entropy: Vec<u8>,
+    ) -> kv_store::ActiveModel {
+        let now = seconds_since_epoch();
+        kv_store::ActiveModel {
+            node_id: ActiveValue::Set(node_id),
+            k: ActiveValue::Set(String::from("cross_node_entropy")),
+            v: ActiveValue::Set(cross_node_entropy),
             created_at: ActiveValue::Set(now),
             updated_at: ActiveValue::Set(now),
             ..Default::default()

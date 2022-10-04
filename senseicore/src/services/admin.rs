@@ -38,7 +38,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::hash_map::Entry, fs, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
-use uuid::Uuid;
 
 pub struct NodeHandle {
     pub node: Arc<LightningNode>,
@@ -52,6 +51,8 @@ pub struct NodeCreateInfo {
     pub alias: String,
     pub passphrase: String,
     pub start: bool,
+    pub entropy: Option<String>,
+    pub cross_node_entropy: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -61,6 +62,8 @@ pub struct NodeCreateResult {
     listen_addr: String,
     listen_port: i32,
     id: String,
+    entropy: String,
+    cross_node_entropy: String,
 }
 
 pub enum AdminRequest {
@@ -77,6 +80,8 @@ pub enum AdminRequest {
         alias: String,
         passphrase: String,
         start: bool,
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
     },
     BatchCreateNode {
         nodes: Vec<NodeCreateInfo>,
@@ -160,6 +165,8 @@ pub enum AdminResponse {
         listen_addr: String,
         listen_port: i32,
         id: String,
+        entropy: String,
+        cross_node_entropy: String,
     },
     BatchCreateNode {
         nodes: Vec<NodeCreateResult>,
@@ -327,7 +334,7 @@ impl AdminService {
                                     setup,
                                     authenticated_admin,
                                     authenticated_node: true,
-                                    pubkey: Some(pubkey_node.pubkey),
+                                    pubkey: Some(pubkey_node.id),
                                     username: Some(pubkey_node.username),
                                     role: Some(pubkey_node.role),
                                 })
@@ -419,9 +426,18 @@ impl AdminService {
                 alias,
                 passphrase,
                 start,
+                entropy,
+                cross_node_entropy,
             } => {
-                let (node, macaroon) = self
-                    .create_node(username, alias, passphrase.clone(), node::NodeRole::Default)
+                let (node, macaroon, entropy, cross_node_entropy) = self
+                    .create_node(
+                        username,
+                        alias,
+                        passphrase.clone(),
+                        node::NodeRole::Default,
+                        entropy,
+                        cross_node_entropy,
+                    )
                     .await?;
 
                 let macaroon = macaroon.serialize(macaroon::Format::V2)?;
@@ -430,18 +446,21 @@ impl AdminService {
                     self.start_node(node.clone(), passphrase).await?;
                 }
                 Ok(AdminResponse::CreateNode {
-                    pubkey: node.pubkey,
+                    pubkey: node.id.clone(),
                     macaroon: hex_utils::hex_str(macaroon.as_slice()),
                     listen_addr: node.listen_addr,
                     listen_port: node.listen_port,
                     id: node.id,
+                    entropy: hex_utils::hex_str(&entropy),
+                    cross_node_entropy: hex_utils::hex_str(&cross_node_entropy),
                 })
             }
             AdminRequest::BatchCreateNode { nodes } => {
-                let nodes_and_macaroons = self.batch_create_nodes(nodes.clone()).await?;
+                let nodes_and_macaroons_and_entropy =
+                    self.batch_create_nodes(nodes.clone()).await?;
 
-                for ((node, _macaroon), node_create_info) in
-                    nodes_and_macaroons.iter().zip(nodes.iter())
+                for ((node, _macaroon, _entropy, _cross_node_entropy), node_create_info) in
+                    nodes_and_macaroons_and_entropy.iter().zip(nodes.iter())
                 {
                     if node_create_info.start {
                         self.start_node(node.clone(), node_create_info.passphrase.clone())
@@ -450,16 +469,20 @@ impl AdminService {
                 }
 
                 Ok(AdminResponse::BatchCreateNode {
-                    nodes: nodes_and_macaroons
+                    nodes: nodes_and_macaroons_and_entropy
                         .into_iter()
-                        .map(|(node, macaroon)| {
+                        .map(|(node, macaroon, entropy, cross_node_entropy)| {
                             let macaroon = macaroon.serialize(macaroon::Format::V2).unwrap();
                             NodeCreateResult {
-                                pubkey: node.pubkey,
+                                pubkey: node.id.clone(),
                                 macaroon: hex_utils::hex_str(macaroon.as_slice()),
                                 listen_addr: node.listen_addr,
                                 listen_port: node.listen_port,
                                 id: node.id,
+                                entropy: hex_utils::hex_str(entropy.as_slice()),
+                                cross_node_entropy: hex_utils::hex_str(
+                                    cross_node_entropy.as_slice(),
+                                ),
                             }
                         })
                         .collect::<Vec<_>>(),
@@ -675,7 +698,7 @@ impl AdminService {
     async fn batch_create_nodes(
         &self,
         nodes: Vec<NodeCreateInfo>,
-    ) -> Result<Vec<(node::Model, Macaroon)>, crate::error::Error> {
+    ) -> Result<Vec<(node::Model, Macaroon, [u8; 32], [u8; 32])>, crate::error::Error> {
         let built_node_futures = nodes
             .into_iter()
             .map(|info| {
@@ -684,6 +707,8 @@ impl AdminService {
                     info.alias,
                     info.passphrase,
                     NodeRole::Default,
+                    info.entropy,
+                    info.cross_node_entropy,
                 )
             })
             .collect::<Vec<_>>();
@@ -697,29 +722,44 @@ impl AdminService {
             .map(|built_result| built_result.unwrap())
             .collect::<Vec<_>>();
 
-        let mut nodes_with_macaroons = Vec::with_capacity(built_nodes.len());
+        let mut nodes_with_macaroons_and_entropys = Vec::with_capacity(built_nodes.len());
         let mut db_nodes = Vec::with_capacity(built_nodes.len());
-        let mut db_seeds = Vec::with_capacity(built_nodes.len());
+        let mut db_entropys = Vec::with_capacity(built_nodes.len());
+        let mut db_cross_node_entropys = Vec::with_capacity(built_nodes.len());
         let mut db_macaroons = Vec::with_capacity(built_nodes.len());
 
-        for (node, macaroon, db_node, db_seed, db_macaroon) in built_nodes.drain(..) {
-            nodes_with_macaroons.push((node, macaroon));
+        for (
+            node,
+            macaroon,
+            db_node,
+            db_entropy,
+            db_cross_node_entropy,
+            db_macaroon,
+            entropy,
+            cross_node_entropy,
+        ) in built_nodes.drain(..)
+        {
+            nodes_with_macaroons_and_entropys.push((node, macaroon, entropy, cross_node_entropy));
             db_nodes.push(db_node);
-            db_seeds.push(db_seed);
+            db_entropys.push(db_entropy);
+            db_cross_node_entropys.push(db_cross_node_entropy);
             db_macaroons.push(db_macaroon);
         }
 
         entity::node::Entity::insert_many(db_nodes)
             .exec(self.database.get_connection())
             .await?;
-        entity::kv_store::Entity::insert_many(db_seeds)
+        entity::kv_store::Entity::insert_many(db_entropys)
+            .exec(self.database.get_connection())
+            .await?;
+        entity::kv_store::Entity::insert_many(db_cross_node_entropys)
             .exec(self.database.get_connection())
             .await?;
         entity::macaroon::Entity::insert_many(db_macaroons)
             .exec(self.database.get_connection())
             .await?;
 
-        Ok(nodes_with_macaroons)
+        Ok(nodes_with_macaroons_and_entropys)
     }
 
     async fn build_node(
@@ -728,13 +768,18 @@ impl AdminService {
         alias: String,
         passphrase: String,
         role: node::NodeRole,
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
     ) -> Result<
         (
             entity::node::Model,
             Macaroon,
             entity::node::ActiveModel,
             entity::kv_store::ActiveModel,
+            entity::kv_store::ActiveModel,
             entity::macaroon::ActiveModel,
+            [u8; 32],
+            [u8; 32],
         ),
         crate::error::Error,
     > {
@@ -748,29 +793,54 @@ impl AdminService {
             }
         };
 
-        // NODE ID
-        let node_id = Uuid::new_v4().to_string();
-
-        // NODE DIRECTORY
-        let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
-        fs::create_dir_all(node_directory)?;
-
         // NODE ENTROPY
-        let entropy = LightningNode::generate_entropy();
-        let encrypted_entropy = LightningNode::encrypt_entropy(&entropy, passphrase.as_bytes())?;
+        let entropy = match entropy {
+            Some(entropy_hex) => {
+                let mut entropy: [u8; 32] = [0; 32];
+                let entropy_vec = hex_utils::to_vec(&entropy_hex).unwrap();
+                entropy.copy_from_slice(entropy_vec.as_slice());
+                entropy
+            }
+            None => LightningNode::generate_entropy(),
+        };
 
-        let entropy_active_model = self
-            .database
-            .get_entropy_active_model(node_id.clone(), encrypted_entropy);
+        let cross_node_entropy = match cross_node_entropy {
+            Some(cross_node_entropy_hex) => {
+                let mut cross_node_entropy: [u8; 32] = [0; 32];
+                let cross_node_entropy_vec = hex_utils::to_vec(&cross_node_entropy_hex).unwrap();
+                cross_node_entropy.copy_from_slice(cross_node_entropy_vec.as_slice());
+                cross_node_entropy
+            }
+            None => LightningNode::generate_entropy(),
+        };
+
+        let encrypted_entropy = LightningNode::encrypt_entropy(&entropy, passphrase.as_bytes())?;
+        let encrypted_cross_node_entropy =
+            LightningNode::encrypt_entropy(&cross_node_entropy, passphrase.as_bytes())?;
 
         let seed = LightningNode::get_seed_from_entropy(self.config.network, &entropy);
 
         // NODE PUBKEY
         let node_pubkey = LightningNode::get_node_pubkey_from_seed(&seed);
 
+        // NODE ID
+        let node_id = node_pubkey.clone();
+
+        // NODE DIRECTORY
+        let node_directory = format!("{}/{}/{}", self.data_dir, self.config.network, node_id);
+        fs::create_dir_all(node_directory)?;
+
+        let entropy_active_model = self
+            .database
+            .get_entropy_active_model(node_id.clone(), encrypted_entropy);
+
+        let cross_node_entropy_active_model = self
+            .database
+            .get_cross_node_entropy_active_model(node_id.clone(), encrypted_cross_node_entropy);
+
         // NODE MACAROON
         let (macaroon, macaroon_id) =
-            LightningNode::generate_macaroon(&entropy, node_pubkey.clone())?;
+            LightningNode::generate_macaroon(&seed, node_pubkey, "*".to_string())?;
 
         let encrypted_macaroon = LightningNode::encrypt_macaroon(&macaroon, passphrase.as_bytes())?;
 
@@ -787,7 +857,6 @@ impl AdminService {
         // NODE
         let active_node = entity::node::ActiveModel {
             id: ActiveValue::Set(node_id.clone()),
-            pubkey: ActiveValue::Set(node_pubkey.clone()),
             username: ActiveValue::Set(username.clone()),
             alias: ActiveValue::Set(alias.clone()),
             network: ActiveValue::Set(self.config.network.to_string()),
@@ -807,7 +876,6 @@ impl AdminService {
             network: self.config.network.to_string(),
             listen_addr,
             listen_port,
-            pubkey: node_pubkey,
             created_at: now,
             updated_at: now,
             status: node::NodeStatus::Stopped.into(),
@@ -818,7 +886,10 @@ impl AdminService {
             macaroon,
             active_node,
             entropy_active_model,
+            cross_node_entropy_active_model,
             db_macaroon,
+            entropy,
+            cross_node_entropy,
         ))
     }
 
@@ -828,15 +899,37 @@ impl AdminService {
         alias: String,
         passphrase: String,
         role: node::NodeRole,
-    ) -> Result<(node::Model, Macaroon), crate::error::Error> {
-        let (node, macaroon, db_node, db_seed, db_macaroon) =
-            self.build_node(username, alias, passphrase, role).await?;
+        entropy: Option<String>,
+        cross_node_entropy: Option<String>,
+    ) -> Result<(node::Model, Macaroon, [u8; 32], [u8; 32]), crate::error::Error> {
+        let (
+            node,
+            macaroon,
+            db_node,
+            db_entropy,
+            db_cross_node_entropy,
+            db_macaroon,
+            entropy,
+            cross_node_entropy,
+        ) = self
+            .build_node(
+                username,
+                alias,
+                passphrase,
+                role,
+                entropy,
+                cross_node_entropy,
+            )
+            .await?;
 
-        db_seed.insert(self.database.get_connection()).await?;
+        db_entropy.insert(self.database.get_connection()).await?;
+        db_cross_node_entropy
+            .insert(self.database.get_connection())
+            .await?;
         db_macaroon.insert(self.database.get_connection()).await?;
         db_node.insert(self.database.get_connection()).await?;
 
-        Ok((node, macaroon))
+        Ok((node, macaroon, entropy, cross_node_entropy))
     }
 
     // note: please be sure to stop the node first? maybe?
@@ -854,7 +947,7 @@ impl AdminService {
     ) -> Result<(), crate::error::Error> {
         let status = {
             let mut node_directory = self.node_directory.lock().await;
-            match node_directory.entry(node.pubkey.clone()) {
+            match node_directory.entry(node.id.clone()) {
                 Entry::Vacant(entry) => {
                     entry.insert(None);
                     None
@@ -892,14 +985,14 @@ impl AdminService {
 
                 println!(
                     "starting {}@{}:{}",
-                    node.pubkey.clone(),
+                    node.id.clone(),
                     self.config.api_host.clone(),
                     node.listen_port
                 );
 
                 {
                     let mut node_directory = self.node_directory.lock().await;
-                    if let Entry::Occupied(mut entry) = node_directory.entry(node.pubkey.clone()) {
+                    if let Entry::Occupied(mut entry) = node_directory.entry(node.id.clone()) {
                         entry.insert(Some(NodeHandle {
                             node: Arc::new(lightning_node.clone()),
                             background_processor,

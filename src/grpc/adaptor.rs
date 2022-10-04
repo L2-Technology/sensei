@@ -9,9 +9,11 @@
 
 use super::sensei::{
     self, AddKnownPeerRequest, AddKnownPeerResponse, Channel as ChannelMessage,
-    DeletePaymentRequest, DeletePaymentResponse, Info as InfoMessage, KnownPeer,
-    LabelPaymentRequest, LabelPaymentResponse, ListKnownPeersRequest, ListKnownPeersResponse,
-    NetworkGraphInfoRequest, NetworkGraphInfoResponse,
+    CreatePhantomInvoiceRequest, CreatePhantomInvoiceResponse, DeletePaymentRequest,
+    DeletePaymentResponse, GetPhantomRouteHintsRequest, GetPhantomRouteHintsResponse,
+    Info as InfoMessage, KnownPeer, LabelPaymentRequest, LabelPaymentResponse,
+    ListKnownPeersRequest, ListKnownPeersResponse, ListPhantomPaymentsRequest,
+    ListPhantomPaymentsResponse, NetworkGraphInfoRequest, NetworkGraphInfoResponse,
     OpenChannelRequest as GrpcOpenChannelRequest, OpenChannelsRequest, OpenChannelsResponse,
     PaginationRequest, PaginationResponse, Payment as PaymentMessage, PaymentsFilter,
     Peer as PeerMessage, RemoveKnownPeerRequest, RemoveKnownPeerResponse, StartNodeRequest,
@@ -91,6 +93,7 @@ impl From<Channel> for ChannelMessage {
 impl From<entity::payment::Model> for PaymentMessage {
     fn from(payment: entity::payment::Model) -> Self {
         Self {
+            node_id: payment.node_id,
             hash: payment.payment_hash,
             preimage: payment.preimage,
             secret: payment.secret,
@@ -100,6 +103,8 @@ impl From<entity::payment::Model> for PaymentMessage {
             origin: payment.origin,
             label: payment.label,
             invoice: payment.invoice,
+            created_by_node_id: payment.created_by_node_id,
+            received_by_node_id: payment.received_by_node_id,
         }
     }
 }
@@ -369,6 +374,48 @@ impl TryFrom<NodeResponse> for CreateInvoiceResponse {
     }
 }
 
+impl From<CreatePhantomInvoiceRequest> for NodeRequest {
+    fn from(req: CreatePhantomInvoiceRequest) -> Self {
+        NodeRequest::GetPhantomInvoice {
+            amt_msat: req.amt_msat,
+            description: req.description,
+            phantom_route_hints_hex: req.phantom_route_hints_hex,
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for CreatePhantomInvoiceResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::GetPhantomInvoice { invoice } => Ok(Self { invoice }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<GetPhantomRouteHintsRequest> for NodeRequest {
+    fn from(_req: GetPhantomRouteHintsRequest) -> Self {
+        NodeRequest::GetPhantomRouteHints {}
+    }
+}
+
+impl TryFrom<NodeResponse> for GetPhantomRouteHintsResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::GetPhantomRouteHints {
+                phantom_route_hints_hex,
+            } => Ok(Self {
+                phantom_route_hints_hex,
+            }),
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
 impl From<LabelPaymentRequest> for NodeRequest {
     fn from(req: LabelPaymentRequest) -> Self {
         NodeRequest::LabelPayment {
@@ -473,6 +520,38 @@ impl TryFrom<NodeResponse> for ListPaymentsResponse {
     fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
         match res {
             NodeResponse::ListPayments {
+                payments,
+                pagination,
+            } => {
+                let pagination: PaginationResponse = pagination.into();
+                Ok(Self {
+                    payments: payments
+                        .into_iter()
+                        .map(|payment| payment.into())
+                        .collect::<Vec<PaymentMessage>>(),
+                    pagination: Some(pagination),
+                })
+            }
+            _ => Err("impossible".to_string()),
+        }
+    }
+}
+
+impl From<ListPhantomPaymentsRequest> for NodeRequest {
+    fn from(req: ListPhantomPaymentsRequest) -> Self {
+        NodeRequest::ListPhantomPayments {
+            pagination: req.pagination.map(|p| p.into()).unwrap_or_default(),
+            filter: req.filter.map(|f| f.into()).unwrap_or_default(),
+        }
+    }
+}
+
+impl TryFrom<NodeResponse> for ListPhantomPaymentsResponse {
+    type Error = String;
+
+    fn try_from(res: NodeResponse) -> Result<Self, Self::Error> {
+        match res {
+            NodeResponse::ListPhantomPayments {
                 payments,
                 pagination,
             } => {

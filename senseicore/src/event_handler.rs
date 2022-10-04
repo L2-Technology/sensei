@@ -17,12 +17,15 @@ use crate::hex_utils;
 use crate::node::{ChannelManager, HTLCStatus, PaymentOrigin};
 
 use bdk::wallet::AddressIndex;
+use bitcoin::secp256k1::{self, PublicKey};
 use bitcoin::{secp256k1::Secp256k1, Network};
 use bitcoin_bech32::WitnessProgram;
 use entity::sea_orm::ActiveValue;
 use lightning::chain::chaininterface::{BroadcasterInterface, FeeEstimator};
+use lightning::chain::keysinterface::{KeysInterface, PhantomKeysManager, Recipient};
+
 use lightning::{
-    chain::{chaininterface::ConfirmationTarget, keysinterface::KeysManager},
+    chain::chaininterface::ConfirmationTarget,
     util::events::{Event, EventHandler, PaymentPurpose},
 };
 use rand::{thread_rng, Rng};
@@ -36,12 +39,13 @@ pub struct LightningNodeEventHandler {
     pub config: Arc<SenseiConfig>,
     pub wallet: Arc<Mutex<bdk::Wallet<WalletDatabase>>>,
     pub channel_manager: Arc<ChannelManager>,
-    pub keys_manager: Arc<KeysManager>,
+    pub keys_manager: Arc<PhantomKeysManager>,
     pub database: Arc<SenseiDatabase>,
     pub chain_manager: Arc<SenseiChainManager>,
     pub tokio_handle: Handle,
     pub event_sender: broadcast::Sender<SenseiEvent>,
     pub broadcaster: Arc<SenseiBroadcaster>,
+    pub secp_ctx: Secp256k1<secp256k1::All>,
 }
 
 impl EventHandler for LightningNodeEventHandler {
@@ -180,20 +184,31 @@ impl EventHandler for LightningNodeEventHandler {
                 };
 
                 let payment_hash = hex_utils::hex_str(&payment_hash.0);
+                let preimage = payment_preimage.map(|preimage| hex_utils::hex_str(&preimage.0));
+                let secret = payment_secret.map(|secret| hex_utils::hex_str(&secret.0));
+                let amt_msat: Option<i64> = Some((*amount_msat).try_into().unwrap());
 
                 let existing_payment = self
                     .database
                     .find_payment_sync(self.node_id.clone(), payment_hash.clone())
-                    .unwrap_or(None);
-
-                let preimage = payment_preimage.map(|preimage| hex_utils::hex_str(&preimage.0));
-                let secret = payment_secret.map(|secret| hex_utils::hex_str(&secret.0));
-                let amt_msat: Option<i64> = Some((*amount_msat).try_into().unwrap());
+                    .unwrap_or_else(|_| {
+                        let phantom_node_secret = self
+                            .keys_manager
+                            .get_node_secret(Recipient::PhantomNode)
+                            .unwrap();
+                        let phantom_node_pubkey =
+                            PublicKey::from_secret_key(&self.secp_ctx, &phantom_node_secret)
+                                .to_string();
+                        self.database
+                            .find_payment_sync(phantom_node_pubkey, payment_hash.clone())
+                            .unwrap_or(None)
+                    });
 
                 match existing_payment {
                     Some(payment) => {
                         let mut payment: entity::payment::ActiveModel = payment.into();
                         payment.status = ActiveValue::Set(HTLCStatus::Succeeded.to_string());
+                        payment.received_by_node_id = ActiveValue::Set(Some(self.node_id.clone()));
                         payment.preimage = ActiveValue::Set(preimage);
                         payment.secret = ActiveValue::Set(secret);
                         payment.amt_msat = ActiveValue::Set(amt_msat);
@@ -202,6 +217,9 @@ impl EventHandler for LightningNodeEventHandler {
                     }
                     None => {
                         let payment = entity::payment::ActiveModel {
+                            node_id: ActiveValue::Set(self.node_id.clone()),
+                            created_by_node_id: ActiveValue::Set(self.node_id.clone()),
+                            received_by_node_id: ActiveValue::Set(Some(self.node_id.clone())),
                             payment_hash: ActiveValue::Set(payment_hash),
                             status: ActiveValue::Set(HTLCStatus::Succeeded.to_string()),
                             preimage: ActiveValue::Set(preimage),
