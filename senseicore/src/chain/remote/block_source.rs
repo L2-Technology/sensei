@@ -6,7 +6,7 @@ use bitcoin::{
     Block, BlockHash, BlockHeader, Network,
 };
 use lightning::chain::BestBlock;
-use lightning_block_sync::{BlockHeaderData, BlockSource, BlockSourceError, BlockData};
+use lightning_block_sync::{BlockData, BlockHeaderData, BlockSource, BlockSourceError};
 
 pub struct RemoteBlockSource {
     network: Network,

@@ -6,7 +6,7 @@ use lightning::routing::gossip::NodeId;
 use lightning::routing::router::{Route, RouteHop, RouteParameters};
 use lightning::routing::scoring::{ChannelUsage, Score};
 use lightning::util::ser::{Readable, Writeable};
-use lightning_invoice::payment::{Router as LdkRouterTrait, InFlightHtlcs};
+use lightning_invoice::payment::{InFlightHtlcs, Router as LdkRouterTrait};
 use serde::Deserialize;
 use std::io::Cursor;
 use tokio::runtime::Handle;
@@ -32,59 +32,51 @@ impl LdkRouterTrait for AnyRouter {
         route_params: &RouteParameters,
         payment_hash: &PaymentHash,
         first_hops: Option<&[&ChannelDetails]>,
-        inflight_htlcs: InFlightHtlcs
+        inflight_htlcs: InFlightHtlcs,
     ) -> Result<Route, LightningError> {
         match self {
-            AnyRouter::Local(router) => {
-                router.find_route(payer, route_params, payment_hash, first_hops, inflight_htlcs)
-            }
-            AnyRouter::Remote(router) => {
-                router.find_route(payer, route_params, payment_hash, first_hops, inflight_htlcs)
-            }
+            AnyRouter::Local(router) => router.find_route(
+                payer,
+                route_params,
+                payment_hash,
+                first_hops,
+                inflight_htlcs,
+            ),
+            AnyRouter::Remote(router) => router.find_route(
+                payer,
+                route_params,
+                payment_hash,
+                first_hops,
+                inflight_htlcs,
+            ),
         }
     }
 
     fn notify_payment_path_failed(&self, path: &[&RouteHop], short_channel_id: u64) {
         match self {
-            AnyRouter::Local(router) => {
-                router.notify_payment_path_failed(path, short_channel_id)
-            }
-            AnyRouter::Remote(router) => {
-                router.notify_payment_path_failed(path, short_channel_id)
-            }
+            AnyRouter::Local(router) => router.notify_payment_path_failed(path, short_channel_id),
+            AnyRouter::Remote(router) => router.notify_payment_path_failed(path, short_channel_id),
         }
     }
 
     fn notify_payment_path_successful(&self, path: &[&RouteHop]) {
         match self {
-            AnyRouter::Local(router) => {
-                router.notify_payment_path_successful(path)
-            }
-            AnyRouter::Remote(router) => {
-                router.notify_payment_path_successful(path)
-            }
+            AnyRouter::Local(router) => router.notify_payment_path_successful(path),
+            AnyRouter::Remote(router) => router.notify_payment_path_successful(path),
         }
     }
 
     fn notify_payment_probe_successful(&self, path: &[&RouteHop]) {
         match self {
-            AnyRouter::Local(router) => {
-                router.notify_payment_probe_successful(path)
-            }
-            AnyRouter::Remote(router) => {
-                router.notify_payment_probe_successful(path)
-            }
+            AnyRouter::Local(router) => router.notify_payment_probe_successful(path),
+            AnyRouter::Remote(router) => router.notify_payment_probe_successful(path),
         }
     }
 
     fn notify_payment_probe_failed(&self, path: &[&RouteHop], short_channel_id: u64) {
         match self {
-            AnyRouter::Local(router) => {
-                router.notify_payment_probe_failed(path, short_channel_id)
-            }
-            AnyRouter::Remote(router) => {
-                router.notify_payment_probe_failed(path, short_channel_id)
-            }
+            AnyRouter::Local(router) => router.notify_payment_probe_failed(path, short_channel_id),
+            AnyRouter::Remote(router) => router.notify_payment_probe_failed(path, short_channel_id),
         }
     }
 }
@@ -273,7 +265,7 @@ impl RemoteRouter {
         route_params: &RouteParameters,
         payment_hash: &PaymentHash,
         first_hops: Option<&[&ChannelDetails]>,
-        inflight_htlcs: InFlightHtlcs
+        inflight_htlcs: InFlightHtlcs,
     ) -> Result<Route, LightningError> {
         let client = reqwest::Client::new();
         let response = client
@@ -314,12 +306,18 @@ impl LdkRouterTrait for RemoteRouter {
         route_params: &RouteParameters,
         payment_hash: &PaymentHash,
         first_hops: Option<&[&ChannelDetails]>,
-        inflight_htlcs: InFlightHtlcs
+        inflight_htlcs: InFlightHtlcs,
     ) -> Result<Route, LightningError> {
         tokio::task::block_in_place(move || {
             self.tokio_handle.clone().block_on(async move {
-                self.find_route_async(payer, route_params, payment_hash, first_hops, inflight_htlcs)
-                    .await
+                self.find_route_async(
+                    payer,
+                    route_params,
+                    payment_hash,
+                    first_hops,
+                    inflight_htlcs,
+                )
+                .await
             })
         })
     }

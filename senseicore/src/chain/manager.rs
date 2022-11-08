@@ -12,11 +12,11 @@ use crate::{
 };
 use bitcoin::BlockHash;
 use lightning::chain::{
-    chaininterface::{BroadcasterInterface, FeeEstimator}, 
+    chaininterface::{BroadcasterInterface, FeeEstimator},
     Listen,
 };
-use lightning_block_sync::{SpvClient, poll::ChainTip};
 use lightning_block_sync::{init, poll, UnboundedCache};
+use lightning_block_sync::{poll::ChainTip, SpvClient};
 use lightning_block_sync::{poll::ValidatedBlockHeader, BlockSource};
 use std::ops::Deref;
 use tokio::{sync::Mutex, task::JoinHandle};
@@ -35,7 +35,7 @@ pub struct SenseiChainManager {
     poller_running: Arc<AtomicBool>,
     chain_update_available: Arc<AtomicUsize>,
     poller_handle: Mutex<Option<JoinHandle<()>>>,
-    pub current_tip: Arc<Mutex<ValidatedBlockHeader>>
+    pub current_tip: Arc<Mutex<ValidatedBlockHeader>>,
 }
 
 impl SenseiChainManager {
@@ -50,7 +50,7 @@ impl SenseiChainManager {
         let listener_poller = listener.clone();
         let poller_paused = Arc::new(AtomicBool::new(false));
         let poller_running = Arc::new(AtomicBool::new(true));
-        
+
         let chain_update_available = Arc::new(AtomicUsize::new(0));
         let chain_update_available_poller = chain_update_available.clone();
 
@@ -58,15 +58,15 @@ impl SenseiChainManager {
         let poller_running_poller = poller_running.clone();
 
         let chain_tip = init::validate_best_block_header(block_source.clone())
-                .await
-                .unwrap();
+            .await
+            .unwrap();
 
         let current_tip = Arc::new(Mutex::new(chain_tip));
         let current_tip_poller = current_tip.clone();
 
         let poller_handle = tokio::spawn(async move {
             let mut cache = UnboundedCache::new();
-            
+
             let chain_poller = poll::ChainPoller::new(block_source_poller, config.network);
             let mut spv_client =
                 SpvClient::new(chain_tip, chain_poller, &mut cache, listener_poller);
@@ -79,14 +79,14 @@ impl SenseiChainManager {
                     let new_tip = match tip {
                         ChainTip::Common => None,
                         ChainTip::Better(new_tip) => Some(new_tip),
-                        ChainTip::Worse(new_tip) => Some(new_tip)
+                        ChainTip::Worse(new_tip) => Some(new_tip),
                     };
 
                     if let Some(new_tip) = new_tip {
                         let mut current_tip = current_tip_poller.lock().await;
                         *current_tip = new_tip;
                     }
-                    
+
                     if updates_available {
                         chain_update_available_poller.fetch_sub(1, Ordering::Relaxed);
                     }
@@ -105,7 +105,7 @@ impl SenseiChainManager {
             fee_estimator: Arc::new(SenseiFeeEstimator { fee_estimator }),
             broadcaster,
             poller_handle: Mutex::new(Some(poller_handle)),
-            current_tip
+            current_tip,
         })
     }
 
@@ -167,12 +167,12 @@ impl SenseiChainManager {
         let _new_tip = self.synchronize_to_tip(listeners).await.unwrap();
         self.listener
             .add_listener((chain_monitor, channel_manager, wallet_database));
-        
+
         Ok(())
     }
 
     pub async fn get_current_tip(&self) -> Result<ValidatedBlockHeader, crate::error::Error> {
         let current_tip = self.current_tip.lock().await;
-        Ok(current_tip.clone())
+        Ok(*current_tip)
     }
 }

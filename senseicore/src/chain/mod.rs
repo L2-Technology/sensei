@@ -1,6 +1,6 @@
 use bitcoin::Network;
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
-use lightning_block_sync::{BlockSource, BlockData};
+use lightning_block_sync::{BlockData, BlockSource};
 use tokio::runtime::Handle;
 
 use self::{

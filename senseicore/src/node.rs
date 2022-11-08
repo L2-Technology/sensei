@@ -50,13 +50,12 @@ use bitcoin::network::constants::Network;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
-use lightning::onion_message::OnionMessenger as LdkOnionMessenger; 
-use lightning::chain::{chainmonitor, ChannelMonitorUpdateStatus};
 use lightning::chain::keysinterface::{
     InMemorySigner, KeysInterface, KeysManager, PhantomKeysManager, Recipient,
 };
 use lightning::chain::Watch;
 use lightning::chain::{self, Filter};
+use lightning::chain::{chainmonitor, ChannelMonitorUpdateStatus};
 use lightning::ln::channelmanager::{
     self, ChannelDetails, ChannelManager as LdkChannelManager, PhantomRouteHints,
 };
@@ -65,6 +64,7 @@ use lightning::ln::peer_handler::{
     ErroringMessageHandler, IgnoringMessageHandler, MessageHandler, PeerManager as LdkPeerManager,
 };
 use lightning::ln::{PaymentHash, PaymentPreimage, PaymentSecret};
+use lightning::onion_message::OnionMessenger as LdkOnionMessenger;
 use lightning::routing::gossip::{
     NetworkGraph as LdkNetworkGraph, NodeId, P2PGossipSync, RoutingFees,
 };
@@ -297,10 +297,10 @@ pub struct PaymentInfo {
 
 pub type NetworkGraph = LdkNetworkGraph<Arc<FilesystemLogger>>;
 
-pub type SimpleArcOnionMessenger<L> = LdkOnionMessenger<InMemorySigner, Arc<PhantomKeysManager>, Arc<L>, IgnoringMessageHandler>;
+pub type SimpleArcOnionMessenger<L> =
+    LdkOnionMessenger<InMemorySigner, Arc<PhantomKeysManager>, Arc<L>, IgnoringMessageHandler>;
 
 pub type OnionMessenger = SimpleArcOnionMessenger<FilesystemLogger>;
-
 
 pub type GossipSync<P, G, A, L> =
     lightning_background_processor::GossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
@@ -335,8 +335,6 @@ pub type PeerManager = SimpleArcPeerManager<
     SenseiFeeEstimator,
     FilesystemLogger,
 >;
-
-
 
 pub type SimpleArcRoutingPeerManager<SD, L> = LdkPeerManager<
     SD,
@@ -737,10 +735,11 @@ impl LightningNode {
                 // really should extract to generic error handle for io where we really want to know if
                 // the file exists or not.
 
-                
-			    let current_best_block_hash = current_best_block.block_hash();
-			    let chain_params =
-				    ChainParameters { network: config.network, best_block: current_best_block };
+                let current_best_block_hash = current_best_block.block_hash();
+                let chain_params = ChainParameters {
+                    network: config.network,
+                    best_block: current_best_block,
+                };
 
                 let fresh_channel_manager = channelmanager::ChannelManager::new(
                     chain_manager.fee_estimator.clone(),
@@ -807,15 +806,18 @@ impl LightningNode {
         let synced_hash = tip.header.block_hash();
 
         for confirmable_monitor in bundled_channel_monitors.drain(..) {
-            
             // TODO: we should probably not actually panic if one node fails
-            assert_eq!(chain_monitor
-                .watch_channel(confirmable_monitor.2, confirmable_monitor.1 .0),
+            assert_eq!(
+                chain_monitor.watch_channel(confirmable_monitor.2, confirmable_monitor.1 .0),
                 ChannelMonitorUpdateStatus::Completed
             );
         }
 
-        let onion_messenger: Arc<OnionMessenger> = Arc::new(OnionMessenger::new(keys_manager.clone(), logger.clone(), IgnoringMessageHandler {}));
+        let onion_messenger: Arc<OnionMessenger> = Arc::new(OnionMessenger::new(
+            keys_manager.clone(),
+            logger.clone(),
+            IgnoringMessageHandler {},
+        ));
         let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 
         let channel_manager_sync = channel_manager.clone();
@@ -833,7 +835,10 @@ impl LightningNode {
 
         chain_manager.resume_poller();
 
-        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+        let current_time = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let lightning_msg_handler = MessageHandler {
             chan_handler: channel_manager.clone(),
             route_handler: Arc::new(BubbleGossipRouteHandler {
@@ -1138,7 +1143,11 @@ impl LightningNode {
             Network::Signet => Currency::Signet,
         };
 
-        let invoice = utils::create_phantom_invoice::<InMemorySigner, Arc<PhantomKeysManager>, Arc<FilesystemLogger>>(
+        let invoice = utils::create_phantom_invoice::<
+            InMemorySigner,
+            Arc<PhantomKeysManager>,
+            Arc<FilesystemLogger>,
+        >(
             Some(amt_msat),
             None,
             description.clone(),
