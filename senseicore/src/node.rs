@@ -709,7 +709,10 @@ impl LightningNode {
             .force_announced_channel_preference = false;
         user_config.manually_accept_inbound_channels = true;
 
-        let best_block = chain_manager.get_best_block().await?;
+        chain_manager.pause_poller();
+
+        let current_tip = chain_manager.get_current_tip().await?;
+        let current_best_block = current_tip.to_best_block();
 
         let (channel_manager_blockhash, channel_manager) = {
             if let Ok(Some(contents)) = persister.read_channel_manager() {
@@ -734,11 +737,10 @@ impl LightningNode {
                 // really should extract to generic error handle for io where we really want to know if
                 // the file exists or not.
 
-                let tip_hash = best_block.block_hash();
-                let chain_params = ChainParameters {
-                    network: config.network,
-                    best_block,
-                };
+                
+			    let current_best_block_hash = current_best_block.block_hash();
+			    let chain_params =
+				    ChainParameters { network: config.network, best_block: current_best_block };
 
                 let fresh_channel_manager = channelmanager::ChannelManager::new(
                     chain_manager.fee_estimator.clone(),
@@ -749,7 +751,7 @@ impl LightningNode {
                     user_config,
                     chain_params,
                 );
-                (tip_hash, fresh_channel_manager)
+                (current_best_block_hash, fresh_channel_manager)
             }
         };
 
@@ -785,8 +787,8 @@ impl LightningNode {
             database
                 .create_or_update_last_onchain_wallet_sync(
                     id.clone(),
-                    best_block.block_hash(),
-                    best_block.height(),
+                    current_best_block.block_hash(),
+                    current_best_block.height(),
                     time::get_timestamp(),
                 )
                 .await?
@@ -828,6 +830,8 @@ impl LightningNode {
             )
             .await
             .unwrap();
+
+        chain_manager.resume_poller();
 
         let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
         let lightning_msg_handler = MessageHandler {
