@@ -123,6 +123,7 @@ impl SenseiP2P {
         let lightning_msg_handler = MessageHandler {
             chan_handler: Arc::new(ErroringMessageHandler::new()),
             route_handler: p2p_gossip.clone(),
+            onion_message_handler: IgnoringMessageHandler {}
         };
 
         let mut entropy: [u8; 32] = [0; 32];
@@ -144,8 +145,8 @@ impl SenseiP2P {
             .unwrap();
 
         let keys_manager = Arc::new(KeysManager::new(&seed, cur.as_secs(), cur.subsec_nanos()));
-
-        let mut ephemeral_bytes = [0; 32];
+        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
+        let mut ephemeral_bytes = [0; 32]; 
         rand::thread_rng().fill_bytes(&mut ephemeral_bytes);
 
         let peer_manager = match config.get_p2p_config() {
@@ -153,9 +154,10 @@ impl SenseiP2P {
             _ => Some(Arc::new(RoutingPeerManager::new(
                 lightning_msg_handler,
                 keys_manager.get_node_secret(Recipient::Node).unwrap(),
+                current_time,
                 &ephemeral_bytes,
                 logger.clone(),
-                Arc::new(IgnoringMessageHandler {}),
+                IgnoringMessageHandler {},
             ))),
         };
 

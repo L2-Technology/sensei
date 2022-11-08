@@ -25,8 +25,8 @@ impl AnyRouter {
     }
 }
 
-impl<S: Score> LdkRouterTrait<S> for AnyRouter {
-    fn find_route(
+impl LdkRouterTrait for AnyRouter {
+    fn find_route<S: Score>(
         &self,
         payer: &PublicKey,
         route_params: &RouteParameters,
@@ -261,8 +261,8 @@ impl RemoteRouter {
     }
 }
 
-impl<S: Score> LdkRouterTrait<S> for RemoteRouter {
-    fn find_route(
+impl LdkRouterTrait for RemoteRouter {
+    fn find_route<S: Score>(
         &self,
         payer: &PublicKey,
         route_params: &RouteParameters,

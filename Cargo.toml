@@ -15,8 +15,8 @@ name = "senseid"
 path = "src/main.rs"
 
 [dependencies]
-bitcoin = { version = "0.28.1" }
-bitcoincore-rpc = "0.15"
+bitcoin = { version = "0.29.1" }
+bitcoincore-rpc = "0.16"
 futures = "0.3"
 chrono = "0.4"
 rand = "0.8.4"
@@ -49,7 +49,7 @@ senseicore = { path = "senseicore" }
 tonic-build = "0.6"
 
 [dev-dependencies]
-bitcoind = { version = "0.26", features = [ "22_0" ] }
+bitcoind = { version = "0.28.1", features = [ "22_0" ] }
 serial_test = "0.6.0"
 
 [[test]]

@@ -1,16 +1,16 @@
 use lightning::ln::msgs::NetAddress;
 
-use crate::node::ChannelManager;
+use crate::node::PeerManager;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
     time::Duration,
 };
 
-pub type AnnouncementNodeDetails = (Arc<ChannelManager>, Vec<NetAddress>, [u8; 32]);
+pub type AnnouncementNodeDetails = (Arc<PeerManager>, Vec<NetAddress>, [u8; 32]);
 
 pub enum NodeAnnouncerRequest {
-    RegisterNode(String, Arc<ChannelManager>, Vec<NetAddress>, [u8; 32]),
+    RegisterNode(String, Arc<PeerManager>, Vec<NetAddress>, [u8; 32]),
     UnregisterNode(String),
 }
 
@@ -30,14 +30,14 @@ impl NodeAnnouncer {
     pub fn register_node(
         &self,
         id: String,
-        channel_manager: Arc<ChannelManager>,
+        peer_manager: Arc<PeerManager>,
         listen_addresses: Vec<NetAddress>,
         alias: [u8; 32],
     ) {
         let mut requests = self.requests.lock().unwrap();
         requests.push_back(NodeAnnouncerRequest::RegisterNode(
             id,
-            channel_manager,
+            peer_manager,
             listen_addresses,
             alias,
         ));
@@ -53,9 +53,9 @@ impl NodeAnnouncer {
         let mut interval = tokio::time::interval(self.interval);
         loop {
             interval.tick().await;
-            for (_node_id, (channel_manager, listen_addresses, alias)) in nodes.iter() {
+            for (_node_id, (peer_manager, listen_addresses, alias)) in nodes.iter() {
                 if !listen_addresses.is_empty() {
-                    channel_manager.broadcast_node_announcement(
+                    peer_manager.broadcast_node_announcement(
                         [0; 3],
                         *alias,
                         listen_addresses.clone(),
@@ -68,11 +68,11 @@ impl NodeAnnouncer {
                 match request {
                     NodeAnnouncerRequest::RegisterNode(
                         id,
-                        channel_manager,
+                        peer_manager,
                         listen_addresses,
                         alias,
                     ) => {
-                        nodes.insert(id, (channel_manager, listen_addresses, alias));
+                        nodes.insert(id, (peer_manager, listen_addresses, alias));
                     }
                     NodeAnnouncerRequest::UnregisterNode(id) => {
                         nodes.remove(&id);

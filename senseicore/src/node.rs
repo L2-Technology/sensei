@@ -50,6 +50,7 @@ use bitcoin::network::constants::Network;
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
+use lightning::onion_message::OnionMessenger as LdkOnionMessenger; 
 use lightning::chain::chainmonitor;
 use lightning::chain::keysinterface::{
     InMemorySigner, KeysInterface, KeysManager, PhantomKeysManager, Recipient,
@@ -296,6 +297,11 @@ pub struct PaymentInfo {
 
 pub type NetworkGraph = LdkNetworkGraph<Arc<FilesystemLogger>>;
 
+pub type SimpleArcOnionMessenger<L> = LdkOnionMessenger<InMemorySigner, Arc<PhantomKeysManager>, Arc<L>>;
+
+pub type OnionMessenger = SimpleArcOnionMessenger<FilesystemLogger>;
+
+
 pub type GossipSync<P, G, A, L> =
     lightning_background_processor::GossipSync<P, Arc<RapidGossipSync<G, L>>, G, A, L>;
 
@@ -317,8 +323,9 @@ pub type SimpleArcPeerManager<SD, M, T, F, L> = LdkPeerManager<
     SD,
     Arc<SimpleArcChannelManager<M, T, F, L>>,
     Arc<BubbleGossipRouteHandler>,
+    Arc<OnionMessenger>,
     Arc<L>,
-    Arc<IgnoringMessageHandler>,
+    IgnoringMessageHandler,
 >;
 
 pub type PeerManager = SimpleArcPeerManager<
@@ -329,12 +336,15 @@ pub type PeerManager = SimpleArcPeerManager<
     FilesystemLogger,
 >;
 
+
+
 pub type SimpleArcRoutingPeerManager<SD, L> = LdkPeerManager<
     SD,
     Arc<ErroringMessageHandler>,
     Arc<AnyP2PGossipHandler>,
+    IgnoringMessageHandler,
     Arc<L>,
-    Arc<IgnoringMessageHandler>,
+    IgnoringMessageHandler,
 >;
 pub type RoutingPeerManager = SimpleArcRoutingPeerManager<SocketDescriptor, FilesystemLogger>;
 
@@ -730,6 +740,7 @@ impl LightningNode {
                     network: config.network,
                     best_block,
                 };
+
                 let fresh_channel_manager = channelmanager::ChannelManager::new(
                     chain_manager.fee_estimator.clone(),
                     chain_monitor.clone(),
@@ -800,6 +811,7 @@ impl LightningNode {
                 .unwrap();
         }
 
+        let onion_messenger: Arc<OnionMessenger> = Arc::new(OnionMessenger::new(keys_manager.clone(), logger.clone()));
         let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 
         let channel_manager_sync = channel_manager.clone();
@@ -815,11 +827,13 @@ impl LightningNode {
             .await
             .unwrap();
 
+        let current_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
         let lightning_msg_handler = MessageHandler {
             chan_handler: channel_manager.clone(),
             route_handler: Arc::new(BubbleGossipRouteHandler {
                 target: p2p.p2p_gossip.clone(),
             }),
+            onion_message_handler: onion_messenger.clone(),
         };
 
         let mut ephemeral_bytes = [0; 32];
@@ -828,9 +842,10 @@ impl LightningNode {
         let peer_manager = Arc::new(PeerManager::new(
             lightning_msg_handler,
             keys_manager.get_node_secret(Recipient::Node).unwrap(),
+            current_time,
             &ephemeral_bytes,
             logger.clone(),
-            Arc::new(IgnoringMessageHandler {}),
+            IgnoringMessageHandler {},
         ));
 
         let event_handler = Arc::new(LightningNodeEventHandler {
@@ -944,7 +959,7 @@ impl LightningNode {
 
         p2p.node_announcer.register_node(
             id.clone(),
-            channel_manager.clone(),
+            peer_manager.clone(),
             broadcast_listen_addresses,
             alias_bytes,
         );
