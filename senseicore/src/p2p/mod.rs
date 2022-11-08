@@ -154,7 +154,7 @@ impl SenseiP2P {
             _ => Some(Arc::new(RoutingPeerManager::new(
                 lightning_msg_handler,
                 keys_manager.get_node_secret(Recipient::Node).unwrap(),
-                current_time,
+                current_time.try_into().unwrap(),
                 &ephemeral_bytes,
                 logger.clone(),
                 IgnoringMessageHandler {},
@@ -220,7 +220,7 @@ impl SenseiP2P {
                 let mut randomness: [u8; 32] = [0; 32];
                 rand::thread_rng().fill_bytes(&mut randomness);
                 let local_router =
-                    DefaultRouter::new(self.network_graph.clone(), self.logger.clone(), randomness);
+                    DefaultRouter::new(self.network_graph.clone(), self.logger.clone(), randomness, self.scorer.clone());
                 AnyRouter::Local(local_router)
             }
         }

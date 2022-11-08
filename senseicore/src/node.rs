@@ -51,7 +51,7 @@ use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::util::bip32::{ChildNumber, DerivationPath, ExtendedPrivKey};
 use bitcoin::BlockHash;
 use lightning::onion_message::OnionMessenger as LdkOnionMessenger; 
-use lightning::chain::chainmonitor;
+use lightning::chain::{chainmonitor, ChannelMonitorUpdateStatus};
 use lightning::chain::keysinterface::{
     InMemorySigner, KeysInterface, KeysManager, PhantomKeysManager, Recipient,
 };
@@ -297,7 +297,7 @@ pub struct PaymentInfo {
 
 pub type NetworkGraph = LdkNetworkGraph<Arc<FilesystemLogger>>;
 
-pub type SimpleArcOnionMessenger<L> = LdkOnionMessenger<InMemorySigner, Arc<PhantomKeysManager>, Arc<L>>;
+pub type SimpleArcOnionMessenger<L> = LdkOnionMessenger<InMemorySigner, Arc<PhantomKeysManager>, Arc<L>, IgnoringMessageHandler>;
 
 pub type OnionMessenger = SimpleArcOnionMessenger<FilesystemLogger>;
 
@@ -351,13 +351,12 @@ pub type RoutingPeerManager = SimpleArcRoutingPeerManager<SocketDescriptor, File
 pub type ChannelManager =
     SimpleArcChannelManager<ChainMonitor, SenseiBroadcaster, SenseiFeeEstimator, FilesystemLogger>;
 
-pub type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
+pub type Router = DefaultRouter<Arc<NetworkGraph>, Arc<FilesystemLogger>, Arc<Mutex<AnyScorer>>>;
 pub type Scorer = ProbabilisticScorer<Arc<NetworkGraph>, Arc<FilesystemLogger>>;
 
 pub type InvoicePayer = payment::InvoicePayer<
     Arc<ChannelManager>,
     AnyRouter,
-    Arc<Mutex<AnyScorer>>,
     Arc<FilesystemLogger>,
     Arc<LightningNodeEventHandler>,
 >;
@@ -806,12 +805,15 @@ impl LightningNode {
         let synced_hash = tip.header.block_hash();
 
         for confirmable_monitor in bundled_channel_monitors.drain(..) {
-            chain_monitor
-                .watch_channel(confirmable_monitor.2, confirmable_monitor.1 .0)
-                .unwrap();
+            
+            // TODO: we should probably not actually panic if one node fails
+            assert_eq!(chain_monitor
+                .watch_channel(confirmable_monitor.2, confirmable_monitor.1 .0),
+                ChannelMonitorUpdateStatus::Completed
+            );
         }
 
-        let onion_messenger: Arc<OnionMessenger> = Arc::new(OnionMessenger::new(keys_manager.clone(), logger.clone()));
+        let onion_messenger: Arc<OnionMessenger> = Arc::new(OnionMessenger::new(keys_manager.clone(), logger.clone(), IgnoringMessageHandler {}));
         let channel_manager: Arc<ChannelManager> = Arc::new(channel_manager);
 
         let channel_manager_sync = channel_manager.clone();
@@ -842,7 +844,7 @@ impl LightningNode {
         let peer_manager = Arc::new(PeerManager::new(
             lightning_msg_handler,
             keys_manager.get_node_secret(Recipient::Node).unwrap(),
-            current_time,
+            current_time.try_into().unwrap(),
             &ephemeral_bytes,
             logger.clone(),
             IgnoringMessageHandler {},
@@ -865,7 +867,6 @@ impl LightningNode {
         let invoice_payer = Arc::new(InvoicePayer::new(
             channel_manager.clone(),
             p2p.get_router(),
-            p2p.scorer.clone(),
             logger.clone(),
             event_handler,
             payment::Retry::Attempts(5),
@@ -1133,13 +1134,14 @@ impl LightningNode {
             Network::Signet => Currency::Signet,
         };
 
-        let invoice = utils::create_phantom_invoice::<InMemorySigner, Arc<PhantomKeysManager>>(
+        let invoice = utils::create_phantom_invoice::<InMemorySigner, Arc<PhantomKeysManager>, Arc<FilesystemLogger>>(
             Some(amt_msat),
             None,
             description.clone(),
             3600, // FIXME invoice_expiry_delta_secs
             phantom_route_hints,
             self.keys_manager.clone(),
+            self.logger.clone(),
             currency,
         )?;
 
@@ -1178,6 +1180,7 @@ impl LightningNode {
         let invoice = utils::create_invoice_from_channelmanager(
             &self.channel_manager,
             self.keys_manager.clone(),
+            self.logger.clone(),
             currency,
             Some(amt_msat),
             description.clone(),

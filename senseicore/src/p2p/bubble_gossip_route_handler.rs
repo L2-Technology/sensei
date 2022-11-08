@@ -119,7 +119,7 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
         &self,
         their_node_id: &bitcoin::secp256k1::PublicKey,
         init: &lightning::ln::msgs::Init,
-    ) {
+    ) -> Result<(), ()> {
         match self {
             AnyP2PGossipHandler::Remote(handler) => handler.peer_connected(their_node_id, init),
             AnyP2PGossipHandler::Local(handler) => handler.peer_connected(their_node_id, init),
@@ -377,7 +377,8 @@ impl RoutingMessageHandler for RemoteGossipMessageHandler {
         &self,
         _their_node_id: &bitcoin::secp256k1::PublicKey,
         _init: &lightning::ln::msgs::Init,
-    ) {
+    ) -> Result<(), ()> {
+        Ok(())
     }
 
     fn handle_reply_channel_range(
@@ -481,7 +482,8 @@ impl RoutingMessageHandler for BubbleGossipRouteHandler {
         &self,
         _their_node_id: &bitcoin::secp256k1::PublicKey,
         _init: &lightning::ln::msgs::Init,
-    ) {
+    ) -> Result<(), ()> {
+        Ok(())
     }
 
     fn handle_reply_channel_range(
