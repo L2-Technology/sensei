@@ -13,3 +13,6 @@ pub mod persist;
 pub mod services;
 pub mod utils;
 pub mod version;
+
+pub extern crate entity;
+pub extern crate migration;

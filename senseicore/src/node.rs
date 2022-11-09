@@ -72,7 +72,7 @@ use lightning::routing::router::{RouteHint, RouteHintHop};
 use lightning::routing::scoring::ProbabilisticScorer;
 use lightning::util::config::UserConfig;
 use lightning::util::ser::{Readable, ReadableArgs, Writeable};
-use lightning_background_processor::BackgroundProcessor;
+use lightning_background_processor::{process_events_async};
 use lightning_invoice::utils::DefaultRouter;
 use lightning_invoice::{payment, utils, Currency, Invoice, InvoiceDescription};
 use lightning_net_tokio::SocketDescriptor;
@@ -88,7 +88,7 @@ use std::net::IpAddr;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+use std::time::{SystemTime};
 use std::{convert::From, fmt};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast;
@@ -194,6 +194,20 @@ impl From<&RouteHintHop> for LocalRouteHintHop {
             cltv_expiry_delta: hop.cltv_expiry_delta,
             htlc_minimum_msat: hop.htlc_minimum_msat,
             htlc_maximum_msat: hop.htlc_maximum_msat,
+        }
+    }
+}
+
+pub struct SenseiAsyncBackgroundProcessor {
+    stop_signal: Arc<AtomicBool>,
+    background_task: Option<JoinHandle<()>>
+}
+
+impl SenseiAsyncBackgroundProcessor {
+    pub async fn stop(&mut self) {
+        self.stop_signal.store(true, Ordering::Relaxed);
+        if let Some(background_task) = self.background_task.take() {
+            background_task.await.unwrap();
         }
     }
 }
@@ -618,7 +632,7 @@ impl LightningNode {
         chain_manager: Arc<SenseiChainManager>,
         database: Arc<SenseiDatabase>,
         event_sender: broadcast::Sender<SenseiEvent>,
-    ) -> Result<(Self, Vec<JoinHandle<()>>, BackgroundProcessor), Error> {
+    ) -> Result<(Self, Vec<JoinHandle<()>>, SenseiAsyncBackgroundProcessor), Error> {
         let network = config.network;
 
         let entropy =
@@ -882,7 +896,7 @@ impl LightningNode {
         ));
 
         let stop_listen = Arc::new(AtomicBool::new(false));
-
+    
         let mut handles = vec![];
 
         let peer_manager_connection_handler = peer_manager.clone();
@@ -912,15 +926,24 @@ impl LightningNode {
 
         let bg_persister = Arc::clone(&persister);
 
-        // TODO: https://github.com/lightningdevkit/rust-lightning/issues/1595
-        // once this lands we should be able to build a tokio BP to prevent starting
-        // a thread per node. might even be able to simplify to a single BP per sensei instance
-        let background_processor = BackgroundProcessor::start(
-            bg_persister,
-            invoice_payer.clone(),
-            chain_monitor.clone(),
-            channel_manager.clone(),
-            lightning_background_processor::GossipSync::None::<
+
+        let stop_bg_processor = Arc::new(AtomicBool::new(false));
+
+        let stop_bg_processor_background = stop_bg_processor.clone();
+        let bg_persister_background = bg_persister.clone();
+        let event_handler_background = invoice_payer.clone();
+        let chain_monitor_background = chain_monitor.clone();
+        let channel_manager_background = channel_manager.clone();
+        let peer_manager_background = peer_manager.clone();
+        let logger_background = logger.clone();
+
+        let bg_processor_handle = tokio::spawn(async move {
+            process_events_async(
+                bg_persister_background,
+                event_handler_background,
+                chain_monitor_background,
+                channel_manager_background,
+                lightning_background_processor::GossipSync::None::<
                 Arc<
                     P2PGossipSync<
                         Arc<NetworkGraph>,
@@ -932,11 +955,24 @@ impl LightningNode {
                 Arc<NetworkGraph>,
                 Arc<dyn chain::Access + Send + Sync>,
                 Arc<FilesystemLogger>,
-            >,
-            peer_manager.clone(),
-            logger.clone(),
-            None::<Arc<Mutex<AnyScorer>>>,
-        );
+                >,
+                peer_manager_background,
+                logger_background.clone(),
+                None::<Arc<Mutex<AnyScorer>>>,
+                |duration| {
+                    let stop_bg_processor_sleeper = stop_bg_processor_background.clone();
+                    async move {
+                        tokio::time::sleep(duration).await;
+                        stop_bg_processor_sleeper.load(Ordering::Relaxed)
+                    }
+                }
+            ).await.unwrap();
+        });
+
+        let background_processor = SenseiAsyncBackgroundProcessor { 
+            stop_signal: stop_bg_processor,
+            background_task: Some(bg_processor_handle)
+        };
 
         // Reconnect to channel peers if possible.
         p2p.peer_connector

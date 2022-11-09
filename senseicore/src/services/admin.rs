@@ -13,6 +13,7 @@ use crate::database::SenseiDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
+use crate::node::SenseiAsyncBackgroundProcessor;
 use crate::p2p::utils::parse_peer_info;
 use crate::p2p::SenseiP2P;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
@@ -28,7 +29,6 @@ use lightning::routing::gossip::NodeId;
 use lightning::routing::router::{RouteHop, RouteParameters};
 use lightning::routing::scoring::Score;
 use lightning::util::ser::{Readable, Writeable};
-use lightning_background_processor::BackgroundProcessor;
 use lightning_invoice::payment::{InFlightHtlcs, Router};
 use macaroon::Macaroon;
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ use tokio::task::JoinHandle;
 
 pub struct NodeHandle {
     pub node: Arc<LightningNode>,
-    pub background_processor: BackgroundProcessor,
+    pub background_processor: SenseiAsyncBackgroundProcessor,
     pub handles: Vec<JoinHandle<()>>,
 }
 
@@ -1022,7 +1022,7 @@ impl AdminService {
         let entry = node_directory.entry(pubkey.clone());
 
         if let Entry::Occupied(entry) = entry {
-            if let Some(node_handle) = entry.remove() {
+            if let Some(mut node_handle) = entry.remove() {
                 // Disconnect our peers and stop accepting new connections. This ensures we don't continue
                 // updating our channel data after we've stopped the background processor.
                 node_handle.node.peer_manager.disconnect_all_peers();
@@ -1030,7 +1030,7 @@ impl AdminService {
                 self.p2p
                     .peer_connector
                     .unregister_node(node_handle.node.id.clone());
-                let _res = node_handle.background_processor.stop();
+                let _res = node_handle.background_processor.stop().await;
                 for handle in node_handle.handles {
                     handle.abort();
                 }

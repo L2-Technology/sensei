@@ -1736,6 +1736,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "382ee5cabdacb852187c84c86bd47fe6fb29189cddad30546e25ec1731e35c68"
 dependencies = [
  "bitcoin 0.29.2",
+ "futures-util",
  "lightning",
  "lightning-rapid-gossip-sync",
 ]
