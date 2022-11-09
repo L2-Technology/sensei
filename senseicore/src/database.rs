@@ -35,7 +35,7 @@ use sea_orm::{prelude::*, DatabaseConnection};
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct LastSync {
     pub height: u32,
     pub hash: BlockHash,

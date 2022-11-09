@@ -144,6 +144,7 @@ pub struct FindRouteParams {
     pub route_params_hex: String,
     pub payment_hash_hex: String,
     pub first_hops: Vec<String>,
+    pub inflight_htlcs_hex: String,
 }
 
 impl From<FindRouteParams> for AdminRequest {
@@ -153,6 +154,7 @@ impl From<FindRouteParams> for AdminRequest {
             route_params_hex: params.route_params_hex,
             payment_hash_hex: params.payment_hash_hex,
             first_hops: params.first_hops,
+            inflight_htlcs_hex: params.inflight_htlcs_hex,
         }
     }
 }

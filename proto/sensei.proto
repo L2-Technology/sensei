@@ -199,6 +199,7 @@ message FindRouteRequest {
     string route_params_hex = 2;
     string payment_hash_hex = 3;
     repeated string first_hops = 4;
+    string inflight_htlcs_hex = 5;
 }
 message FindRouteResponse {
     string route = 1;

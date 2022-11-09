@@ -9,15 +9,15 @@ name = "senseicore"
 path = "src/lib.rs"
 
 [dependencies]
-lightning = { version = "0.0.110", features = ["max_level_trace"] }
-lightning-block-sync = { version = "0.0.110", features = [ "rpc-client" ] }
-lightning-invoice = { version = "0.18.0" }
-lightning-net-tokio = { version = "0.0.110" }
-lightning-persister = { version = "0.0.110" }
-lightning-background-processor = { version = "0.0.110" }
-lightning-rapid-gossip-sync = { version = "0.0.110" }
+lightning = { version = "0.0.112", features = ["max_level_trace"] }
+lightning-block-sync = { version = "0.0.112", features = [ "rpc-client" ] }
+lightning-invoice = { version = "0.20.0" }
+lightning-net-tokio = { version = "0.0.112" }
+lightning-persister = { version = "0.0.112" }
+lightning-background-processor = { version = "0.0.112", features = [ "futures" ] }
+lightning-rapid-gossip-sync = { version = "0.0.112" }
 base64 = "0.13.0"
-bitcoin = { version = "0.28.1" }
+bitcoin = { version = "0.29.1" }
 bitcoin-bech32 = "0.12"
 bech32 = "0.8"
 futures = "0.3"
@@ -29,7 +29,7 @@ serde_json = { version = "1.0" }
 tokio = { version = "1", features = [ "io-util", "macros", "rt", "rt-multi-thread", "sync", "net", "time" ] }
 log = "0.4.16"
 bitcoincore-rpc = "0.15"
-bdk = "0.22"
+bdk = "0.24"
 pin-project = "1.0"
 hyper = "0.14"
 bcrypt = "0.13.0"
@@ -45,5 +45,5 @@ base32 = "0.4.0"
 socks = "0.3.4"
 
 [dev-dependencies]
-bitcoind = { version = "0.26", features = [ "22_0" ] }
+bitcoind = { version = "0.28.1", features = [ "22_0" ] }
 serial_test = "0.6.0"

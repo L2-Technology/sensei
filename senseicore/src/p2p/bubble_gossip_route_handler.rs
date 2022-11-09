@@ -77,42 +77,40 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
         }
     }
 
-    fn get_next_channel_announcements(
+    fn get_next_channel_announcement(
         &self,
         starting_point: u64,
-        batch_amount: u8,
-    ) -> Vec<(
+    ) -> Option<(
         lightning::ln::msgs::ChannelAnnouncement,
         Option<lightning::ln::msgs::ChannelUpdate>,
         Option<lightning::ln::msgs::ChannelUpdate>,
     )> {
         match self {
             AnyP2PGossipHandler::Remote(handler) => {
-                handler.get_next_channel_announcements(starting_point, batch_amount)
+                handler.get_next_channel_announcement(starting_point)
             }
             AnyP2PGossipHandler::Local(handler) => {
-                handler.get_next_channel_announcements(starting_point, batch_amount)
+                handler.get_next_channel_announcement(starting_point)
             }
             AnyP2PGossipHandler::None => {
-                panic!("get_next_channel_announcements called without a P2P Gossip Handler")
+                panic!("get_next_channel_announcement called without a P2P Gossip Handler")
             }
         }
     }
 
-    fn get_next_node_announcements(
+    fn get_next_node_announcement(
         &self,
         starting_point: Option<&bitcoin::secp256k1::PublicKey>,
-        batch_amount: u8,
-    ) -> Vec<lightning::ln::msgs::NodeAnnouncement> {
+    ) -> Option<lightning::ln::msgs::NodeAnnouncement> {
         match self {
             AnyP2PGossipHandler::Remote(handler) => {
-                handler.get_next_node_announcements(starting_point, batch_amount)
+                handler.get_next_node_announcement(starting_point)
             }
             AnyP2PGossipHandler::Local(handler) => {
-                handler.get_next_node_announcements(starting_point, batch_amount)
+                handler.get_next_node_announcement(starting_point)
             }
             AnyP2PGossipHandler::None => {
-                panic!("get_next_node_announcements called without a P2P Gossip Handler")
+                panic!("get_next_node_announcement called without a P2P Gossip Handler")
             }
         }
     }
@@ -121,7 +119,7 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
         &self,
         their_node_id: &bitcoin::secp256k1::PublicKey,
         init: &lightning::ln::msgs::Init,
-    ) {
+    ) -> Result<(), ()> {
         match self {
             AnyP2PGossipHandler::Remote(handler) => handler.peer_connected(their_node_id, init),
             AnyP2PGossipHandler::Local(handler) => handler.peer_connected(their_node_id, init),
@@ -199,6 +197,29 @@ impl RoutingMessageHandler for AnyP2PGossipHandler {
             }
             AnyP2PGossipHandler::None => {
                 panic!("handle_query_short_channel_ids called without a P2P Gossip Handler")
+            }
+        }
+    }
+
+    fn provided_node_features(&self) -> lightning::ln::features::NodeFeatures {
+        match self {
+            AnyP2PGossipHandler::Remote(handler) => handler.provided_node_features(),
+            AnyP2PGossipHandler::Local(handler) => handler.provided_node_features(),
+            AnyP2PGossipHandler::None => {
+                panic!("provided_node_features called without a P2P Gossip Handler")
+            }
+        }
+    }
+
+    fn provided_init_features(
+        &self,
+        their_node_id: &bitcoin::secp256k1::PublicKey,
+    ) -> lightning::ln::features::InitFeatures {
+        match self {
+            AnyP2PGossipHandler::Remote(handler) => handler.provided_init_features(their_node_id),
+            AnyP2PGossipHandler::Local(handler) => handler.provided_init_features(their_node_id),
+            AnyP2PGossipHandler::None => {
+                panic!("provided_init_features called without a P2P Gossip Handler")
             }
         }
     }
@@ -288,6 +309,7 @@ impl RemoteGossipMessageHandler {
         Ok(true)
     }
 }
+
 impl MessageSendEventsProvider for RemoteGossipMessageHandler {
     fn get_and_clear_pending_msg_events(&self) -> Vec<MessageSendEvent> {
         Vec::new()
@@ -328,31 +350,30 @@ impl RoutingMessageHandler for RemoteGossipMessageHandler {
         })
     }
 
-    fn get_next_channel_announcements(
+    fn get_next_channel_announcement(
         &self,
         _starting_point: u64,
-        _batch_amount: u8,
-    ) -> Vec<(
+    ) -> Option<(
         lightning::ln::msgs::ChannelAnnouncement,
         Option<lightning::ln::msgs::ChannelUpdate>,
         Option<lightning::ln::msgs::ChannelUpdate>,
     )> {
-        Vec::new()
+        None
     }
 
-    fn get_next_node_announcements(
+    fn get_next_node_announcement(
         &self,
         _starting_point: Option<&bitcoin::secp256k1::PublicKey>,
-        _batch_amount: u8,
-    ) -> Vec<lightning::ln::msgs::NodeAnnouncement> {
-        Vec::new()
+    ) -> Option<lightning::ln::msgs::NodeAnnouncement> {
+        None
     }
 
     fn peer_connected(
         &self,
         _their_node_id: &bitcoin::secp256k1::PublicKey,
         _init: &lightning::ln::msgs::Init,
-    ) {
+    ) -> Result<(), ()> {
+        Ok(())
     }
 
     fn handle_reply_channel_range(
@@ -385,6 +406,23 @@ impl RoutingMessageHandler for RemoteGossipMessageHandler {
         _msg: lightning::ln::msgs::QueryShortChannelIds,
     ) -> Result<(), lightning::ln::msgs::LightningError> {
         Ok(())
+    }
+
+    // TODO: should probably actually fetch this from remote?
+    //       but for now there's no way to configure it on the remote anyway
+    fn provided_node_features(&self) -> lightning::ln::features::NodeFeatures {
+        let mut features = lightning::ln::features::NodeFeatures::empty();
+        features.set_gossip_queries_optional();
+        features
+    }
+
+    fn provided_init_features(
+        &self,
+        _their_node_id: &bitcoin::secp256k1::PublicKey,
+    ) -> lightning::ln::features::InitFeatures {
+        let mut features = lightning::ln::features::InitFeatures::empty();
+        features.set_gossip_queries_optional();
+        features
     }
 }
 
@@ -420,31 +458,30 @@ impl RoutingMessageHandler for BubbleGossipRouteHandler {
         self.target.handle_channel_update(msg)
     }
 
-    fn get_next_channel_announcements(
+    fn get_next_channel_announcement(
         &self,
         _starting_point: u64,
-        _batch_amount: u8,
-    ) -> Vec<(
+    ) -> Option<(
         lightning::ln::msgs::ChannelAnnouncement,
         Option<lightning::ln::msgs::ChannelUpdate>,
         Option<lightning::ln::msgs::ChannelUpdate>,
     )> {
-        Vec::new()
+        None
     }
 
-    fn get_next_node_announcements(
+    fn get_next_node_announcement(
         &self,
         _starting_point: Option<&bitcoin::secp256k1::PublicKey>,
-        _batch_amount: u8,
-    ) -> Vec<lightning::ln::msgs::NodeAnnouncement> {
-        Vec::new()
+    ) -> Option<lightning::ln::msgs::NodeAnnouncement> {
+        None
     }
 
     fn peer_connected(
         &self,
         _their_node_id: &bitcoin::secp256k1::PublicKey,
         _init: &lightning::ln::msgs::Init,
-    ) {
+    ) -> Result<(), ()> {
+        Ok(())
     }
 
     fn handle_reply_channel_range(
@@ -477,5 +514,16 @@ impl RoutingMessageHandler for BubbleGossipRouteHandler {
         _msg: lightning::ln::msgs::QueryShortChannelIds,
     ) -> Result<(), lightning::ln::msgs::LightningError> {
         Ok(())
+    }
+
+    fn provided_node_features(&self) -> lightning::ln::features::NodeFeatures {
+        self.target.provided_node_features()
+    }
+
+    fn provided_init_features(
+        &self,
+        their_node_id: &bitcoin::secp256k1::PublicKey,
+    ) -> lightning::ln::features::InitFeatures {
+        self.target.provided_init_features(their_node_id)
     }
 }

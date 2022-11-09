@@ -13,6 +13,7 @@ use crate::database::SenseiDatabase;
 use crate::disk::FilesystemLogger;
 use crate::error::Error as SenseiError;
 use crate::events::SenseiEvent;
+use crate::node::SenseiAsyncBackgroundProcessor;
 use crate::p2p::utils::parse_peer_info;
 use crate::p2p::SenseiP2P;
 use crate::{config::SenseiConfig, hex_utils, node::LightningNode, version};
@@ -28,8 +29,7 @@ use lightning::routing::gossip::NodeId;
 use lightning::routing::router::{RouteHop, RouteParameters};
 use lightning::routing::scoring::Score;
 use lightning::util::ser::{Readable, Writeable};
-use lightning_background_processor::BackgroundProcessor;
-use lightning_invoice::payment::Router;
+use lightning_invoice::payment::{InFlightHtlcs, Router};
 use macaroon::Macaroon;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -41,7 +41,7 @@ use tokio::task::JoinHandle;
 
 pub struct NodeHandle {
     pub node: Arc<LightningNode>,
-    pub background_processor: BackgroundProcessor,
+    pub background_processor: SenseiAsyncBackgroundProcessor,
     pub handles: Vec<JoinHandle<()>>,
 }
 
@@ -119,6 +119,7 @@ pub enum AdminRequest {
         route_params_hex: String,
         payment_hash_hex: String,
         first_hops: Vec<String>,
+        inflight_htlcs_hex: String,
     },
     NodeInfo {
         node_id_hex: String,
@@ -543,6 +544,7 @@ impl AdminService {
                 route_params_hex,
                 payment_hash_hex,
                 first_hops,
+                inflight_htlcs_hex,
             } => {
                 let payer = hex_utils::to_compressed_pubkey(&payer_public_key_hex)
                     .expect("valid payer public key hex");
@@ -558,11 +560,13 @@ impl AdminService {
                         ChannelDetails::read(&mut channel_details_readable).unwrap()
                     })
                     .collect::<Vec<_>>();
+                let mut inflight_htlcs_readable =
+                    Cursor::new(hex_utils::to_vec(&inflight_htlcs_hex).unwrap());
 
                 let route_params = RouteParameters::read(&mut route_params_readable).unwrap();
                 let payment_hash = PaymentHash::read(&mut payment_hash_readable).unwrap();
+                let inflight_htlcs = InFlightHtlcs::read(&mut inflight_htlcs_readable).unwrap();
 
-                let scorer = self.p2p.scorer.lock().unwrap();
                 let router = self.p2p.get_router();
                 router
                     .find_route(
@@ -570,7 +574,7 @@ impl AdminService {
                         &route_params,
                         &payment_hash,
                         Some(&first_hops.iter().collect::<Vec<_>>()),
-                        &scorer,
+                        inflight_htlcs,
                     )
                     .map(|route| AdminResponse::FindRoute {
                         route: hex_utils::hex_str(&route.encode()),
@@ -1018,7 +1022,7 @@ impl AdminService {
         let entry = node_directory.entry(pubkey.clone());
 
         if let Entry::Occupied(entry) = entry {
-            if let Some(node_handle) = entry.remove() {
+            if let Some(mut node_handle) = entry.remove() {
                 // Disconnect our peers and stop accepting new connections. This ensures we don't continue
                 // updating our channel data after we've stopped the background processor.
                 node_handle.node.peer_manager.disconnect_all_peers();
@@ -1026,7 +1030,7 @@ impl AdminService {
                 self.p2p
                     .peer_connector
                     .unregister_node(node_handle.node.id.clone());
-                let _res = node_handle.background_processor.stop();
+                let _res = node_handle.background_processor.stop().await;
                 for handle in node_handle.handles {
                     handle.abort();
                 }

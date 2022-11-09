@@ -76,7 +76,7 @@ impl BackgroundProcessor {
                     FIRST_NETWORK_PRUNE_TIMER
                 }
             {
-                self.network_graph.remove_stale_channels();
+                self.network_graph.remove_stale_channels_and_tracking();
                 if let Err(e) = self.persister.persist_graph(&self.network_graph) {
                     println!("Error: Failed to persist network graph, check your disk and permissions {}", e);
                 }

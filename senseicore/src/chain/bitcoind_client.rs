@@ -1,12 +1,11 @@
 use base64;
-use bitcoin::blockdata::block::Block;
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::consensus::encode;
 use bitcoin::hash_types::{BlockHash, Txid};
 use lightning::chain::chaininterface::{BroadcasterInterface, ConfirmationTarget, FeeEstimator};
 use lightning_block_sync::http::HttpEndpoint;
 use lightning_block_sync::rpc::RpcClient;
-use lightning_block_sync::{AsyncBlockSourceResult, BlockHeaderData, BlockSource};
+use lightning_block_sync::{AsyncBlockSourceResult, BlockData, BlockHeaderData, BlockSource};
 use serde_json;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -80,7 +79,10 @@ impl BlockSource for BitcoindClient {
         })
     }
 
-    fn get_block<'a>(&'a self, header_hash: &'a BlockHash) -> AsyncBlockSourceResult<'a, Block> {
+    fn get_block<'a>(
+        &'a self,
+        header_hash: &'a BlockHash,
+    ) -> AsyncBlockSourceResult<'a, BlockData> {
         Box::pin(async move { self.bitcoind_rpc_client.get_block(header_hash).await })
     }
 

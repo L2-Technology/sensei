@@ -314,6 +314,7 @@ impl From<FindRouteRequest> for AdminRequest {
             route_params_hex: req.route_params_hex,
             payment_hash_hex: req.payment_hash_hex,
             first_hops: req.first_hops,
+            inflight_htlcs_hex: req.inflight_htlcs_hex,
         }
     }
 }

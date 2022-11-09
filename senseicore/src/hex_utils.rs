@@ -34,9 +34,9 @@ pub fn to_vec(hex: &str) -> Option<Vec<u8>> {
 
 #[inline]
 pub fn hex_str(value: &[u8]) -> String {
-    let mut res = String::with_capacity(64);
+    let mut res = String::with_capacity(2 * value.len());
     for v in value {
-        let _ = write!(res, "{:02x}", v);
+        write!(&mut res, "{:02x}", v).expect("Unable to write");
     }
     res
 }

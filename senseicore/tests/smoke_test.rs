@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use bitcoin::{Address, Amount, Network};
-    use bitcoincore_rpc::RpcApi;
+    use bitcoind::bitcoincore_rpc::RpcApi;
     use bitcoind::BitcoinD;
     use entity::sea_orm::{ConnectOptions, Database};
     use futures::{future, Future};
